@@ -1,0 +1,51 @@
+use num_traits::{AsPrimitive, Float, ToPrimitive};
+
+use super::{DistanceFunction, chi_squared_distance};
+
+pub fn chi_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
+    a: &[N],
+    b: &[N],
+) -> F {
+    chi_squared_distance::<N, F>(a, b).sqrt()
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ChiDistance;
+
+impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
+    for ChiDistance
+{
+    fn distance(&self, a: &[N], b: &[N]) -> F {
+        chi_distance(a, b)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn approx_eq(left: f64, right: f64) {
+        assert!((left - right).abs() < 1e-12, "left={left}, right={right}");
+    }
+
+    #[test]
+    fn chi_is_zero_for_identical_vectors() {
+        let a = [1.0, 2.0, 3.0];
+        approx_eq(chi_distance::<f64, f64>(&a, &a), 0.0);
+    }
+
+    #[test]
+    fn chi_matches_sqrt_of_chi_squared() {
+        let a = [1.0, 2.0];
+        let b = [3.0, 4.0];
+        let expected = (5.0 / 3.0_f64).sqrt();
+        approx_eq(chi_distance::<f64, f64>(&a, &b), expected);
+    }
+
+    #[test]
+    fn chi_returns_zero_for_empty_input() {
+        let a: [f64; 0] = [];
+        let b: [f64; 0] = [];
+        approx_eq(chi_distance::<f64, f64>(&a, &b), 0.0);
+    }
+}

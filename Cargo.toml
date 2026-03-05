@@ -1,0 +1,63 @@
+[package]
+edition = "2024"
+name = "rust-hacs"
+version = "0.1.0"
+authors = ["Erich Schubert <erich.schubert@tu-dortmund.de>"]
+autobins = false
+
+[lib]
+name = "hacs"
+path = "src/mod.rs"
+test = true
+
+[[bin]]
+name = "knn"
+path = "benchmark/knn.rs"
+required-features = ["benchmark"]
+
+[[bin]]
+name = "lof"
+path = "benchmark/lof.rs"
+required-features = ["benchmark"]
+
+[[bin]]
+name = "loop"
+path = "benchmark/loop.rs"
+required-features = ["benchmark"]
+
+[[bin]]
+name = "dbscan"
+path = "benchmark/dbscan.rs"
+required-features = ["benchmark"]
+
+[[bin]]
+name = "optics"
+path = "benchmark/optics.rs"
+required-features = ["benchmark"]
+
+[[bin]]
+name = "agnes"
+path = "benchmark/agnes.rs"
+required-features = ["benchmark"]
+
+[features]
+benchmark = ["dep:csv"]
+
+[dependencies]
+num-traits = "0.2"
+ndarray = "0.15"
+rand  = "0.8"
+rand_distr = "0.4"
+rayon = "1.5"
+csv = { version = "1.3", optional = true }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[profile.bench]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
