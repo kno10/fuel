@@ -2,19 +2,11 @@
 #[derive(Clone, Copy, Default, Debug)]
 pub struct CompleteLinkage;
 
-use num_traits::Float;
 use super::Linkage;
+use num_traits::Float;
 
 impl<F: Float> Linkage<F> for CompleteLinkage {
-    fn combine(
-        &self,
-        _sizex: usize,
-        dx: F,
-        _sizey: usize,
-        dy: F,
-        _sizej: usize,
-        _dxy: F,
-    ) -> F {
+    fn combine(&self, _sizex: usize, dx: F, _sizey: usize, dy: F, _sizej: usize, _dxy: F) -> F {
         dx.max(dy)
     }
 }

@@ -2,19 +2,11 @@
 #[derive(Clone, Copy, Default, Debug)]
 pub struct AverageLinkage;
 
-use num_traits::Float;
 use super::Linkage;
+use num_traits::Float;
 
 impl<F: Float> Linkage<F> for AverageLinkage {
-    fn combine(
-        &self,
-        sizex: usize,
-        dx: F,
-        sizey: usize,
-        dy: F,
-        _sizej: usize,
-        _dxy: F,
-    ) -> F {
+    fn combine(&self, sizex: usize, dx: F, sizey: usize, dy: F, _sizej: usize, _dxy: F) -> F {
         let sx = F::from(sizex).unwrap();
         let sy = F::from(sizey).unwrap();
         (sx * dx + sy * dy) / (sx + sy)

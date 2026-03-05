@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
 #[cfg(test)]
 use crate::EuclideanDistance;
+use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
 
 const UNVISITED: isize = -2;
 pub const NOISE: isize = -1;
@@ -42,7 +42,7 @@ pub fn dbscan<T>(
         });
         if frontier.len() < min_points {
             labels[point_idx] = NOISE;
-            
+
             continue;
         }
 
@@ -143,10 +143,7 @@ mod tests {
             (1, vec![0, 1, 1, 1, 2, 3, 4]),
             (2, vec![NOISE, 0, 0, 0, NOISE, NOISE, NOISE]),
             (3, vec![NOISE, 0, 0, 0, NOISE, NOISE, NOISE]),
-            (
-                4,
-                vec![NOISE, NOISE, NOISE, NOISE, NOISE, NOISE, NOISE],
-            ),
+            (4, vec![NOISE, NOISE, NOISE, NOISE, NOISE, NOISE, NOISE]),
         ];
 
         for (min_points, expected_labels) in expected_cases {

@@ -2,19 +2,11 @@
 #[derive(Clone, Copy, Default, Debug)]
 pub struct SingleLinkage;
 
-use num_traits::Float;
 use super::Linkage;
+use num_traits::Float;
 
 impl<F: Float> Linkage<F> for SingleLinkage {
-    fn combine(
-        &self,
-        _sizex: usize,
-        dx: F,
-        _sizey: usize,
-        dy: F,
-        _sizej: usize,
-        _dxy: F,
-    ) -> F {
+    fn combine(&self, _sizex: usize, dx: F, _sizey: usize, dy: F, _sizej: usize, _dxy: F) -> F {
         dx.min(dy)
     }
 }
@@ -22,7 +14,7 @@ impl<F: Float> Linkage<F> for SingleLinkage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cluster::hierarchical::{agnes};
+    use crate::cluster::hierarchical::agnes;
 
     #[test]
     fn single_combine_behaviour() {

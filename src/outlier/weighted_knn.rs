@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
-use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
 #[cfg(test)]
 use crate::EuclideanDistance;
+use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WeightedKnnOutlierScore {
@@ -92,6 +92,12 @@ mod tests {
         let tree = VPTree::new(&data, 1, &mut rng);
 
         let scores = weighted_knn_outlier_scores(&tree, &data, 1);
-        assert_eq!(scores, vec![WeightedKnnOutlierScore { index: 0, score: 0.0 }]);
+        assert_eq!(
+            scores,
+            vec![WeightedKnnOutlierScore {
+                index: 0,
+                score: 0.0
+            }]
+        );
     }
 }

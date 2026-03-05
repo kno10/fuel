@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
-use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
 #[cfg(test)]
 use crate::EuclideanDistance;
+use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct KnnOutlierScore {
@@ -34,7 +34,8 @@ pub fn knn_outlier_scores<T>(
         let score = if k_effective == 0 {
             0.0
         } else {
-            let neighbors = tree.search_knn(&data.with_query_index(idx), (k_effective + 1).min(size));
+            let neighbors =
+                tree.search_knn(&data.with_query_index(idx), (k_effective + 1).min(size));
             let rank = k_effective - 1;
             neighbors
                 .into_iter()

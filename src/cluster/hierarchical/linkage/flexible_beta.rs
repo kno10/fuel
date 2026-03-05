@@ -9,11 +9,11 @@ pub struct FlexibleBetaLinkage<F: Float> {
 
 impl<F: Float> FlexibleBetaLinkage<F> {
     /// Create a new instance for given β.  α = (1-β)/2 as per definition.
-///
-/// # Panics
-///
-/// Will panic if the conversion `F::from(0.5)` fails, which should only occur
-/// for strange `Float` implementations.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the conversion `F::from(0.5)` fails, which should only occur
+    /// for strange `Float` implementations.
     pub fn new(beta: F) -> Self {
         Self {
             beta,
@@ -25,15 +25,7 @@ impl<F: Float> FlexibleBetaLinkage<F> {
 use super::Linkage;
 
 impl<F: Float> Linkage<F> for FlexibleBetaLinkage<F> {
-    fn combine(
-        &self,
-        _sizex: usize,
-        dx: F,
-        _sizey: usize,
-        dy: F,
-        _sizej: usize,
-        dxy: F,
-    ) -> F {
+    fn combine(&self, _sizex: usize, dx: F, _sizey: usize, dy: F, _sizej: usize, dxy: F) -> F {
         self.alpha * dx + self.alpha * dy + self.beta * dxy
     }
 }
@@ -46,7 +38,10 @@ mod tests {
     #[test]
     fn flexible_beta_defaults() {
         let fb: FlexibleBetaLinkage<f64> = FlexibleBetaLinkage::new(-0.25);
-        assert_eq!(fb.combine(1, 1.0, 1, 1.0, 0, 2.0), fb.alpha * 1.0 + fb.alpha * 1.0 + fb.beta * 2.0);
+        assert_eq!(
+            fb.combine(1, 1.0, 1, 1.0, 0, 2.0),
+            fb.alpha * 1.0 + fb.alpha * 1.0 + fb.beta * 2.0
+        );
     }
 
     #[test]

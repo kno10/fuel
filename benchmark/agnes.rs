@@ -12,7 +12,7 @@ use hacs::hierarchical::{
     AverageLinkage, CentroidLinkage, CompleteLinkage, GroupAverageLinkage, MedianLinkage,
     MinimumVarianceLinkage, SingleLinkage, WardLinkage, WeightedAverageLinkage,
 };
-use hacs::{DataAccess, MatrixDataAccess, Merge, agnes};
+use hacs::{DataAccess, MatrixDataAccess, agnes, cut_dendrogram_by_number_of_clusters};
 
 fn main() {
     if let Err(err) = run() {
@@ -56,8 +56,9 @@ fn run() -> Result<(), Box<dyn Error>> {
     let data = MatrixDataAccess::with_distance(&rows, distance);
 
     // build condensed lower-triangular distance matrix
+    let data_ref = &data;
     let condensed: Vec<_> = (1..n)
-        .flat_map(|p| (0..p).map(move |q| data.distance(p, q)))
+        .flat_map(|p| (0..p).map(move |q| data_ref.distance(p, q)))
         .collect();
     let distance_count_after_index = distance_count.load(Ordering::Relaxed);
 
@@ -77,8 +78,8 @@ fn run() -> Result<(), Box<dyn Error>> {
     let elapsed = start.elapsed();
     let distance_count_after_algorithm = distance_count.load(Ordering::Relaxed);
 
-    // compute clusters for k groups by simulating merge process
-    let labels = cut_history_into_clusters(n, &history, k);
+    // extract flat clusters from the hierarchy with ELKI-style tie handling.
+    let labels = cut_dendrogram_by_number_of_clusters(&history, k);
     let (cluster_sizes, _noise) = summarize_cluster_sizes(&labels);
 
     println!("time_ms={:.3}", elapsed.as_secs_f64() * 1_000.0);
@@ -89,33 +90,6 @@ fn run() -> Result<(), Box<dyn Error>> {
     println!("distance_count_after_algorithm={distance_count_after_algorithm}");
 
     Ok(())
-}
-
-fn cut_history_into_clusters(n: usize, history: &[Merge<f64>], k: usize) -> Vec<usize> {
-    // naive label propagation based on merge order.
-    let mut labels: Vec<usize> = (0..n).collect();
-    let merges_to_apply = n.saturating_sub(k);
-    for (step, merge) in history.iter().enumerate().take(merges_to_apply) {
-        let new_id = n + step;
-        labels.iter_mut().for_each(|lbl| {
-            if *lbl == merge.idx1 || *lbl == merge.idx2 {
-                *lbl = new_id;
-            }
-        });
-    }
-    // compress label values into 0..k-1 range
-    let mut mapping = BTreeMap::new();
-    let mut next = 0;
-    let mut compressed = Vec::with_capacity(n);
-    for &lbl in &labels {
-        let entry = mapping.entry(lbl).or_insert_with(|| {
-            let t = next;
-            next += 1;
-            t
-        });
-        compressed.push(*entry);
-    }
-    compressed
 }
 
 fn summarize_cluster_sizes(labels: &[usize]) -> (BTreeMap<usize, usize>, usize) {

@@ -2,8 +2,8 @@
 #[derive(Clone, Copy, Default, Debug)]
 pub struct MinimumVarianceLinkage;
 
-use num_traits::Float;
 use super::Linkage;
+use num_traits::Float;
 
 impl<F: Float> Linkage<F> for MinimumVarianceLinkage {
     fn initial(&self, d: F, issquare: bool) -> F {
@@ -18,15 +18,7 @@ impl<F: Float> Linkage<F> for MinimumVarianceLinkage {
         }
     }
 
-    fn combine(
-        &self,
-        sizex: usize,
-        dx: F,
-        sizey: usize,
-        dy: F,
-        sizej: usize,
-        dxy: F,
-    ) -> F {
+    fn combine(&self, sizex: usize, dx: F, sizey: usize, dy: F, sizej: usize, dxy: F) -> F {
         let xj = F::from(sizex + sizej).unwrap();
         let yj = F::from(sizey + sizej).unwrap();
         let n = F::from(sizex + sizey + sizej).unwrap();

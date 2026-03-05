@@ -28,7 +28,11 @@ impl<F: Float> VPTree<F> {
         self.search_range_unsorted(data, radius, |pair| result.push(pair));
 
         // Sort results by distance
-        result.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(Ordering::Equal));
+        result.sort_by(|a, b| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(Ordering::Equal)
+        });
         for pair in result {
             callback(pair);
         }

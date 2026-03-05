@@ -59,12 +59,8 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     println!("time_ms={:.3}", elapsed.as_secs_f64() * 1_000.0);
     println!("avg_score={avg_score:.12}");
-    println!(
-        "distance_count_after_index={distance_count_after_index}"
-    );
-    println!(
-        "distance_count_after_algorithm={distance_count_after_algorithm}"
-    );
+    println!("distance_count_after_index={distance_count_after_index}");
+    println!("distance_count_after_algorithm={distance_count_after_algorithm}");
 
     Ok(())
 }

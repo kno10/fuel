@@ -196,7 +196,10 @@ impl<'a, D: DataAccess, F: Float> PrioritySearcher<'a, D, F> {
     ///
     /// Panics if `threshold` is greater than the current cutoff.
     pub fn decrease_cutoff(&mut self, threshold: F) {
-        assert!(threshold <= self.threshold, "Thresholds must only decrease.");
+        assert!(
+            threshold <= self.threshold,
+            "Thresholds must only decrease."
+        );
         self.threshold = threshold;
         if threshold < self.current_node_dist {
             self.heap.clear();
@@ -221,9 +224,13 @@ impl<'a, D: DataAccess, F: Float> PrioritySearcher<'a, D, F> {
         self.decrease_cutoff(threshold);
     }
 
-    /// Lower bound of all remaining candidates in the queue.
-    pub const fn all_lower_bound(&self) -> F {
-        self.current_node_dist
+    /// Lower bound of all remaining candidates.
+    pub fn all_lower_bound(&self) -> F {
+        if self.has_current_candidate {
+            self.current_node_dist
+        } else {
+            self.heap.peek().map_or(F::infinity(), |entry| entry.distance)
+        }
     }
 
     /// Get all neighbors within the current threshold

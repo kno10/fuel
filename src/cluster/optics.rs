@@ -1,9 +1,9 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
 #[cfg(test)]
 use crate::EuclideanDistance;
+use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
 
 use super::NOISE;
 
@@ -330,8 +330,9 @@ fn compute_core_distance(neighbors: &mut [(usize, f64)], min_points: usize) -> O
         None
     } else {
         let rank = min_points - 1;
-        let (_, candidate, _) = neighbors
-            .select_nth_unstable_by(rank, |a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+        let (_, candidate, _) = neighbors.select_nth_unstable_by(rank, |a, b| {
+            a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal)
+        });
         Some(candidate.1)
     }
 }
@@ -685,9 +686,9 @@ mod tests {
         ];
 
         let expected_ordering = vec![
-            0, 3, 6, 4, 7, 8, 2, 9, 5, 1, 31, 30, 32, 34, 33, 38, 39, 35, 37, 36, 44, 21,
-            23, 24, 22, 25, 27, 29, 26, 28, 20, 40, 45, 46, 10, 15, 11, 13, 17, 19, 18, 12,
-            16, 14, 47, 49, 43, 48, 42, 41, 53, 57, 51, 52, 56, 59, 54, 55, 58, 50,
+            0, 3, 6, 4, 7, 8, 2, 9, 5, 1, 31, 30, 32, 34, 33, 38, 39, 35, 37, 36, 44, 21, 23, 24,
+            22, 25, 27, 29, 26, 28, 20, 40, 45, 46, 10, 15, 11, 13, 17, 19, 18, 12, 16, 14, 47, 49,
+            43, 48, 42, 41, 53, 57, 51, 52, 56, 59, 54, 55, 58, 50,
         ];
 
         let expected_reachability_by_order = vec![

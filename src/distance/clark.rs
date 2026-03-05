@@ -5,11 +5,11 @@ use super::{DistanceFunction, DistanceMetric};
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{
-    _CMP_EQ_OQ, _mm256_add_pd, _mm256_add_ps, _mm256_andnot_pd, _mm256_andnot_ps,
-    _mm256_blendv_pd, _mm256_blendv_ps, _mm256_cmp_pd, _mm256_cmp_ps, _mm256_div_pd,
-    _mm256_div_ps, _mm256_loadu_pd, _mm256_loadu_ps, _mm256_mul_pd, _mm256_mul_ps,
-    _mm256_set1_pd, _mm256_set1_ps, _mm256_setzero_pd, _mm256_setzero_ps, _mm256_storeu_pd,
-    _mm256_storeu_ps, _mm256_sub_pd, _mm256_sub_ps,
+    _CMP_EQ_OQ, _mm256_add_pd, _mm256_add_ps, _mm256_andnot_pd, _mm256_andnot_ps, _mm256_blendv_pd,
+    _mm256_blendv_ps, _mm256_cmp_pd, _mm256_cmp_ps, _mm256_div_pd, _mm256_div_ps, _mm256_loadu_pd,
+    _mm256_loadu_ps, _mm256_mul_pd, _mm256_mul_ps, _mm256_set1_pd, _mm256_set1_ps,
+    _mm256_setzero_pd, _mm256_setzero_ps, _mm256_storeu_pd, _mm256_storeu_ps, _mm256_sub_pd,
+    _mm256_sub_ps,
 };
 
 #[cfg(target_arch = "x86_64")]

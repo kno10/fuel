@@ -2,19 +2,11 @@
 #[derive(Clone, Copy, Default, Debug)]
 pub struct WeightedAverageLinkage;
 
-use num_traits::Float;
 use super::Linkage;
+use num_traits::Float;
 
 impl<F: Float> Linkage<F> for WeightedAverageLinkage {
-    fn combine(
-        &self,
-        _sizex: usize,
-        dx: F,
-        _sizey: usize,
-        dy: F,
-        _sizej: usize,
-        _dxy: F,
-    ) -> F {
+    fn combine(&self, _sizex: usize, dx: F, _sizey: usize, dy: F, _sizej: usize, _dxy: F) -> F {
         F::from(0.5).unwrap() * (dx + dy)
     }
 }

@@ -5,19 +5,11 @@
 #[derive(Clone, Copy, Default, Debug)]
 pub struct CentroidLinkage;
 
-use num_traits::Float;
 use super::{GeometricLinkage, Linkage};
+use num_traits::Float;
 
 impl<F: Float> Linkage<F> for CentroidLinkage {
-    fn combine(
-        &self,
-        sizex: usize,
-        dx: F,
-        sizey: usize,
-        dy: F,
-        _sizej: usize,
-        dxy: F,
-    ) -> F {
+    fn combine(&self, sizex: usize, dx: F, sizey: usize, dy: F, _sizej: usize, dxy: F) -> F {
         let tot = F::from(sizex + sizey).unwrap();
         let f = F::one() / tot;
         let sx = F::from(sizex).unwrap();

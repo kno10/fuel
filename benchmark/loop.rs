@@ -23,9 +23,9 @@ fn main() {
 fn run() -> Result<(), Box<dyn Error>> {
     let mut args = std::env::args().skip(1);
 
-    let csv_path = args.next().ok_or(
-        "usage: cargo run --features benchmark --bin loop -- <csv_path> <k> [n_lambda]",
-    )?;
+    let csv_path = args
+        .next()
+        .ok_or("usage: cargo run --features benchmark --bin loop -- <csv_path> <k> [n_lambda]")?;
 
     let k: usize = args
         .next()

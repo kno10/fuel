@@ -83,12 +83,8 @@ fn run() -> Result<(), Box<dyn Error>> {
     println!("cluster_count={}", cluster_sizes.len());
     println!("noise_count={noise_count}");
     println!("cluster_sizes={}", format_cluster_sizes(&cluster_sizes));
-    println!(
-        "distance_count_after_index={distance_count_after_index}"
-    );
-    println!(
-        "distance_count_after_algorithm={distance_count_after_algorithm}"
-    );
+    println!("distance_count_after_index={distance_count_after_index}");
+    println!("distance_count_after_algorithm={distance_count_after_algorithm}");
 
     Ok(())
 }

@@ -40,6 +40,11 @@ name = "agnes"
 path = "benchmark/agnes.rs"
 required-features = ["benchmark"]
 
+[[bin]]
+name = "single_link"
+path = "benchmark/single_link.rs"
+required-features = ["benchmark"]
+
 [features]
 benchmark = ["dep:csv"]
 
@@ -60,4 +65,3 @@ codegen-units = 1
 opt-level = 3
 lto = "thin"
 codegen-units = 1
-

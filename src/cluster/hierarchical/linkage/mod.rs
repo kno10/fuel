@@ -5,6 +5,7 @@
 //! AGNES can accept *any* `Linkage` implementation, and new methods can be
 //! added simply by defining additional types.
 
+pub mod average;
 pub mod centroid;
 pub mod complete;
 pub mod flexible_beta;
@@ -12,10 +13,10 @@ pub mod group_average;
 pub mod median;
 pub mod minimum_variance;
 pub mod single;
-pub mod average;
 pub mod ward;
 pub mod weighted_average;
 
+pub use average::AverageLinkage;
 pub use centroid::CentroidLinkage;
 pub use complete::CompleteLinkage;
 pub use flexible_beta::FlexibleBetaLinkage;
@@ -23,7 +24,6 @@ pub use group_average::GroupAverageLinkage;
 pub use median::MedianLinkage;
 pub use minimum_variance::MinimumVarianceLinkage;
 pub use single::SingleLinkage;
-pub use average::AverageLinkage;
 pub use ward::WardLinkage;
 pub use weighted_average::WeightedAverageLinkage;
 

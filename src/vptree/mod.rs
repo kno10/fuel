@@ -73,6 +73,8 @@ impl<F> Bounds<F> {
 pub struct VPTree<F = f64> {
     points: Vec<vpsize>,
     bounds: Vec<Bounds<F>>,
+    leaf_right: Vec<usize>,
+    leaf_radius: Vec<F>,
 }
 
 #[cfg(test)]

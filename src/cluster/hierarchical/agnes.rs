@@ -17,7 +17,7 @@
 
 use num_traits::Float;
 
-use super::common::{Builder, MergeHistory, triangle_index};
+use super::common::{Builder, MergeHistory, shrink_active_end, triangle_index};
 use super::linkage::Linkage;
 
 // (linkage implementations live in `hierarchical::linkage`)
@@ -140,9 +140,7 @@ pub fn agnes<F: Float, L: Linkage<F> + Copy>(
 
         // shrink active set if tail objects have disappeared
         if x == end - 1 {
-            while end > 0 && clustermap[end - 1].is_none() {
-                end -= 1;
-            }
+            shrink_active_end(&clustermap, &mut end);
         }
     }
 

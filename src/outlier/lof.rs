@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
-use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
 #[cfg(test)]
 use crate::EuclideanDistance;
+use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LofOutlierScore {
@@ -131,11 +131,13 @@ mod tests {
         assert_eq!(scores[0].index, 4);
         assert!(scores[0].score > 1.0);
 
-        assert!(scores
-            .iter()
-            .filter(|entry| entry.index != 4)
-            .map(|entry| entry.score)
-            .all(|value| value > 0.5 && value < 2.0));
+        assert!(
+            scores
+                .iter()
+                .filter(|entry| entry.index != 4)
+                .map(|entry| entry.score)
+                .all(|value| value > 0.5 && value < 2.0)
+        );
     }
 
     #[test]
@@ -149,11 +151,11 @@ mod tests {
         let scores = lof_outlier_scores(&tree, &data, 2);
 
         let mut by_index = scores;
-        by_index.sort_by(|a, b| a.index.cmp(&b.index).then_with(|| {
-            a.score
-                .partial_cmp(&b.score)
-                .unwrap_or(Ordering::Equal)
-        }));
+        by_index.sort_by(|a, b| {
+            a.index
+                .cmp(&b.index)
+                .then_with(|| a.score.partial_cmp(&b.score).unwrap_or(Ordering::Equal))
+        });
 
         let sqrt2 = 2.0_f64.sqrt();
         let s0 = 2.0 * sqrt2 / (1.0 + sqrt2);
@@ -185,11 +187,11 @@ mod tests {
         assert_eq!(scores.len(), points.len());
 
         let mut by_index = scores;
-        by_index.sort_by(|a, b| a.index.cmp(&b.index).then_with(|| {
-            a.score
-                .partial_cmp(&b.score)
-                .unwrap_or(Ordering::Equal)
-        }));
+        by_index.sort_by(|a, b| {
+            a.index
+                .cmp(&b.index)
+                .then_with(|| a.score.partial_cmp(&b.score).unwrap_or(Ordering::Equal))
+        });
 
         let max_inlier = by_index[..6]
             .iter()

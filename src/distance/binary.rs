@@ -84,10 +84,7 @@ where
     }
 }
 
-pub fn roger_stanimoto_distance<N: Float + ToPrimitive, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F
+pub fn roger_stanimoto_distance<N: Float + ToPrimitive, F: Float + 'static>(a: &[N], b: &[N]) -> F
 where
     u32: AsPrimitive<F>,
 {
@@ -114,10 +111,7 @@ where
     }
 }
 
-pub fn sokal_michener_distance<N: Float + ToPrimitive, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F
+pub fn sokal_michener_distance<N: Float + ToPrimitive, F: Float + 'static>(a: &[N], b: &[N]) -> F
 where
     u32: AsPrimitive<F>,
 {
@@ -157,8 +151,7 @@ pub struct MatchingDistance;
 
 impl<N: Float + ToPrimitive> DistanceMetric<[N]> for MatchingDistance {}
 
-impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F>
-    for MatchingDistance
+impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F> for MatchingDistance
 where
     u32: AsPrimitive<F>,
 {
@@ -208,8 +201,7 @@ where
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RogerStanimotoDistance;
 
-impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F>
-    for RogerStanimotoDistance
+impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F> for RogerStanimotoDistance
 where
     u32: AsPrimitive<F>,
 {
@@ -233,8 +225,7 @@ where
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SokalMichenerDistance;
 
-impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F>
-    for SokalMichenerDistance
+impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F> for SokalMichenerDistance
 where
     u32: AsPrimitive<F>,
 {

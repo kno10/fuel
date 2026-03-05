@@ -17,7 +17,11 @@ impl<F: Float> VPTree<F> {
         self.search_knn_recursive(data, k, 0, self.points.len(), &mut heap);
 
         let mut result: Vec<DistPair<F>> = heap.into_iter().map(|item| item.0).collect();
-        result.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(Ordering::Equal));
+        result.sort_by(|a, b| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(Ordering::Equal)
+        });
         result
     }
 

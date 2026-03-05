@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
-use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
 #[cfg(test)]
 use crate::EuclideanDistance;
+use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LoopOutlierScore {
@@ -61,7 +61,7 @@ pub fn loop_outlier_scores<T>(
                     .map(|(_, distance)| distance * distance)
                     .sum::<f64>()
                     / neighbors.len() as f64)
-                .sqrt()
+                    .sqrt()
             }
         })
         .collect();
@@ -88,9 +88,7 @@ pub fn loop_outlier_scores<T>(
         .collect();
 
     let mut nplof = n_lambda
-        * (plofs.iter().map(|value| value * value).sum::<f64>()
-            / plofs.len() as f64)
-        .sqrt();
+        * (plofs.iter().map(|value| value * value).sum::<f64>() / plofs.len() as f64).sqrt();
 
     if nplof <= 0.0 {
         nplof = 1.0;
@@ -129,8 +127,7 @@ fn erf_approx(x: f64) -> f64 {
     let p = 0.3275911;
 
     let t = 1.0 / (1.0 + p * abs_x);
-    let y = 1.0
-        - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * (-(abs_x * abs_x)).exp());
+    let y = 1.0 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * (-(abs_x * abs_x)).exp());
 
     sign * y
 }
@@ -178,11 +175,9 @@ mod tests {
 
         let mut by_index = scores;
         by_index.sort_by(|a, b| {
-            a.index.cmp(&b.index).then_with(|| {
-                a.score
-                    .partial_cmp(&b.score)
-                    .unwrap_or(Ordering::Equal)
-            })
+            a.index
+                .cmp(&b.index)
+                .then_with(|| a.score.partial_cmp(&b.score).unwrap_or(Ordering::Equal))
         });
 
         assert!((by_index[0].score - 0.00314472).abs() < 1e-5);

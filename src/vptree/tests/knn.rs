@@ -4,8 +4,8 @@ use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-use super::shared::brute_force_knn;
 use super::super::VPTree;
+use super::shared::brute_force_knn;
 use crate::{DataAccess, EuclideanDistance, MatrixDataAccess};
 
 #[test]
@@ -27,7 +27,10 @@ fn test_search_knn_small_dataset() {
     assert_eq!(result.len(), 3);
     assert_eq!(result[0].index(), 0);
 
-    let indices_1_2: Vec<usize> = result[1..3].iter().map(super::super::DistPair::index).collect();
+    let indices_1_2: Vec<usize> = result[1..3]
+        .iter()
+        .map(super::super::DistPair::index)
+        .collect();
     assert!(indices_1_2.contains(&1) && indices_1_2.contains(&2));
 
     let result = tree.search_knn(&dataset.with_query(&points[4]), 2);

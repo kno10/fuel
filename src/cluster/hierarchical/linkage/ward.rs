@@ -6,8 +6,8 @@
 #[derive(Clone, Copy, Default, Debug)]
 pub struct WardLinkage;
 
-use num_traits::Float;
 use super::{GeometricLinkage, Linkage};
+use num_traits::Float;
 
 impl<F: Float> Linkage<F> for WardLinkage {
     fn initial(&self, d: F, issquare: bool) -> F {
@@ -22,15 +22,7 @@ impl<F: Float> Linkage<F> for WardLinkage {
         }
     }
 
-    fn combine(
-        &self,
-        sizex: usize,
-        dx: F,
-        sizey: usize,
-        dy: F,
-        sizej: usize,
-        dxy: F,
-    ) -> F {
+    fn combine(&self, sizex: usize, dx: F, sizey: usize, dy: F, sizej: usize, dxy: F) -> F {
         let sx = F::from(sizex).unwrap();
         let sy = F::from(sizey).unwrap();
         let sj = F::from(sizej).unwrap();
@@ -63,7 +55,11 @@ impl<F: Float> GeometricLinkage<F> for WardLinkage {
     }
 
     fn restore_linkage(&self, d: F, issquare: bool) -> F {
-        if issquare { F::from(4.0).unwrap() * d } else { F::from(2.0).unwrap() * d.sqrt() }
+        if issquare {
+            F::from(4.0).unwrap() * d
+        } else {
+            F::from(2.0).unwrap() * d.sqrt()
+        }
     }
 }
 

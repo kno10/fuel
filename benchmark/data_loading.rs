@@ -5,17 +5,28 @@ use std::path::Path;
 
 use csv::ReaderBuilder;
 
+#[allow(dead_code)]
 pub fn read_numeric_data(path: &str) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
+    read_numeric_data_with_limit(path, None)
+}
+
+pub fn read_numeric_data_with_limit(
+    path: &str,
+    limit: Option<usize>,
+) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
     if !Path::new(path).exists() {
         return Err(format!("CSV file not found: {path}").into());
     }
 
     let first_non_empty = first_non_empty_line(path)?;
-    if first_non_empty.as_deref().is_some_and(|line| !line.contains(',')) {
-        return read_whitespace_separated(path);
+    if first_non_empty
+        .as_deref()
+        .is_some_and(|line| !line.contains(','))
+    {
+        return read_whitespace_separated(path, limit);
     }
 
-    read_comma_separated(path)
+    read_comma_separated(path, limit)
 }
 
 fn first_non_empty_line(path: &str) -> Result<Option<String>, Box<dyn Error>> {
@@ -33,13 +44,18 @@ fn first_non_empty_line(path: &str) -> Result<Option<String>, Box<dyn Error>> {
     Ok(None)
 }
 
-fn read_comma_separated(path: &str) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
+fn read_comma_separated(path: &str, limit: Option<usize>) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
     let mut reader = ReaderBuilder::new().has_headers(false).from_path(path)?;
 
     let mut rows = Vec::new();
     let mut expected_dims: Option<usize> = None;
 
     for (line_no, record_result) in reader.records().enumerate() {
+        if let Some(limit) = limit {
+            if rows.len() >= limit {
+                break;
+            }
+        }
         let record = record_result?;
         if record.is_empty() {
             continue;
@@ -75,7 +91,10 @@ fn read_comma_separated(path: &str) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
     Ok(rows)
 }
 
-fn read_whitespace_separated(path: &str) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
+fn read_whitespace_separated(
+    path: &str,
+    limit: Option<usize>,
+) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
 
@@ -83,6 +102,11 @@ fn read_whitespace_separated(path: &str) -> Result<Vec<Vec<f64>>, Box<dyn Error>
     let mut expected_dims: Option<usize> = None;
 
     for (line_no, line_result) in reader.lines().enumerate() {
+        if let Some(limit) = limit {
+            if rows.len() >= limit {
+                break;
+            }
+        }
         let line = line_result?;
         let trimmed = line.trim();
         if trimmed.is_empty() {
