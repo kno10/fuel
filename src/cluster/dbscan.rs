@@ -1,8 +1,9 @@
 use std::collections::HashSet;
 
-#[cfg(test)]
-use crate::EuclideanDistance;
-use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
+use num_traits::Float;
+
+use crate::DistanceData;
+use crate::vptree::VPTree;
 
 const UNVISITED: isize = -2;
 pub const NOISE: isize = -1;
@@ -12,18 +13,13 @@ pub const NOISE: isize = -1;
 /// Returns a label per point:
 /// - `NOISE` (-1) for noise points
 /// - `0..` for cluster ids
-///
-/// # Panics
-///
-/// Panics if `eps < 0.0` or if `min_points == 0`.
-pub fn dbscan<T>(
-    tree: &VPTree,
-    data: &MatrixDataAccess<'_, T, impl DistanceFunction<T>>,
-    eps: f64,
+pub fn dbscan<D: DistanceData<F>, F: Float>(
+    tree: &VPTree<F>,
+    data: D,
+    eps: F,
     min_points: usize,
 ) -> Vec<isize> {
-    assert!(eps >= 0.0, "eps must be non-negative");
-    assert!(min_points > 0, "min_points must be greater than 0");
+    assert!(eps >= F::zero(), "eps must be non-negative");
 
     let size = data.size();
     let mut labels = vec![UNVISITED; size];
@@ -37,8 +33,8 @@ pub fn dbscan<T>(
         }
         frontier.clear();
 
-        tree.search_range_unsorted(&data.with_query_index(point_idx), eps, |pair| {
-            frontier.insert(pair.index());
+        tree.search_range_unsorted(&data.search_by_index(point_idx), eps, |pair| {
+            frontier.insert(pair.index);
         });
         if frontier.len() < min_points {
             labels[point_idx] = NOISE;
@@ -61,8 +57,8 @@ pub fn dbscan<T>(
             labels[current_idx] = cluster_id;
 
             neighbors.clear();
-            tree.search_range_unsorted(&data.with_query_index(current_idx), eps, |pair| {
-                neighbors.push(pair.index());
+            tree.search_range_unsorted(&data.search_by_index(current_idx), eps, |pair| {
+                neighbors.push(pair.index);
             });
             if neighbors.len() >= min_points {
                 for &neighbor_idx in &neighbors {
@@ -89,6 +85,9 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
+    use crate::TableWithDistance;
+    use crate::distance::EuclideanDistance;
+
     use super::*;
 
     #[test]
@@ -103,7 +102,7 @@ mod tests {
             vec![5.0, 5.0],
         ];
 
-        let data = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(7);
         let tree = VPTree::new(&data, 2, &mut rng);
 
@@ -147,7 +146,7 @@ mod tests {
         ];
 
         for (min_points, expected_labels) in expected_cases {
-            let data = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+            let data = TableWithDistance::with_distance(&points, EuclideanDistance);
             let mut rng = StdRng::seed_from_u64(7);
             let tree = VPTree::new(&data, 2, &mut rng);
 

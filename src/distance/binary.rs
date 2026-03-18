@@ -135,13 +135,13 @@ where
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HammingDistance;
 
-impl<N: Float + ToPrimitive> DistanceMetric<[N]> for HammingDistance {}
+impl<N: Float + ToPrimitive> DistanceMetric<[N], f32> for HammingDistance {}
 
-impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F> for HammingDistance
+impl<N: Float + ToPrimitive> DistanceFunction<[N], f32> for HammingDistance
 where
-    u32: AsPrimitive<F>,
+    u32: AsPrimitive<f32>,
 {
-    fn distance(&self, a: &[N], b: &[N]) -> F {
+    fn distance(&self, a: &[N], b: &[N]) -> f32 {
         hamming_distance(a, b)
     }
 }
@@ -149,13 +149,13 @@ where
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MatchingDistance;
 
-impl<N: Float + ToPrimitive> DistanceMetric<[N]> for MatchingDistance {}
+impl<N: Float + ToPrimitive> DistanceMetric<[N], f32> for MatchingDistance {}
 
-impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F> for MatchingDistance
+impl<N: Float + ToPrimitive> DistanceFunction<[N], f32> for MatchingDistance
 where
-    u32: AsPrimitive<F>,
+    u32: AsPrimitive<f32>,
 {
-    fn distance(&self, a: &[N], b: &[N]) -> F {
+    fn distance(&self, a: &[N], b: &[N]) -> f32 {
         matching_distance(a, b)
     }
 }
@@ -163,13 +163,13 @@ where
 #[derive(Debug, Clone, Copy, Default)]
 pub struct JaccardDistance;
 
-impl<N: Float + ToPrimitive> DistanceMetric<[N]> for JaccardDistance {}
+impl<N: Float + ToPrimitive> DistanceMetric<[N], f32> for JaccardDistance {}
 
-impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F> for JaccardDistance
+impl<N: Float + ToPrimitive> DistanceFunction<[N], f32> for JaccardDistance
 where
-    u32: AsPrimitive<F>,
+    u32: AsPrimitive<f32>,
 {
-    fn distance(&self, a: &[N], b: &[N]) -> F {
+    fn distance(&self, a: &[N], b: &[N]) -> f32 {
         jaccard_distance(a, b)
     }
 }

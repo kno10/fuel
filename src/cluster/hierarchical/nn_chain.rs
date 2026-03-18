@@ -11,7 +11,7 @@ use super::linkage::Linkage;
 /// The input matrix uses lower-triangular condensed indexing.
 #[must_use]
 pub fn nn_chain<F: Float, L: Linkage<F> + Copy>(
-    distances: &[F],
+    distances: &[F], // FIXME: use the data API
     n: usize,
     linkage: L,
     is_squared: bool,
@@ -56,8 +56,8 @@ pub fn nn_chain<F: Float, L: Linkage<F> + Copy>(
         let mut min_dist = condensed_get(&mat, a, b);
         loop {
             let mut c = b;
-            for i in 0..end {
-                if i == a || i == b || clustermap[i].is_none() {
+            for (i, opt) in clustermap.iter().enumerate().take(end) {
+                if i == a || i == b || opt.is_none() {
                     continue;
                 }
                 let d = condensed_get(&mat, a, i);
@@ -89,8 +89,8 @@ pub fn nn_chain<F: Float, L: Linkage<F> + Copy>(
         clustermap[y] = Some(new_id);
         clustermap[x] = None;
 
-        for j in 0..end {
-            if j == x || j == y || clustermap[j].is_none() {
+        for (j, opt) in clustermap.iter().enumerate().take(end) {
+            if j == x || j == y || opt.is_none() {
                 continue;
             }
             let d_xj = condensed_get(&mat, x, j);
@@ -120,10 +120,10 @@ pub fn nn_chain<F: Float, L: Linkage<F> + Copy>(
 #[cfg(test)]
 mod tests {
     use crate::cluster::hierarchical::agnes;
-    use crate::cluster::hierarchical::linkage::{AverageLinkage, CompleteLinkage};
     use crate::cluster::hierarchical::regression_support::{
         DATASETS, cluster_and_cut, evaluate_clustering, load_dataset, optionally_report,
     };
+    use crate::cluster::hierarchical::{AverageLinkage, CompleteLinkage};
 
     use super::nn_chain;
 

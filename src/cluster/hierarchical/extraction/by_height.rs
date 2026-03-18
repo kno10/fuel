@@ -25,8 +25,8 @@ fn find_split<F: Float>(history: &[Merge<F>], threshold: F) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use crate::cluster::hierarchical::SingleLinkage;
     use crate::cluster::hierarchical::agnes;
-    use crate::cluster::hierarchical::linkage::SingleLinkage;
 
     use super::cut_dendrogram_by_height;
 

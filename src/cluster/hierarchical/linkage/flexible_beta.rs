@@ -9,15 +9,10 @@ pub struct FlexibleBetaLinkage<F: Float> {
 
 impl<F: Float> FlexibleBetaLinkage<F> {
     /// Create a new instance for given β.  α = (1-β)/2 as per definition.
-    ///
-    /// # Panics
-    ///
-    /// Will panic if the conversion `F::from(0.5)` fails, which should only occur
-    /// for strange `Float` implementations.
     pub fn new(beta: F) -> Self {
         Self {
             beta,
-            alpha: (F::one() - beta) * F::from(0.5).unwrap(),
+            alpha: (F::one() - beta) / (F::one() + F::one()),
         }
     }
 }

@@ -8,7 +8,10 @@ use std::time::Instant;
 
 use counting_distance::CountingEuclideanDistance;
 use data_loading::read_numeric_data;
-use hacs::{MatrixDataAccess, NOISE, VPTree, extract_xi_labels, optics};
+use fuel::TableWithDistance;
+use fuel::cluster::dbscan::NOISE;
+use fuel::cluster::optics::{extract_xi_labels, optics};
+use fuel::vptree::VPTree;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
@@ -65,7 +68,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let distance = CountingEuclideanDistance::new();
     let distance_count = distance.counter();
-    let data = MatrixDataAccess::with_distance(&rows, distance);
+    let data = TableWithDistance::with_distance(&rows, distance);
     let mut rng = StdRng::seed_from_u64(RNG_SEED);
     let sample_size = rows.len();
 
@@ -74,7 +77,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let distance_count_after_index = distance_count.load(Ordering::Relaxed);
     let result = optics(&tree, &data, max_eps, min_points);
     let labels = extract_xi_labels(&result, xi, min_points);
-    let distance_count_after_algorithm = distance_count.load(Ordering::Relaxed);
+    let dist_count = distance_count.load(Ordering::Relaxed);
     let elapsed = start.elapsed();
 
     let (cluster_sizes, noise_count) = summarize_cluster_sizes(&labels);
@@ -84,7 +87,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     println!("noise_count={noise_count}");
     println!("cluster_sizes={}", format_cluster_sizes(&cluster_sizes));
     println!("distance_count_after_index={distance_count_after_index}");
-    println!("distance_count_after_algorithm={distance_count_after_algorithm}");
+    println!("dist_count={dist_count}");
 
     Ok(())
 }

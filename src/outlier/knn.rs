@@ -1,13 +1,24 @@
-use std::cmp::Ordering;
+use num_traits::Float;
 
+use super::common::{OutlierScoreEntry, sort_outlier_scores};
 #[cfg(test)]
-use crate::EuclideanDistance;
-use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
+use crate::distance::EuclideanDistance;
+use crate::{DistanceData, KnnSearch};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct KnnOutlierScore {
+pub struct KnnOutlierScore<F: Float> {
     pub index: usize,
-    pub score: f64,
+    pub score: F,
+}
+
+impl<F: Float> OutlierScoreEntry<F> for KnnOutlierScore<F> {
+    fn index(&self) -> usize {
+        self.index
+    }
+
+    fn score(&self) -> F {
+        self.score
+    }
 }
 
 /// Compute KNN-based outlier scores for each point in the data set.
@@ -18,11 +29,16 @@ pub struct KnnOutlierScore {
 /// # Panics
 ///
 /// Panics if `k == 0`.
-pub fn knn_outlier_scores<T>(
-    tree: &VPTree,
-    data: &MatrixDataAccess<'_, T, impl DistanceFunction<T>>,
+pub fn knn_outlier_scores<S, D, F>(
+    tree: &S,
+    data: D,
     k: usize,
-) -> Vec<KnnOutlierScore> {
+) -> Vec<KnnOutlierScore<F>>
+where
+    F: Float,
+    D: DistanceData<F>,
+    S: KnnSearch<F, D>,
+{
     assert!(k > 0, "k must be greater than 0");
 
     let size = data.size();
@@ -32,27 +48,21 @@ pub fn knn_outlier_scores<T>(
 
     for idx in data.iter() {
         let score = if k_effective == 0 {
-            0.0
+            F::zero()
         } else {
-            let neighbors =
-                tree.search_knn(&data.with_query_index(idx), (k_effective + 1).min(size));
+            let neighbors = tree.search_knn_by_index(&data, idx, (k_effective + 1).min(size));
             let rank = k_effective - 1;
             neighbors
                 .into_iter()
-                .filter(|neighbor| neighbor.index() != idx)
+                .filter(|neighbor| neighbor.index != idx)
                 .nth(rank)
-                .map_or(0.0, |neighbor| neighbor.distance())
+                .map_or(F::zero(), |neighbor| neighbor.distance)
         };
 
         scores.push(KnnOutlierScore { index: idx, score });
     }
 
-    scores.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(Ordering::Equal)
-            .then_with(|| a.index.cmp(&b.index))
-    });
+    sort_outlier_scores(&mut scores);
 
     scores
 }
@@ -62,21 +72,43 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
+    use crate::TableWithDistance;
+    use crate::kd::{KdTree, MaxVarianceSplit};
+    use crate::vptree::VPTree;
+
     use super::*;
 
-    #[test]
-    fn knn_outlier_ranks_remote_point_highest() {
-        let points = vec![
+    fn sample_points() -> Vec<Vec<f64>> {
+        vec![
             vec![0.0, 0.0],
             vec![0.1, 0.0],
             vec![0.0, 0.1],
             vec![0.1, 0.1],
             vec![6.0, 6.0],
-        ];
+        ]
+    }
 
-        let data = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+    #[test]
+    fn knn_outlier_ranks_remote_point_highest_vp() {
+        let points = sample_points();
+
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(42);
-        let tree = VPTree::new(&data, 2, &mut rng);
+        let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
+
+        let scores = knn_outlier_scores(&tree, &data, 2);
+
+        assert_eq!(scores.len(), points.len());
+        assert_eq!(scores[0].index, 4);
+        assert!(scores[0].score > scores[1].score);
+    }
+
+    #[test]
+    fn knn_outlier_ranks_remote_point_highest_kd() {
+        let points = sample_points();
+
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let tree = KdTree::new(&data, MaxVarianceSplit, EuclideanDistance);
 
         let scores = knn_outlier_scores(&tree, &data, 2);
 

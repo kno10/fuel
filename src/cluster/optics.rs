@@ -1,33 +1,35 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-#[cfg(test)]
-use crate::EuclideanDistance;
-use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
+use num_traits::Float;
 
-use super::NOISE;
+#[cfg(test)]
+use crate::distance::EuclideanDistance;
+use crate::{DistanceData, vptree::VPTree};
+
+use crate::cluster::dbscan::NOISE;
 
 #[derive(Debug, Clone, Copy)]
-struct ReachCandidate {
-    reachability: f64,
+struct ReachCandidate<F: Float> {
+    reachability: F,
     index: usize,
 }
 
-impl PartialEq for ReachCandidate {
+impl<F: Float> PartialEq for ReachCandidate<F> {
     fn eq(&self, other: &Self) -> bool {
         self.index == other.index && self.reachability == other.reachability
     }
 }
 
-impl Eq for ReachCandidate {}
+impl<F: Float> Eq for ReachCandidate<F> {}
 
-impl PartialOrd for ReachCandidate {
+impl<F: Float> PartialOrd for ReachCandidate<F> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for ReachCandidate {
+impl<F: Float> Ord for ReachCandidate<F> {
     fn cmp(&self, other: &Self) -> Ordering {
         other
             .reachability
@@ -38,10 +40,10 @@ impl Ord for ReachCandidate {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct OpticsResult {
+pub struct OpticsResult<F: Float> {
     pub ordering: Vec<usize>,
-    pub reachability: Vec<f64>,
-    pub core_distance: Vec<Option<f64>>,
+    pub reachability: Vec<F>,
+    pub core_distance: Vec<Option<F>>,
     pub predecessor: Vec<Option<usize>>,
     pub labels: Vec<isize>,
 }
@@ -55,18 +57,18 @@ pub struct OpticsResult {
 /// # Panics
 ///
 /// Panics if `eps < 0.0` or if `min_points == 0`.
-pub fn optics<T>(
-    tree: &VPTree,
-    data: &MatrixDataAccess<'_, T, impl DistanceFunction<T>>,
-    eps: f64,
+pub fn optics<D: DistanceData<F>, F: Float>(
+    tree: &VPTree<F>,
+    data: &D,
+    eps: F,
     min_points: usize,
-) -> OpticsResult {
-    assert!(eps >= 0.0, "eps must be non-negative");
+) -> OpticsResult<F> {
+    assert!(eps >= F::zero(), "eps must be non-negative");
     assert!(min_points > 0, "min_points must be greater than 0");
 
     let size = data.size();
     let mut processed = vec![false; size];
-    let mut reachability = vec![f64::INFINITY; size];
+    let mut reachability = vec![F::infinity(); size];
     let mut core_distance = vec![None; size];
     let mut predecessor = vec![None; size];
     let mut ordering = Vec::with_capacity(size);
@@ -112,7 +114,7 @@ pub fn optics<T>(
                     compute_core_distance(&mut current_neighbors, min_points);
 
                 if let Some(current_core_distance) = core_distance[current_idx] {
-                    update(
+                    update::<F>(
                         &current_neighbors,
                         current_idx,
                         current_core_distance,
@@ -149,8 +151,12 @@ pub fn optics<T>(
 ///
 /// Panics if `xi <= 0.0`, `xi >= 1.0`, or if `min_points == 0`.
 #[must_use]
-pub fn extract_xi_labels(result: &OpticsResult, xi: f64, min_points: usize) -> Vec<isize> {
-    assert!(xi > 0.0 && xi < 1.0, "xi must be in (0, 1)");
+pub fn extract_xi_labels<F: Float>(
+    result: &OpticsResult<F>,
+    xi: F,
+    min_points: usize,
+) -> Vec<isize> {
+    assert!(xi > F::zero() && xi < F::one(), "xi must be in (0, 1)");
     assert!(min_points > 0, "min_points must be greater than 0");
 
     let ordering = &result.ordering;
@@ -159,7 +165,7 @@ pub fn extract_xi_labels(result: &OpticsResult, xi: f64, min_points: usize) -> V
         return Vec::new();
     }
 
-    let ixi = 1.0 - xi;
+    let ixi = F::one() - xi;
 
     let mut reachability_by_order = Vec::with_capacity(size);
     for &point_idx in ordering {
@@ -171,8 +177,8 @@ pub fn extract_xi_labels(result: &OpticsResult, xi: f64, min_points: usize) -> V
         point_to_pos[point_idx] = pos;
     }
 
-    let mut mib: f64 = 0.0;
-    let mut sdaset: Vec<SteepDownArea> = Vec::new();
+    let mut mib: F = F::zero();
+    let mut sdaset: Vec<SteepDownArea<F>> = Vec::new();
     let mut cluster_intervals: Vec<(usize, usize)> = Vec::new();
 
     let mut scan = 0usize;
@@ -183,7 +189,7 @@ pub fn extract_xi_labels(result: &OpticsResult, xi: f64, min_points: usize) -> V
             update_filter_sdaset(mib, &mut sdaset, ixi);
 
             let startval = reachability_by_order[scan];
-            mib = 0.0;
+            mib = F::zero();
             let startsteep = scan;
             let mut endsteep = scan;
 
@@ -191,7 +197,7 @@ pub fn extract_xi_labels(result: &OpticsResult, xi: f64, min_points: usize) -> V
             while scan < size {
                 if steep_down(&reachability_by_order, scan, ixi) {
                     endsteep = scan;
-                } else if !steep_down(&reachability_by_order, scan, 1.0)
+                } else if !steep_down(&reachability_by_order, scan, F::one())
                     || scan - endsteep > min_points
                 {
                     break;
@@ -202,7 +208,7 @@ pub fn extract_xi_labels(result: &OpticsResult, xi: f64, min_points: usize) -> V
             sdaset.push(SteepDownArea {
                 start: startsteep,
                 maximum: startval,
-                mib: 0.0,
+                mib: F::zero(),
             });
             continue;
         }
@@ -224,7 +230,7 @@ pub fn extract_xi_labels(result: &OpticsResult, xi: f64, min_points: usize) -> V
                     endsteep = scan;
                     mib = reachability_by_order[scan];
                     esuccr = next_reachability(&reachability_by_order, scan);
-                } else if !steep_up(&reachability_by_order, scan, 1.0)
+                } else if !steep_up(&reachability_by_order, scan, F::one())
                     || scan - endsteep > min_points
                 {
                     break;
@@ -251,7 +257,7 @@ pub fn extract_xi_labels(result: &OpticsResult, xi: f64, min_points: usize) -> V
                 let e_u = if cend + 1 < size {
                     reachability_by_order[cend + 1]
                 } else {
-                    f64::INFINITY
+                    F::infinity()
                 };
 
                 if sda.mib > sda.maximum.min(e_u) * ixi {
@@ -312,39 +318,38 @@ pub fn extract_xi_labels(result: &OpticsResult, xi: f64, min_points: usize) -> V
     labels
 }
 
-fn region_query<T>(
-    tree: &VPTree,
-    data: &MatrixDataAccess<'_, T, impl DistanceFunction<T>>,
+fn region_query<D: DistanceData<F>, F: Float>(
+    tree: &VPTree<F>,
+    data: &D,
     point_idx: usize,
-    eps: f64,
-) -> Vec<(usize, f64)> {
+    eps: F,
+) -> Vec<(usize, F)> {
     let mut neighbors = Vec::new();
-    tree.search_range_unsorted(&data.with_query_index(point_idx), eps, |pair| {
-        neighbors.push((pair.index(), pair.distance()));
+    tree.search_range_unsorted(&data.search_by_index(point_idx), eps, |pair| {
+        neighbors.push((pair.index, pair.distance));
     });
     neighbors
 }
 
-fn compute_core_distance(neighbors: &mut [(usize, f64)], min_points: usize) -> Option<f64> {
+fn compute_core_distance<F: Float>(neighbors: &mut [(usize, F)], min_points: usize) -> Option<F> {
     if neighbors.len() < min_points {
-        None
-    } else {
-        let rank = min_points - 1;
-        let (_, candidate, _) = neighbors.select_nth_unstable_by(rank, |a, b| {
-            a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal)
-        });
-        Some(candidate.1)
+        return None;
     }
+    let rank = min_points - 1;
+    let (_, candidate, _) = neighbors.select_nth_unstable_by(rank, |a, b| {
+        a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal)
+    });
+    Some(candidate.1)
 }
 
-fn update(
-    neighbors: &[(usize, f64)],
+fn update<F: Float>(
+    neighbors: &[(usize, F)],
     point_idx: usize,
-    core_distance: f64,
+    core_distance: F,
     processed: &[bool],
-    reachability: &mut [f64],
+    reachability: &mut [F],
     predecessor: &mut [Option<usize>],
-    seeds: &mut BinaryHeap<ReachCandidate>,
+    seeds: &mut BinaryHeap<ReachCandidate<F>>,
 ) {
     for (neighbor_idx, distance) in neighbors {
         if *neighbor_idx == point_idx || processed[*neighbor_idx] {
@@ -363,18 +368,18 @@ fn update(
     }
 }
 
-fn extract_dbscan_labels(
+fn extract_dbscan_labels<F: Float>(
     ordering: &[usize],
-    reachability: &[f64],
-    core_distance: &[Option<f64>],
-    eps: f64,
+    reachability: &[F],
+    core_distance: &[Option<F>],
+    eps: F,
 ) -> Vec<isize> {
     let mut labels = vec![NOISE; reachability.len()];
     let mut cluster_id: isize = -1;
 
     for &point_idx in ordering {
         let reach = reachability[point_idx];
-        let core = core_distance[point_idx].unwrap_or(f64::INFINITY);
+        let core = core_distance[point_idx].unwrap_or(F::infinity());
 
         if reach > eps {
             if core <= eps {
@@ -394,13 +399,13 @@ fn extract_dbscan_labels(
 }
 
 #[derive(Debug, Clone, Copy)]
-struct SteepDownArea {
+struct SteepDownArea<F: Float> {
     start: usize,
-    maximum: f64,
-    mib: f64,
+    maximum: F,
+    mib: F,
 }
 
-fn update_filter_sdaset(mib: f64, sdaset: &mut Vec<SteepDownArea>, ixi: f64) {
+fn update_filter_sdaset<F: Float>(mib: F, sdaset: &mut Vec<SteepDownArea<F>>, ixi: F) {
     sdaset.retain_mut(|sda| {
         if sda.maximum * ixi <= mib {
             false
@@ -413,14 +418,14 @@ fn update_filter_sdaset(mib: f64, sdaset: &mut Vec<SteepDownArea>, ixi: f64) {
     });
 }
 
-fn steep_up(reachability_by_order: &[f64], idx: usize, ixi: f64) -> bool {
+fn steep_up<F: Float>(reachability_by_order: &[F], idx: usize, ixi: F) -> bool {
     let current = reachability_by_order[idx];
     current.is_finite()
         && (idx + 1 >= reachability_by_order.len()
             || current <= reachability_by_order[idx + 1] * ixi)
 }
 
-fn steep_down(reachability_by_order: &[f64], idx: usize, ixi: f64) -> bool {
+fn steep_down<F: Float>(reachability_by_order: &[F], idx: usize, ixi: F) -> bool {
     if idx + 1 >= reachability_by_order.len() {
         return false;
     }
@@ -428,18 +433,18 @@ fn steep_down(reachability_by_order: &[f64], idx: usize, ixi: f64) -> bool {
     next.is_finite() && next <= reachability_by_order[idx] * ixi
 }
 
-fn next_reachability(reachability_by_order: &[f64], idx: usize) -> f64 {
+fn next_reachability<F: Float>(reachability_by_order: &[F], idx: usize) -> F {
     if idx + 1 < reachability_by_order.len() {
         reachability_by_order[idx + 1]
     } else {
-        f64::INFINITY
+        F::infinity()
     }
 }
 
-fn predecessor_filter(
-    result: &OpticsResult,
+fn predecessor_filter<F: Float>(
+    result: &OpticsResult<F>,
     ordering: &[usize],
-    reachability_by_order: &[f64],
+    reachability_by_order: &[F],
     point_to_pos: &[usize],
     cstart: usize,
     mut cend: usize,
@@ -476,6 +481,8 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
+    use crate::TableWithDistance;
+
     use super::*;
 
     #[test]
@@ -490,7 +497,7 @@ mod tests {
             vec![5.0, 5.0],
         ];
 
-        let data = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(7);
         let tree = VPTree::new(&data, 2, &mut rng);
 
@@ -524,7 +531,7 @@ mod tests {
             vec![0.6, 0.0],
         ];
 
-        let data = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(99);
         let tree = VPTree::new(&data, 2, &mut rng);
 
@@ -588,7 +595,7 @@ mod tests {
     fn optics_matches_sklearn_processing_order_reference() {
         let points = vec![vec![0.0], vec![10.0], vec![-10.0], vec![25.0]];
 
-        let data = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(1234);
         let tree = VPTree::new(&data, 1, &mut rng);
 
@@ -754,7 +761,7 @@ mod tests {
             3.0321982337972537,
         ];
 
-        let data = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(0);
         let tree = VPTree::new(&data, 4, &mut rng);
 

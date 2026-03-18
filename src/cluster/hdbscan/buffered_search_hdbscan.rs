@@ -1,0 +1,240 @@
+use std::collections::BinaryHeap;
+
+use num_traits::Float;
+
+use crate::api::{DistanceData, DistanceSearch};
+use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
+use crate::DistPair;
+use crate::vptree::{PrioritySearcher, VPTree};
+
+use super::hdbscan_common::{HdbscanHierarchy, compute_core_distances_tree};
+
+/// Buffered-search HDBSCAN MST with bounded per-point buffers.
+///
+/// Each point maintains a buffer of at most `slack` candidate neighbors
+/// (using mutual reachability distance).  When a buffer runs dry it is
+/// refilled by restarting the priority search from the previous distance
+/// threshold.  Unlike `lazy_buffered_search_hdbscan`, this variant caps
+/// memory per point and relies on `SameClusterFilter` with a witness cache
+/// for skip_node pruning.
+#[must_use]
+pub fn buffered_search_hdbscan<D: DistanceData<F>, F: Float>(
+    tree: &VPTree<F>,
+    data: &D,
+    min_points: usize,
+    slack: usize,
+) -> HdbscanHierarchy<F> {
+    let n = data.size();
+    assert!(n > 0, "number of points must be positive");
+    assert!(min_points > 0, "min_points must be greater than 0");
+    assert!(slack > 0, "slack must be positive");
+
+    let core_distances = compute_core_distances_tree(tree, data, min_points);
+    if n == 1 {
+        return HdbscanHierarchy::new(Vec::new(), core_distances);
+    }
+
+    let mut builder = ClusterBuilder::new(n);
+    let mut primary = BinaryHeap::<DistPair<F>>::new();
+    let mut buffers: Vec<Vec<DistPair<F>>> = (0..n).map(|_| Vec::with_capacity(slack)).collect();
+    let mut node_cluster = vec![u32::MAX; n];
+    let mut searcher = tree.priority_searcher();
+
+    // initial fill
+    for (a, buf) in buffers.iter_mut().enumerate() {
+        if builder.cluster_size_of_point(a) > 1 {
+            continue;
+        }
+        refill_buffer(
+            &data.search_by_index(a),
+            &mut builder,
+            a,
+            slack,
+            buf,
+            &mut searcher,
+            &core_distances,
+            &mut node_cluster,
+        );
+        if let Some(best) = buf.last() {
+            primary.push(DistPair::new(best.distance, a));
+        }
+    }
+
+    while builder.merge_count() < n - 1 {
+        let Some(top) = primary.pop() else {
+            break;
+        };
+        let a = top.index;
+        let buf = &mut buffers[a];
+
+        purge_same_cluster(buf, &mut builder, a);
+
+        if buf.is_empty() {
+            refill_buffer(
+                &data.search_by_index(a),
+                &mut builder,
+                a,
+                slack,
+                buf,
+                &mut searcher,
+                &core_distances,
+                &mut node_cluster,
+            );
+            if buf.is_empty() {
+                continue;
+            }
+        }
+
+        let best = *buf.last().unwrap();
+        if best.distance > top.distance {
+            primary.push(DistPair::new(best.distance, a));
+            continue;
+        }
+        buf.pop();
+
+        let best_dist = best.distance;
+        let b = best.index;
+        if builder.merge_points(a, b, best_dist).is_some()
+            && builder.merge_count() == n - 1
+        {
+            break;
+        }
+
+        if buf.is_empty() {
+            refill_buffer(
+                &data.search_by_index(a),
+                &mut builder,
+                a,
+                slack,
+                buf,
+                &mut searcher,
+                &core_distances,
+                &mut node_cluster,
+            );
+        }
+
+        if let Some(next) = buf.last() {
+            primary.push(DistPair::new(next.distance, a));
+        }
+    }
+
+    HdbscanHierarchy::new(builder.into_history(), core_distances)
+}
+
+/// Fill `buffer` with up to `slack` nearest not-same-cluster neighbors
+/// using mutual reachability distance.
+///
+/// The buffer is stored in descending distance order so that `last()` gives
+/// the best (closest) and `first()` gives the worst (farthest).
+#[allow(clippy::too_many_arguments)]
+fn refill_buffer<D: DistanceSearch<F>, F: Float>(
+    data: &D,
+    builder: &mut ClusterBuilder<F>,
+    query_index: usize,
+    slack: usize,
+    buffer: &mut Vec<DistPair<F>>,
+    searcher: &mut PrioritySearcher<F>,
+    core_distances: &[F],
+    node_cluster: &mut [u32],
+) {
+    buffer.clear();
+    searcher.reset();
+
+    let cd = core_distances[query_index];
+    let query_component = builder.find(query_index);
+    let mut threshold = F::infinity();
+
+    while searcher.all_lower_bound() < threshold {
+        let Some(cand) = searcher.next_with_filter(
+            data,
+            &mut SameClusterFilter {
+                builder,
+                query_component,
+                node_cluster,
+            },
+        ) else {
+            break;
+        };
+        let b = cand.index;
+        let rd = cd.max(core_distances[b]).max(cand.distance); // mutual reachability
+
+        if buffer.len() < slack {
+            buffer.push(DistPair::new(rd, b));
+            if buffer.len() == slack {
+                threshold = worst_distance(buffer);
+                searcher.decrease_cutoff(threshold);
+            }
+        } else if rd < threshold {
+            replace_worst(buffer, DistPair::new(rd, b));
+            threshold = worst_distance(buffer);
+            searcher.decrease_cutoff(threshold);
+        }
+    }
+
+    // Sort descending so best (smallest distance) is at the end for pop().
+    buffer.sort_by(|a, b| {
+        b.distance
+            .partial_cmp(&a.distance)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+}
+
+fn worst_distance<F: Float>(buffer: &[DistPair<F>]) -> F {
+    buffer
+        .iter()
+        .map(|n| n.distance)
+        .fold(F::neg_infinity(), |a, b| if a > b { a } else { b })
+}
+
+fn replace_worst<F: Float>(buffer: &mut [DistPair<F>], item: DistPair<F>) {
+    if let Some(idx) = buffer
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(i, _)| i)
+    {
+        buffer[idx] = item;
+    }
+}
+
+fn purge_same_cluster<F: Float>(
+    buffer: &mut Vec<DistPair<F>>,
+    builder: &mut ClusterBuilder<F>,
+    a: usize,
+) {
+    let ca = builder.find(a);
+    buffer.retain(|n| builder.find(n.index) != ca);
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::TableWithDistance;
+    use crate::distance::EuclideanDistance;
+    use crate::vptree::VPTree;
+    use rand::{SeedableRng, rngs::StdRng};
+
+    use super::{super::hdbscan_prim, buffered_search_hdbscan};
+
+    #[test]
+    fn buffered_search_matches_linear_mst() {
+        let points = vec![
+            vec![0.0, 0.0],
+            vec![0.1, 0.0],
+            vec![1.0, 1.2],
+            vec![3.0, 3.0],
+            vec![3.2, 3.1],
+            vec![10.0, 10.0],
+        ];
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let mut rng = StdRng::seed_from_u64(11);
+        let tree = VPTree::<f64>::new(&data, 3, &mut rng);
+
+        let expected = hdbscan_prim(&data, 2);
+        let got = buffered_search_hdbscan(&tree, &data, 2, 1);
+        assert_eq!(got, expected);
+    }
+}

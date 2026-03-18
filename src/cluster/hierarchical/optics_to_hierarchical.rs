@@ -1,7 +1,9 @@
+use num_traits::Float;
+
 use crate::cluster::optics::OpticsResult;
 
 use super::common::MergeHistory;
-use super::hdbscan_common::{WeightedEdge, edges_to_merge_history};
+use crate::cluster::hdbscan::hdbscan_common::{WeightedEdge, edges_to_merge_history};
 
 /// Convert an OPTICS cluster order into a hierarchical merge history.
 ///
@@ -9,7 +11,7 @@ use super::hdbscan_common::{WeightedEdge, edges_to_merge_history};
 /// consecutive points in OPTICS order with edge weight equal to reachability
 /// and build a dendrogram by sorting these edges by increasing weight.
 #[must_use]
-pub fn optics_to_hierarchical(result: &OpticsResult) -> MergeHistory<f64> {
+pub fn optics_to_hierarchical<F: Float>(result: &OpticsResult<F>) -> MergeHistory<F> {
     let n = result.ordering.len();
     if n <= 1 {
         return Vec::new();

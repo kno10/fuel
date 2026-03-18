@@ -2,13 +2,13 @@ use std::{cmp::Ordering, cmp::Reverse, collections::BinaryHeap};
 
 use num_traits::Float;
 
-use crate::DataAccess;
+use crate::{DistanceSearch, DistPair};
 
-use super::{DistPair, VPTree};
+use super::VPTree;
 
 impl<F: Float> VPTree<F> {
     /// Find k nearest neighbors to the query point
-    pub fn search_knn<D: DataAccess>(&self, data: &D, k: usize) -> Vec<DistPair<F>> {
+    pub fn search_knn<D: DistanceSearch<F>>(&self, data: &D, k: usize) -> Vec<DistPair<F>> {
         if k == 0 {
             return Vec::new();
         }
@@ -21,12 +21,13 @@ impl<F: Float> VPTree<F> {
             a.distance
                 .partial_cmp(&b.distance)
                 .unwrap_or(Ordering::Equal)
+                .then_with(|| a.index.cmp(&b.index))
         });
         result
     }
 
     /// Recursively search for k nearest neighbors
-    fn search_knn_recursive<D: DataAccess>(
+    fn search_knn_recursive<D: DistanceSearch<F>>(
         &self,
         data: &D,
         k: usize,
@@ -38,8 +39,7 @@ impl<F: Float> VPTree<F> {
         let vp = self.points[node_idx];
 
         // Distance to vantage point
-        let d = F::from(data.query_distance(vp as usize))
-            .expect("distance cannot be represented by target float type");
+        let d = data.query_distance(vp as usize);
 
         // Add vantage point to candidates
         if heap.len() < k {

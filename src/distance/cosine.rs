@@ -192,7 +192,10 @@ impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFuncti
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ArccosineDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<f64>> DistanceMetric<[N]> for ArccosineDistance {}
+impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceMetric<[N], F>
+    for ArccosineDistance
+{
+}
 
 impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
     for ArccosineDistance

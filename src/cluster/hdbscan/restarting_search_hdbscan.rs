@@ -1,0 +1,178 @@
+use std::collections::BinaryHeap;
+
+use num_traits::Float;
+
+use crate::DistanceSearch;
+use crate::api::DistanceData;
+use crate::cluster::hdbscan::hdbscan_common::{HdbscanHierarchy, compute_core_distances_tree};
+use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
+use crate::DistPair;
+use crate::vptree::{PrioritySearcher, VPTree};
+
+/// Restarting-search HDBSCAN-RS (RSSL-style acceleration with VP-tree search).
+#[must_use]
+pub fn restarting_search_hdbscan<'a, D: DistanceData<F>, F: Float>(
+    tree: &'a VPTree<F>,
+    data: &'a D,
+    min_points: usize,
+) -> HdbscanHierarchy<F> {
+    let n = data.size();
+    assert!(n > 0, "number of points must be positive");
+    assert!(min_points > 0, "min_points must be greater than 0");
+
+    let core_distances = compute_core_distances_tree(tree, data, min_points);
+
+    let mut builder = ClusterBuilder::new(n);
+    let mut primary = BinaryHeap::<DistPair<F>>::new();
+    let mut buffers: Vec<DistPair<F>> = vec![DistPair::undefined(); n];
+    let mut node_cluster = vec![u32::MAX; n];
+
+    // create one searcher and reuse it for all refill operations
+    let mut searcher = tree.priority_searcher();
+
+    // initial fill for each point
+    for (a, buf) in buffers.iter_mut().enumerate().take(n) {
+        if builder.cluster_size_of_point(a) > 1 {
+            continue; // duplicate, merged already
+        }
+        refill_neighbors(
+            &data.search_by_index(a),
+            &mut builder,
+            a,
+            buf,
+            &mut searcher,
+            &core_distances,
+            &mut node_cluster,
+        );
+        if !buf.is_sentinel() {
+            primary.push(DistPair::new(buf.distance, a));
+        }
+    }
+
+    while builder.merge_count() < n - 1 {
+        let Some(top) = primary.pop() else {
+            break;
+        };
+        let a = top.index;
+        let buf = &mut buffers[a];
+
+        if buf.is_sentinel() {
+            continue;
+        }
+        let best = std::mem::replace(buf, DistPair::undefined());
+
+        let best_dist = best.distance;
+        let b = best.index;
+        if builder.merge_points(a, b, best_dist).is_some()
+            && builder.merge_count() == n - 1
+        {
+            break;
+        }
+
+        refill_neighbors(
+            &data.search_by_index(a),
+            &mut builder,
+            a,
+            buf,
+            &mut searcher,
+            &core_distances,
+            &mut node_cluster,
+        );
+
+        if !buf.is_sentinel() {
+            primary.push(DistPair::new(buf.distance, a));
+        }
+    }
+
+    HdbscanHierarchy::new(builder.into_history(), core_distances)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
+    data: &D,
+    builder: &mut ClusterBuilder<F>,
+    query_index: usize,
+    buffer: &mut DistPair<F>,
+    searcher: &mut PrioritySearcher<F>,
+    core_distances: &[F],
+    node_cluster: &mut [u32],
+) {
+    searcher.reset();
+
+    let cd = core_distances[query_index];
+    let mut threshold = F::infinity();
+    let query_component = builder.find(query_index);
+    while searcher.all_lower_bound() < threshold {
+        let Some(cand) = searcher.next_with_filter(
+            data,
+            &mut SameClusterFilter {
+                builder,
+                query_component,
+                node_cluster,
+            },
+        ) else {
+            break;
+        };
+        let b = cand.index;
+        let d = cand.distance;
+        let rd = cd.max(core_distances[b]).max(d); // mutual reachability
+        if rd < threshold {
+            *buffer = DistPair::new(rd, b);
+            threshold = rd;
+            searcher.decrease_cutoff(rd);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::TableWithDistance;
+    use crate::cluster::hdbscan::hdbscan_prim;
+    use crate::distance::EuclideanDistance;
+    use crate::vptree::VPTree;
+    use rand::{SeedableRng, rngs::StdRng};
+
+    use super::restarting_search_hdbscan;
+    use crate::api::Data;
+    use crate::cluster::hdbscan::buffered_search_hdbscan;
+    use crate::cluster::hdbscan::extraction::extract_clusters_with_noise;
+    use rand::Rng;
+
+    #[test]
+    fn restarting_search_hdbscan_matches_linear_mst() {
+        let points = vec![
+            vec![0.0, 0.0],
+            vec![0.2, 0.1],
+            vec![1.0, 1.2],
+            vec![3.0, 3.0],
+            vec![3.2, 3.1],
+            vec![10.0, 10.0],
+        ];
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let mut rng = StdRng::seed_from_u64(11);
+        let tree = VPTree::<f64>::new(&data, 3, &mut rng);
+
+        let expected = hdbscan_prim(&data, 2);
+        let got = restarting_search_hdbscan(&tree, &data, 2);
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn restarting_equals_buffered_random() {
+        // RNG-based regression: ensure both variants produce the same *clustering*.
+        let mut rng = StdRng::seed_from_u64(42);
+        let points: Vec<Vec<f64>> = (0..30)
+            .map(|_| vec![rng.r#gen::<f64>(), rng.r#gen::<f64>()])
+            .collect();
+
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let tree = VPTree::<f64>::new(&data, 3, &mut rng);
+
+        let hist_r = restarting_search_hdbscan(&tree, &data, 2);
+        let hist_b = buffered_search_hdbscan(&tree, &data, 2, 1);
+
+        let labels_r = extract_clusters_with_noise(&hist_r.merges, data.size(), 2);
+        let labels_b = extract_clusters_with_noise(&hist_b.merges, data.size(), 2);
+        assert_eq!(labels_r, labels_b);
+    }
+}

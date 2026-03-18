@@ -2,6 +2,7 @@ use num_traits::{AsPrimitive, Float, ToPrimitive};
 use std::any::TypeId;
 
 use super::DistanceFunction;
+use crate::distance::partial::PartialDistance;
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{
@@ -10,7 +11,8 @@ use std::arch::x86_64::{
 };
 
 #[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "avx,fma")]
+#[target_feature(enable = "avx2")]
+#[target_feature(enable = "fma")]
 unsafe fn squared_euclidean_distance_f32_avx_fma(a: &[f32], b: &[f32]) -> f32 {
     let d = a.len().min(b.len());
     let sd = d & !7;
@@ -37,7 +39,8 @@ unsafe fn squared_euclidean_distance_f32_avx_fma(a: &[f32], b: &[f32]) -> f32 {
 }
 
 #[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "avx,fma")]
+#[target_feature(enable = "avx2")]
+#[target_feature(enable = "fma")]
 unsafe fn squared_euclidean_distance_f64_avx_fma(a: &[f64], b: &[f64]) -> f64 {
     let d = a.len().min(b.len());
     let sd = d & !3;
@@ -139,5 +142,30 @@ impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFuncti
 {
     fn distance(&self, a: &[N], b: &[N]) -> F {
         squared_euclidean_distance(a, b)
+    }
+}
+
+impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<Vec<N>, F>
+    for SquaredEuclideanDistance
+{
+    fn distance(&self, a: &Vec<N>, b: &Vec<N>) -> F {
+        squared_euclidean_distance(a, b)
+    }
+}
+
+impl<F: Float + Copy> PartialDistance<F> for SquaredEuclideanDistance {
+    fn distance(&self, a: &[F], b: &[F]) -> F {
+        a.iter().zip(b).fold(F::zero(), |acc, (&x, &y)| {
+            let delta = x - y;
+            acc + delta * delta
+        })
+    }
+
+    fn axis_distance(&self, delta: F) -> F {
+        delta * delta
+    }
+
+    fn combine_axis_distances(&self, a: F, b: F) -> F {
+        a + b
     }
 }

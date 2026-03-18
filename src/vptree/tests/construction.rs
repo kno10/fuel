@@ -1,8 +1,13 @@
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-use super::super::VPTree;
-use crate::{DataAccess, EuclideanDistance, MatrixDataAccess};
+use super::shared::get_all_neighbors;
+use crate::DistanceData;
+use crate::TableWithDistance;
+use crate::api::Data;
+use crate::distance::EuclideanDistance;
+use crate::DistPair;
+use crate::vptree::VPTree;
 
 #[test]
 fn test_vptree_construction() {
@@ -13,7 +18,7 @@ fn test_vptree_construction() {
         vec![1.0, 1.0],
         vec![2.0, 2.0],
     ];
-    let dataset = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
     let rng = &mut StdRng::seed_from_u64(42);
 
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
@@ -38,13 +43,14 @@ fn test_vp_tree_with_sampling() {
         vec![4.0, 4.0],
         vec![5.0, 5.0],
     ];
-    let dataset = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
     let rng = &mut StdRng::seed_from_u64(42);
 
     let tree: VPTree<f64> = VPTree::new(&dataset, 3, rng);
 
-    assert_eq!(tree.points.len(), dataset.size());
-    assert_eq!(tree.bounds.len(), dataset.size());
+    let dataset_size = dataset.size();
+    assert_eq!(tree.points.len(), dataset_size);
+    assert_eq!(tree.bounds.len(), dataset_size);
 
     let mut vp_indices = tree.points;
     vp_indices.sort_unstable();
@@ -61,37 +67,42 @@ fn test_sample_size_one_supports_all_searchers() {
         vec![2.0, 2.0],
         vec![3.0, 1.0],
     ];
-    let dataset = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
     let rng = &mut StdRng::seed_from_u64(1234);
 
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
 
     let query_idx = 0;
-    let knn = tree.search_knn(&dataset.with_query_index(query_idx), 3);
+    let knn = tree.search_knn(&dataset.search_by_index(query_idx), 3);
     assert_eq!(knn.len(), 3);
 
-    let radius = knn.last().expect("kNN must be non-empty").distance();
+    let radius = knn.last().expect("kNN must be non-empty").distance;
     let mut range = Vec::new();
-    tree.search_range(&dataset.with_query_index(query_idx), radius, |pair| {
-        range.push(pair);
-    });
+    tree.search_range(
+        &dataset.search_by_index(query_idx),
+        radius,
+        |pair: DistPair<f64>| {
+            range.push(pair);
+        },
+    );
     assert!(range.len() >= knn.len());
 
-    let mut priority = tree.priority_searcher(dataset.with_query_index(query_idx));
-    priority.set_threshold(radius);
-    let priority_result = priority.get_all_neighbors();
+    let mut priority = tree.priority_searcher();
+    priority.decrease_cutoff(radius);
+    let priority_result = get_all_neighbors(&mut priority, &dataset.search_by_index(query_idx));
     assert!(priority_result.len() >= knn.len());
 
     for p in &knn {
-        assert!(range.iter().any(|r| r.index() == p.index()));
-        assert!(priority_result.iter().any(|r| r.index() == p.index()));
+        assert!(range.iter().any(|r| r.index == p.index));
+        assert!(priority_result.iter().any(|r| r.index == p.index));
     }
 }
 
 #[test]
 fn test_matrix_data_access_supports_f32_points() {
     let points = vec![vec![0.0_f32, 0.0_f32], vec![3.0_f32, 4.0_f32]];
-    let dataset = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
 
-    assert!((dataset.distance(0, 1) - 5.0).abs() < 1e-6);
+    let dist = DistanceData::<f32>::distance(&dataset, 0, 1);
+    assert!((dist - 5.0).abs() < 1e-6);
 }

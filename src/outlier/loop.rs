@@ -1,13 +1,24 @@
-use std::cmp::Ordering;
+use num_traits::{Float, FromPrimitive, ToPrimitive};
 
+use super::common::{OutlierScoreEntry, sort_outlier_scores};
 #[cfg(test)]
-use crate::EuclideanDistance;
-use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
+use crate::distance::EuclideanDistance;
+use crate::{DistanceData, KnnSearch};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LoopOutlierScore {
+pub struct LoopOutlierScore<F: Float> {
     pub index: usize,
-    pub score: f64,
+    pub score: F,
+}
+
+impl<F: Float> OutlierScoreEntry<F> for LoopOutlierScore<F> {
+    fn index(&self) -> usize {
+        self.index
+    }
+
+    fn score(&self) -> F {
+        self.score
+    }
 }
 
 /// Compute Local Outlier Probabilities (LoOP) scores.
@@ -18,12 +29,17 @@ pub struct LoopOutlierScore {
 /// # Panics
 ///
 /// Panics if `k == 0`.
-pub fn loop_outlier_scores<T>(
-    tree: &VPTree,
-    data: &MatrixDataAccess<'_, T, impl DistanceFunction<T>>,
+pub fn loop_outlier_scores<S, D, F>(
+    tree: &S,
+    data: &D,
     k: usize,
     n_lambda: f64,
-) -> Vec<LoopOutlierScore> {
+) -> Vec<LoopOutlierScore<F>>
+where
+    F: Float + FromPrimitive + ToPrimitive + std::iter::Sum,
+    D: DistanceData<F>,
+    S: KnnSearch<F, D>,
+{
     assert!(k > 0, "k must be greater than 0");
 
     let size = data.size();
@@ -32,36 +48,36 @@ pub fn loop_outlier_scores<T>(
     if k_effective == 0 {
         return vec![LoopOutlierScore {
             index: 0,
-            score: 0.0,
+            score: F::zero(),
         }];
     }
 
-    let mut neighborhoods: Vec<Vec<(usize, f64)>> = vec![Vec::new(); size];
+    let mut neighborhoods: Vec<Vec<(usize, F)>> = vec![Vec::new(); size];
 
     for idx in data.iter() {
-        let neighbors: Vec<(usize, f64)> = tree
-            .search_knn(&data.with_query_index(idx), (k_effective + 1).min(size))
+        let neighbors: Vec<(usize, F)> = tree
+            .search_knn_by_index(&data, idx, (k_effective + 1).min(size))
             .into_iter()
-            .filter(|neighbor| neighbor.index() != idx)
+            .filter(|neighbor| neighbor.index != idx)
             .take(k_effective)
-            .map(|neighbor| (neighbor.index(), neighbor.distance()))
+            .map(|neighbor| (neighbor.index, neighbor.distance))
             .collect();
 
         neighborhoods[idx] = neighbors;
     }
 
-    let pdists: Vec<f64> = neighborhoods
+    let pdists: Vec<F> = neighborhoods
         .iter()
         .map(|neighbors| {
             if neighbors.is_empty() {
-                0.0
+                F::zero()
             } else {
                 (neighbors
                     .iter()
-                    .map(|(_, distance)| distance * distance)
-                    .sum::<f64>()
-                    / neighbors.len() as f64)
-                    .sqrt()
+                    .map(|(_, distance)| *distance * *distance)
+                    .sum::<F>()
+                    / F::from_usize(neighbors.len()).unwrap_or(F::zero()))
+                .sqrt()
             }
         })
         .collect();
@@ -76,11 +92,11 @@ pub fn loop_outlier_scores<T>(
             let neighbor_pdists_mean = neighbors
                 .iter()
                 .map(|(neighbor_idx, _)| pdists[*neighbor_idx])
-                .sum::<f64>()
-                / neighbors.len() as f64;
+                .sum::<F>()
+                / F::from_usize(neighbors.len()).unwrap_or(F::zero());
 
-            if neighbor_pdists_mean > 0.0 {
-                (pdists[idx] / neighbor_pdists_mean - 1.0).max(0.0)
+            if neighbor_pdists_mean > F::zero() {
+                ((pdists[idx] / neighbor_pdists_mean).to_f64().unwrap_or(1.0) - 1.0).max(0.0)
             } else {
                 0.0
             }
@@ -94,23 +110,19 @@ pub fn loop_outlier_scores<T>(
         nplof = 1.0;
     }
 
-    let sqrt_2 = 2.0_f64.sqrt();
+    let sqrt_2 = 2.0.sqrt();
 
-    let mut scores: Vec<LoopOutlierScore> = plofs
+    let mut scores: Vec<LoopOutlierScore<F>> = plofs
         .iter()
         .enumerate()
         .map(|(idx, plof)| LoopOutlierScore {
             index: idx,
-            score: erf_approx((plof / (nplof * sqrt_2)).max(0.0)).max(0.0),
+            score: F::from_f64(erf_approx((plof / (nplof * sqrt_2)).max(0.0)).max(0.0))
+                .unwrap_or(F::zero()),
         })
         .collect();
 
-    scores.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(Ordering::Equal)
-            .then_with(|| a.index.cmp(&b.index))
-    });
+    sort_outlier_scores(&mut scores);
 
     scores
 }
@@ -139,6 +151,9 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
+    use crate::TableWithDistance;
+    use crate::vptree::VPTree;
+
     use super::*;
 
     #[test]
@@ -151,9 +166,9 @@ mod tests {
             vec![6.0, 6.0],
         ];
 
-        let data = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(23);
-        let tree = VPTree::new(&data, 2, &mut rng);
+        let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
         let scores = loop_outlier_scores(&tree, &data, 2, 2.0);
 
@@ -167,9 +182,9 @@ mod tests {
     fn loop_matches_sklearn_reference_values() {
         let points = vec![vec![-1.1], vec![0.2], vec![101.1], vec![0.3]];
 
-        let data = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(123);
-        let tree = VPTree::new(&data, 2, &mut rng);
+        let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
         let scores = loop_outlier_scores(&tree, &data, 2, 2.0);
 

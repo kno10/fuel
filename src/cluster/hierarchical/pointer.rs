@@ -97,14 +97,17 @@ fn uf_find(parent: &mut [usize], x: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::hierarchical::slink_pointer;
+    use crate::cluster::hierarchical::slink::slink_pointer;
+    use crate::data::CondensedDistanceMatrix;
 
     use super::pointer_to_merge_history;
 
     #[test]
     fn pointer_conversion_builds_full_history() {
         let d = vec![1.0, 8.0, 15.0, 22.0, 2.0, 9.0, 16.0, 3.0, 10.0, 4.0];
-        let p = slink_pointer(&d, 5);
+        let d_clone = d.clone();
+        let cm = CondensedDistanceMatrix::new(&d_clone, 5);
+        let p = slink_pointer(&cm);
         let h = pointer_to_merge_history(&p);
         assert_eq!(h.len(), 4);
         assert_eq!(h.last().expect("non-empty history").size, 5);

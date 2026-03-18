@@ -169,7 +169,10 @@ fn canberra_distance_fallback<N: Float + ToPrimitive + AsPrimitive<F>, F: Float 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CanberraDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<f64>> DistanceMetric<[N]> for CanberraDistance {}
+impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceMetric<[N], F>
+    for CanberraDistance
+{
+}
 
 impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
     for CanberraDistance

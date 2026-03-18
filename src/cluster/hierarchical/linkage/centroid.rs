@@ -40,6 +40,13 @@ impl<F: Float> GeometricLinkage<F> for CentroidLinkage {
     }
 }
 
+// SetLinkage is not provided for centroid linkage because the trait is
+// defined in terms of pairwise distances only; computing the squared
+// distance between centroids requires coordinate information that is not
+// available through `DataAccess`.  Consumers who need this behaviour can
+// fall back to `agnes` with `CentroidLinkage` directly or implement a
+// custom set-based variant if they have access to coordinates.
+
 #[cfg(test)]
 mod tests {
     use super::*;

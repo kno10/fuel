@@ -33,7 +33,10 @@ pub fn haversine_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 's
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HaversineDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<f64>> DistanceMetric<[N]> for HaversineDistance {}
+impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceMetric<[N], F>
+    for HaversineDistance
+{
+}
 
 impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
     for HaversineDistance

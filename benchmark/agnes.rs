@@ -8,11 +8,15 @@ use std::time::Instant;
 
 use counting_distance::CountingEuclideanDistance;
 use data_loading::read_numeric_data;
-use hacs::hierarchical::{
+use fuel::DistanceData;
+use fuel::TableWithDistance;
+use fuel::cluster::hdbscan::extraction::ExtractedHierarchy;
+use fuel::cluster::hdbscan::extraction::extract_simplified_hierarchy;
+use fuel::cluster::hierarchical::Merge;
+use fuel::cluster::hierarchical::{
     AverageLinkage, CentroidLinkage, CompleteLinkage, GroupAverageLinkage, MedianLinkage,
-    MinimumVarianceLinkage, SingleLinkage, WardLinkage, WeightedAverageLinkage,
+    MinimumVarianceLinkage, SingleLinkage, WardLinkage, WeightedAverageLinkage, agnes,
 };
-use hacs::{DataAccess, MatrixDataAccess, agnes, cut_dendrogram_by_number_of_clusters};
 
 fn main() {
     if let Err(err) = run() {
@@ -53,7 +57,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let distance = CountingEuclideanDistance::new();
     let distance_count = distance.counter();
-    let data = MatrixDataAccess::with_distance(&rows, distance);
+    let data = TableWithDistance::with_distance(&rows, distance);
 
     // build condensed lower-triangular distance matrix
     let data_ref = &data;
@@ -79,7 +83,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let distance_count_after_algorithm = distance_count.load(Ordering::Relaxed);
 
     // extract flat clusters from the hierarchy with ELKI-style tie handling.
-    let labels = cut_dendrogram_by_number_of_clusters(&history, k);
+    let labels = labels_from_simplified_hierarchy(&history, n, k);
     let (cluster_sizes, _noise) = summarize_cluster_sizes(&labels);
 
     println!("time_ms={:.3}", elapsed.as_secs_f64() * 1_000.0);
@@ -110,4 +114,68 @@ fn format_cluster_sizes(cluster_sizes: &BTreeMap<usize, usize>) -> String {
         .map(|(cluster_id, size)| format!("{cluster_id}:{size}"))
         .collect::<Vec<_>>()
         .join(",")
+}
+
+// same helper functions as in `single_link.rs`
+
+fn collect_subtree_members(node: usize, extracted: &ExtractedHierarchy<f64>, out: &mut Vec<usize>) {
+    out.extend(extracted.nodes[node].members.iter().copied());
+    for &child in &extracted.nodes[node].children {
+        collect_subtree_members(child, extracted, out);
+    }
+}
+
+fn labels_from_frontier(
+    extracted: &ExtractedHierarchy<f64>,
+    frontier: &[usize],
+    n: usize,
+) -> Vec<usize> {
+    let mut labels = vec![0; n];
+
+    for (cid, &node) in frontier.iter().enumerate() {
+        let mut members = Vec::new();
+        collect_subtree_members(node, extracted, &mut members);
+        for point in members {
+            if point < n && labels[point] == 0 {
+                labels[point] = cid;
+            }
+        }
+    }
+    labels
+}
+
+fn labels_from_simplified_hierarchy(
+    history: &[Merge<f64>],
+    n: usize,
+    min_clusters: usize,
+) -> Vec<usize> {
+    let extracted = extract_simplified_hierarchy(history, None, 1);
+    assert!(min_clusters > 0, "min_clusters must be positive");
+    if extracted.roots.is_empty() {
+        return vec![0; n];
+    }
+
+    let mut frontier = extracted.roots.clone();
+    while frontier.len() < min_clusters {
+        let mut best_pos = None;
+        let mut best_dist = f64::NEG_INFINITY;
+        for (i, &node) in frontier.iter().enumerate() {
+            if extracted.nodes[node].children.is_empty() {
+                continue;
+            }
+            let d = extracted.nodes[node].distance;
+            if d > best_dist {
+                best_dist = d;
+                best_pos = Some(i);
+            }
+        }
+
+        let Some(pos) = best_pos else {
+            break;
+        };
+        let node = frontier.swap_remove(pos);
+        frontier.extend(&extracted.nodes[node].children);
+    }
+
+    labels_from_frontier(&extracted, &frontier, n)
 }

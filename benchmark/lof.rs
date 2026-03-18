@@ -7,7 +7,9 @@ use std::time::Instant;
 
 use counting_distance::CountingEuclideanDistance;
 use data_loading::read_numeric_data;
-use hacs::{MatrixDataAccess, VPTree, lof_outlier_scores};
+use fuel::TableWithDistance;
+use fuel::outlier::lof_outlier_scores;
+use fuel::vptree::VPTree;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
@@ -44,7 +46,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let distance = CountingEuclideanDistance::new();
     let distance_count = distance.counter();
-    let data = MatrixDataAccess::with_distance(&rows, distance);
+    let data = TableWithDistance::with_distance(&rows, distance);
     let mut rng = StdRng::seed_from_u64(RNG_SEED);
     let sample_size = rows.len();
 
@@ -52,7 +54,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let tree = VPTree::new(&data, sample_size, &mut rng);
     let distance_count_after_index = distance_count.load(Ordering::Relaxed);
     let scores = lof_outlier_scores(&tree, &data, k);
-    let distance_count_after_algorithm = distance_count.load(Ordering::Relaxed);
+    let dist_count = distance_count.load(Ordering::Relaxed);
     let elapsed = start.elapsed();
 
     let avg_score = scores.iter().map(|entry| entry.score).sum::<f64>() / scores.len() as f64;
@@ -60,7 +62,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     println!("time_ms={:.3}", elapsed.as_secs_f64() * 1_000.0);
     println!("avg_score={avg_score:.12}");
     println!("distance_count_after_index={distance_count_after_index}");
-    println!("distance_count_after_algorithm={distance_count_after_algorithm}");
+    println!("dist_count={dist_count}");
 
     Ok(())
 }

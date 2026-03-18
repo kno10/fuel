@@ -1,11 +1,32 @@
 use std::cmp::Ordering;
 
-use crate::DataAccess;
+use crate::DistanceData;
+use num_traits::Float;
 
-use super::super::DistPair;
+use crate::DistPair;
+use crate::{DistanceSearch, vptree::PrioritySearcher};
 
-pub fn brute_force_knn<T: DataAccess>(dataset: &T, query_idx: usize, k: usize) -> Vec<DistPair> {
-    let mut distances: Vec<(f64, usize)> = dataset
+/// Retrieve every neighbor produced by a priority searcher until exhaustion.
+///
+/// This duplicates the logic previously defined on the main type but is kept
+/// inside the test hierarchy so that production code remains clean.
+pub fn get_all_neighbors<F: Float, D: DistanceSearch<F>>(
+    searcher: &mut PrioritySearcher<F>,
+    data: &D,
+) -> Vec<DistPair<F>> {
+    let mut out = Vec::new();
+    while let Some(n) = searcher.next_filtered(data, |_| false) {
+        out.push(n);
+    }
+    out
+}
+
+pub fn brute_force_knn<T, S>(dataset: &T, query_idx: usize, k: usize) -> Vec<DistPair<S>>
+where
+    T: DistanceData<S>,
+    S: Float + Copy + PartialOrd,
+{
+    let mut distances: Vec<(S, usize)> = dataset
         .iter()
         .map(|i| (dataset.distance(query_idx, i), i))
         .collect();

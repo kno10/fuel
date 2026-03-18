@@ -2,6 +2,7 @@ use num_traits::{AsPrimitive, Float, ToPrimitive};
 use std::any::TypeId;
 
 use super::{DistanceFunction, DistanceMetric};
+use crate::distance::partial::PartialDistance;
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{
@@ -133,12 +134,27 @@ fn manhattan_distance_fallback<N: Float + ToPrimitive + AsPrimitive<F>, F: Float
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ManhattanDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<f64>> DistanceMetric<[N]> for ManhattanDistance {}
+impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceMetric<[N], F>
+    for ManhattanDistance
+{
+}
 
 impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
     for ManhattanDistance
 {
     fn distance(&self, a: &[N], b: &[N]) -> F {
         manhattan_distance(a, b)
+    }
+}
+
+impl<F: Float + Copy> PartialDistance<F> for ManhattanDistance {
+    fn distance(&self, a: &[F], b: &[F]) -> F {
+        a.iter()
+            .zip(b)
+            .fold(F::zero(), |acc, (&x, &y)| acc + (x - y).abs())
+    }
+
+    fn combine_axis_distances(&self, a: F, b: F) -> F {
+        a + b
     }
 }

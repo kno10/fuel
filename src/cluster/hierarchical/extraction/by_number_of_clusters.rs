@@ -73,8 +73,9 @@ pub(crate) fn cut_by_split<F: Float>(history: &[Merge<F>], n: usize, split: usiz
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::hierarchical::linkage::SingleLinkage;
-    use crate::cluster::hierarchical::{Merge, agnes};
+    use crate::cluster::hierarchical::Merge;
+    use crate::cluster::hierarchical::SingleLinkage;
+    use crate::cluster::hierarchical::agnes;
 
     use super::cut_dendrogram_by_number_of_clusters;
 

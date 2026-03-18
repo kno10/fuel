@@ -1,22 +1,31 @@
+mod counting_distance;
 mod data_loading;
 
+use std::collections::BTreeMap;
 use std::error::Error;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use hacs::{
-    DataAccess, EuclideanDistance, MatrixDataAccess, MergeHistory, VPTree,
-    boruvka_searchers_single_link, buffered_search_single_link, heap_of_searchers_single_link,
+use counting_distance::CountingEuclideanDistance;
+use fuel::TableWithDistance;
+use fuel::cluster::hdbscan::extraction::{ExtractedHierarchy, extract_simplified_hierarchy};
+use fuel::cluster::hierarchical::{Merge, MergeHistory};
+use fuel::cluster::hierarchical::{
+    SingleLinkage, agnes, anderberg, boruvka_searchers_single_link, buffered_search_single_link,
+    heap_of_searchers_single_link, lazy_buffered_search_single_link, muellner, nn_chain,
     restarting_search_single_link, slink,
 };
+use fuel::vptree::VPTree;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
 use data_loading::read_numeric_data_with_limit;
 
-const DEFAULT_BUFFERED_SLACK: usize = 2;
+const DEFAULT_BUFFERED_SLACK: usize = 4;
 const DEFAULT_TREE_SAMPLE: usize = 16;
 const DEFAULT_VPTREE_SEED: u64 = 0xDEADBEEF;
-const USAGE: &str = "usage: cargo run --features benchmark --bin single_link -- <csv_path> <n> [--tree-sample SIZE] [--buffered-slack SIZE] [--seed SEED]";
+const DEFAULT_CLUSTER_COUNT: usize = 10;
+const USAGE: &str = "usage: cargo run --features benchmark --bin single_link -- <csv_path> <n> [--algorithms LIST] [--tree-sample SIZE] [--buffered-slack SIZE] [--cluster-count K] [--seed SEED]\n    LIST is comma-separated names: boruvka,heap,restart,buffered,lazy-buffered,slink,agnes,anderberg,muellner,nnchain (default all except agnes)";
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args = std::env::args();
@@ -33,15 +42,23 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut tree_sample_size = DEFAULT_TREE_SAMPLE;
     let mut buffered_slack = DEFAULT_BUFFERED_SLACK;
+    let mut cluster_count = DEFAULT_CLUSTER_COUNT;
     let mut seed = DEFAULT_VPTREE_SEED;
 
+    let mut alg_arg: Option<String> = None;
     while let Some(flag) = args.next() {
         match flag.as_str() {
+            "--algorithms" => {
+                alg_arg = Some(args.next().ok_or_else(|| usage_error())?);
+            }
             "--tree-sample" => {
                 tree_sample_size = parse_positive_usize(&mut args, &flag)?;
             }
             "--buffered-slack" => {
                 buffered_slack = parse_positive_usize(&mut args, &flag)?;
+            }
+            "--cluster-count" => {
+                cluster_count = parse_positive_usize(&mut args, &flag)?;
             }
             "--seed" => {
                 seed = parse_seed(&mut args, &flag)?;
@@ -67,69 +84,239 @@ fn main() -> Result<(), Box<dyn Error>> {
     let used_rows = rows.len();
 
     let dimension = rows.first().map(|row| row.len()).unwrap_or(0);
-    let data: MatrixDataAccess<Vec<f64>, EuclideanDistance> =
-        MatrixDataAccess::with_distance(&rows, EuclideanDistance);
+
+    // wrap the Euclidean distance so we can count how many times it's evaluated
+    let distance = CountingEuclideanDistance::new();
+    let distance_counter = distance.counter();
+    let data: TableWithDistance<Vec<f64>, CountingEuclideanDistance, f64> =
+        TableWithDistance::with_distance(&rows, distance);
     let sample_size = tree_sample_size.min(used_rows).max(1);
 
-    let mut rng = StdRng::seed_from_u64(seed);
-    let tree_start = Instant::now();
-    let tree = VPTree::new(&data, sample_size, &mut rng);
-    let tree_build_time = tree_start.elapsed();
-
-    let condensed_start = Instant::now();
-    let condensed = build_condensed_distances(&data);
-    let condensed_time = condensed_start.elapsed();
-
+    // print dataset parameters
     println!("dataset={csv_path}");
     println!("data_rows={used_rows}");
     println!("dimensions={dimension}");
     println!("tree_sample_size={sample_size}");
     println!("buffered_slack={buffered_slack}");
     println!("seed={seed}");
-    println!(
-        "tree_build_ms={:.3}",
-        tree_build_time.as_secs_f64() * 1_000.0
-    );
-    println!(
-        "condensed_matrix_ms={:.3}",
-        condensed_time.as_secs_f64() * 1_000.0
-    );
 
-    let algorithms = [
+    // build algorithm list based on `--algorithms` argument.  names are
+    // case-insensitive and comma-separated; default set excludes AGNES for
+    // faster runs (it’s extremely slow on large input).
+    let all = vec![
         SingleLinkAlgorithm::Boruvka,
         SingleLinkAlgorithm::HeapOfSearchers,
         SingleLinkAlgorithm::RestartingSearch,
         SingleLinkAlgorithm::BufferedSearch {
             slack: buffered_slack,
         },
+        SingleLinkAlgorithm::LazyBufferedSearch {
+            slack: buffered_slack,
+        },
         SingleLinkAlgorithm::Slink,
+        SingleLinkAlgorithm::Agnes,
+        SingleLinkAlgorithm::Anderberg,
+        SingleLinkAlgorithm::Muellner,
+        SingleLinkAlgorithm::NNChain,
     ];
+    let algorithms: Vec<SingleLinkAlgorithm> = if let Some(ref s) = alg_arg {
+        let mut out = Vec::new();
+        for part in s.split(',') {
+            match part.trim().to_lowercase().as_str() {
+                "boruvka" => out.push(SingleLinkAlgorithm::Boruvka),
+                "heap" | "hssl" | "heap_of_searchers" => {
+                    out.push(SingleLinkAlgorithm::HeapOfSearchers)
+                }
+                "restart" | "restarting" | "rssl" => {
+                    out.push(SingleLinkAlgorithm::RestartingSearch)
+                }
+                "buffered" => out.push(SingleLinkAlgorithm::BufferedSearch {
+                    slack: buffered_slack,
+                }),
+                "lazy-buffered" | "lazy_buffered" | "lbssl" => {
+                    out.push(SingleLinkAlgorithm::LazyBufferedSearch {
+                        slack: buffered_slack,
+                    })
+                }
+                "slink" => out.push(SingleLinkAlgorithm::Slink),
+                "agnes" | "sahn" => out.push(SingleLinkAlgorithm::Agnes),
+                "anderberg" => out.push(SingleLinkAlgorithm::Anderberg),
+                "muellner" => out.push(SingleLinkAlgorithm::Muellner),
+                "nnchain" | "nn-chain" => out.push(SingleLinkAlgorithm::NNChain),
+                other => {
+                    return Err(Box::<dyn Error>::from(format!(
+                        "unknown algorithm '{other}'"
+                    )));
+                }
+            }
+        }
+        out
+    } else {
+        all.into_iter()
+            .filter(|a| !matches!(a, SingleLinkAlgorithm::Agnes))
+            .collect()
+    };
 
     for algorithm in algorithms {
         let label = algorithm.label();
+        let baseline = distance_counter.load(Ordering::Relaxed);
         let start = Instant::now();
-        let history = algorithm.run(&tree, &data, &condensed, used_rows);
+        let history: MergeHistory<f64> = match algorithm {
+            SingleLinkAlgorithm::Agnes => {
+                let condensed = fuel::distance_matrix::lower_triangular_matrix(&data);
+                agnes(&condensed, used_rows, SingleLinkage, false)
+            }
+            SingleLinkAlgorithm::Anderberg => {
+                let condensed = fuel::distance_matrix::lower_triangular_matrix(&data);
+                anderberg(&condensed, used_rows, SingleLinkage, false)
+            }
+            SingleLinkAlgorithm::Muellner => {
+                let condensed = fuel::distance_matrix::lower_triangular_matrix(&data);
+                muellner(&condensed, used_rows, SingleLinkage, false)
+            }
+            SingleLinkAlgorithm::NNChain => {
+                let condensed = fuel::distance_matrix::lower_triangular_matrix(&data);
+                nn_chain(&condensed, used_rows, SingleLinkage, false)
+            }
+            SingleLinkAlgorithm::Boruvka => {
+                let mut rng = StdRng::seed_from_u64(seed);
+                let tree = VPTree::new(&data, sample_size, &mut rng);
+                boruvka_searchers_single_link(&tree, &data)
+            }
+            SingleLinkAlgorithm::HeapOfSearchers => {
+                let mut rng = StdRng::seed_from_u64(seed);
+                let tree = VPTree::new(&data, sample_size, &mut rng);
+                let hist = heap_of_searchers_single_link(&tree, &data);
+                hist
+            }
+            SingleLinkAlgorithm::RestartingSearch => {
+                let mut rng = StdRng::seed_from_u64(seed);
+                let tree = VPTree::new(&data, sample_size, &mut rng);
+                restarting_search_single_link(&tree, &data)
+            }
+            SingleLinkAlgorithm::BufferedSearch { slack } => {
+                let mut rng = StdRng::seed_from_u64(seed);
+                let tree = VPTree::new(&data, sample_size, &mut rng);
+                buffered_search_single_link(&tree, &data, slack)
+            }
+            SingleLinkAlgorithm::LazyBufferedSearch { slack } => {
+                let mut rng = StdRng::seed_from_u64(seed);
+                let tree = VPTree::new(&data, sample_size, &mut rng);
+                lazy_buffered_search_single_link(&tree, &data, slack)
+            }
+            SingleLinkAlgorithm::Slink => slink(&data),
+        };
         let elapsed = start.elapsed();
-        drop(history);
+        let after = distance_counter.load(Ordering::Relaxed);
+        let dist_count = after.saturating_sub(baseline);
+
+        // derive flat clusters at requested size and summarise
+        // previously we used a simple cut at k clusters; switch to ELKI's
+        // simplified hierarchy extraction instead
+        let mst_weight: f64 = history.iter().map(|m| m.distance).sum();
+
+        let labels = labels_from_simplified_hierarchy(&history, used_rows, cluster_count);
+        let (cluster_sizes, _noise) = summarize_cluster_sizes(&labels);
+
         println!(
-            "algorithm={label}, time_ms={:.3}",
-            elapsed.as_secs_f64() * 1_000.0
+            "algorithm={label}, time_ms={:.3} mst_weight={:.15} cluster_count={} noise_count=0 cluster_sizes={} dist_count={}",
+            elapsed.as_secs_f64() * 1_000.0,
+            mst_weight,
+            cluster_sizes.len(),
+            format_cluster_sizes(&cluster_sizes),
+            dist_count
         );
     }
 
     Ok(())
 }
 
-fn build_condensed_distances(data: &MatrixDataAccess<'_, Vec<f64>, EuclideanDistance>) -> Vec<f64> {
-    let n = data.size();
-    let capacity = n.saturating_sub(1) * n / 2;
-    let mut condensed = Vec::with_capacity(capacity);
-    for i in 1..n {
-        for j in 0..i {
-            condensed.push(data.distance(i, j));
+fn summarize_cluster_sizes(labels: &[usize]) -> (BTreeMap<usize, usize>, usize) {
+    let cluster_sizes = labels.iter().fold(BTreeMap::new(), |mut m, &lbl| {
+        *m.entry(lbl).or_insert(0) += 1;
+        m
+    });
+    (cluster_sizes, 0)
+}
+
+// helper functions copied/ported from the regression support tests; these
+// turn an extracted hierarchy into flat labels with roughly `min_clusters`
+// groups.  using the simplified hierarchy allows us to handle ties and
+// spurious cuts more gracefully than the naive cut-by-count.
+
+fn collect_subtree_members(node: usize, extracted: &ExtractedHierarchy<f64>, out: &mut Vec<usize>) {
+    out.extend(extracted.nodes[node].members.iter().copied());
+    for &child in &extracted.nodes[node].children {
+        collect_subtree_members(child, extracted, out);
+    }
+}
+
+fn labels_from_frontier(
+    extracted: &ExtractedHierarchy<f64>,
+    frontier: &[usize],
+    n: usize,
+) -> Vec<usize> {
+    let mut labels = vec![0; n];
+
+    for (cid, &node) in frontier.iter().enumerate() {
+        let mut members = Vec::new();
+        collect_subtree_members(node, extracted, &mut members);
+        for point in members {
+            if point < n && labels[point] == 0 {
+                labels[point] = cid;
+            }
         }
     }
-    condensed
+    labels
+}
+
+fn labels_from_simplified_hierarchy(
+    history: &[Merge<f64>],
+    n: usize,
+    min_clusters: usize,
+) -> Vec<usize> {
+    // Minpts 10, to give more meaningful clustering structure for comparison.
+    let extracted = extract_simplified_hierarchy(history, None, 2);
+    assert!(min_clusters > 0, "min_clusters must be positive");
+    if extracted.roots.is_empty() {
+        return vec![0; n];
+    }
+
+    let mut frontier = extracted.roots.clone();
+    while frontier.len() < min_clusters {
+        let mut best_pos = None;
+        let mut best_dist = f64::NEG_INFINITY;
+        for (i, &node) in frontier.iter().enumerate() {
+            if extracted.nodes[node].children.is_empty() {
+                continue;
+            }
+            let d = extracted.nodes[node].distance;
+            if d > best_dist {
+                best_dist = d;
+                best_pos = Some(i);
+            }
+        }
+
+        let Some(pos) = best_pos else {
+            break;
+        };
+        let node = frontier.swap_remove(pos);
+        frontier.extend(&extracted.nodes[node].children);
+    }
+
+    labels_from_frontier(&extracted, &frontier, n)
+}
+
+fn format_cluster_sizes(cluster_sizes: &BTreeMap<usize, usize>) -> String {
+    if cluster_sizes.is_empty() {
+        return "none".to_string();
+    }
+
+    cluster_sizes
+        .iter()
+        .map(|(cluster_id, size)| format!("{cluster_id}:{size}"))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 #[derive(Clone, Copy)]
@@ -138,7 +325,12 @@ enum SingleLinkAlgorithm {
     HeapOfSearchers,
     RestartingSearch,
     BufferedSearch { slack: usize },
+    LazyBufferedSearch { slack: usize },
     Slink,
+    Agnes,
+    Anderberg,
+    Muellner,
+    NNChain,
 }
 
 impl SingleLinkAlgorithm {
@@ -150,25 +342,14 @@ impl SingleLinkAlgorithm {
             SingleLinkAlgorithm::BufferedSearch { slack } => {
                 format!("buffered_search(slack={slack})")
             }
-            SingleLinkAlgorithm::Slink => "slink".to_string(),
-        }
-    }
-
-    fn run(
-        self,
-        tree: &VPTree,
-        data: &MatrixDataAccess<'_, Vec<f64>, EuclideanDistance>,
-        condensed: &[f64],
-        n: usize,
-    ) -> MergeHistory<f64> {
-        match self {
-            SingleLinkAlgorithm::Boruvka => boruvka_searchers_single_link(tree, data),
-            SingleLinkAlgorithm::HeapOfSearchers => heap_of_searchers_single_link(tree, data),
-            SingleLinkAlgorithm::RestartingSearch => restarting_search_single_link(tree, data),
-            SingleLinkAlgorithm::BufferedSearch { slack } => {
-                buffered_search_single_link(tree, data, slack)
+            SingleLinkAlgorithm::LazyBufferedSearch { slack } => {
+                format!("lazy_buffered_search(slack={slack})")
             }
-            SingleLinkAlgorithm::Slink => slink::<f64>(condensed, n),
+            SingleLinkAlgorithm::Slink => "slink".to_string(),
+            SingleLinkAlgorithm::Agnes => "agnes".to_string(),
+            SingleLinkAlgorithm::Anderberg => "anderberg".to_string(),
+            SingleLinkAlgorithm::Muellner => "muellner".to_string(),
+            SingleLinkAlgorithm::NNChain => "nn_chain".to_string(),
         }
     }
 }

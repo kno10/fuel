@@ -16,18 +16,66 @@ pub mod single;
 pub mod ward;
 pub mod weighted_average;
 
-pub use average::AverageLinkage;
-pub use centroid::CentroidLinkage;
-pub use complete::CompleteLinkage;
-pub use flexible_beta::FlexibleBetaLinkage;
-pub use group_average::GroupAverageLinkage;
-pub use median::MedianLinkage;
-pub use minimum_variance::MinimumVarianceLinkage;
-pub use single::SingleLinkage;
-pub use ward::WardLinkage;
-pub use weighted_average::WeightedAverageLinkage;
+pub mod hausdorff;
+pub mod medoid;
+pub mod minimax;
 
+// HACAM-specific set-linkage variants
+pub mod minimum_sum;
+pub mod minimum_sum_increase;
+
+pub use hausdorff::HausdorffLinkage;
+pub use medoid::MedoidLinkage;
+pub use minimax::MinimaxLinkage;
+
+use crate::DistanceData;
 use num_traits::Float;
+
+/// Linkage criterion expressed as a function of the *sets* underlying two
+/// clusters.  This trait previously lived in `set_agnes.rs` alongside the
+/// generic set-linkage drivers; it now lives here so that all linkage-related
+/// traits are colocated while the core AGNES logic remains with the `set`
+/// routines.
+///
+/// The implementation is intentionally simple: given two slices of point
+/// indices representing cluster membership, return a tuple of the distance
+/// between the clusters, an optional prototype index for the merged cluster,
+/// and enough per-cluster summary data to avoid re-computing prototypes or
+/// accumulated distances during the merge process.
+pub trait SetLinkage<D: DistanceData<F>, F: Float, Summary = ()> {
+    /// Summary information that is maintained for each cluster throughout the
+    /// clustering process.  The summary is expected to encode protocol-specific
+    /// prototypes or statistics that are reused when merging or comparing
+    /// clusters.
+    fn summarize(data: &D, members: &[usize]) -> Summary;
+
+    /// Distance between cluster `a` and cluster `b`, plus an optional
+    /// prototype index for the merged cluster.
+    fn cluster_distance(
+        data: &D,
+        summary_a: &Summary,
+        summary_b: &Summary,
+        a: &[usize],
+        b: &[usize],
+    ) -> (F, Option<usize>);
+
+    /// Optional adjustment applied to the stored raw distance before it is
+    /// compared or emitted by the clustering routine. The default implementation
+    /// leaves the distance untouched.
+    fn adjust_distance(d: F, _summary_a: &Summary, _summary_b: &Summary) -> F {
+        d
+    }
+
+    /// Update the summary for the destination cluster when merging the source
+    /// cluster into it. The default implementation is a no-op.
+    fn merge_summary(
+        _dest: &mut Summary,
+        _source: Summary,
+        _prototype: Option<usize>,
+        _distance: F,
+    ) {
+    }
+}
 
 /// Basic linkage trait corresponds to the Lance–Williams recurrence.
 ///

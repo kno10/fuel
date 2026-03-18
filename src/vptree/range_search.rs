@@ -2,13 +2,13 @@ use std::cmp::Ordering;
 
 use num_traits::Float;
 
-use crate::DataAccess;
+use crate::{DistanceSearch, DistPair};
 
-use super::{DistPair, VPTree};
+use super::VPTree;
 
 impl<F: Float> VPTree<F> {
     /// Find all points within radius r of the query point, without sorting.
-    pub fn search_range_unsorted<D: DataAccess>(
+    pub fn search_range_unsorted<D: DistanceSearch<F>>(
         &self,
         data: &D,
         radius: F,
@@ -18,7 +18,7 @@ impl<F: Float> VPTree<F> {
     }
 
     /// Find all points within radius r of the query point
-    pub fn search_range<D: DataAccess>(
+    pub fn search_range<D: DistanceSearch<F>>(
         &self,
         data: &D,
         radius: F,
@@ -39,7 +39,7 @@ impl<F: Float> VPTree<F> {
     }
 
     /// Recursively search for points within radius
-    fn search_range_recursive<D: DataAccess, C: FnMut(DistPair<F>)>(
+    fn search_range_recursive<D: DistanceSearch<F>, C: FnMut(DistPair<F>)>(
         &self,
         data: &D,
         radius: F,
@@ -51,8 +51,7 @@ impl<F: Float> VPTree<F> {
         let vp = self.points[node_idx];
 
         // Distance to vantage point
-        let d = F::from(data.query_distance(vp as usize))
-            .expect("distance cannot be represented by target float type");
+        let d = data.query_distance(vp as usize);
 
         // Add vantage point if within radius
         if d <= radius {

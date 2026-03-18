@@ -3,9 +3,16 @@ use std::collections::BinaryHeap;
 
 use num_traits::Float;
 
-use super::common::{Builder, MergeHistory, condensed_get, condensed_set, shrink_active_end};
+use super::common::{
+    Builder,
+    MergeHistory,
+    // nn-cache helpers
+    find_best,
+    initialize_nn_cache,
+    shrink_active_end,
+    update_matrix_and_cache_with_hook,
+};
 use super::linkage::Linkage;
-use super::nn_cache::{find_best, initialize_nn_cache, update_cache};
 
 #[derive(Clone, Copy, Debug)]
 struct HeapEntry<F: Float> {
@@ -42,7 +49,7 @@ impl<F: Float> Ord for HeapEntry<F> {
     }
 }
 
-/// Perform hierarchical clustering using M\u00fcllner's generic-linkage approach
+/// Perform hierarchical clustering using Müllner's generic-linkage approach
 /// with an Anderberg nearest-neighbor cache and a heap for candidate retrieval.
 #[must_use]
 pub fn muellner<F: Float, L: Linkage<F> + Copy>(
@@ -94,12 +101,11 @@ pub fn muellner<F: Float, L: Linkage<F> + Copy>(
         besti[x] = usize::MAX;
         bestd[x] = F::infinity();
 
-        update_matrix_and_cache(
+        update_matrix_and_cache_with_hook(
             &mut mat,
             &clustermap,
             &mut bestd,
             &mut besti,
-            &mut heap,
             &builder,
             linkage,
             mindist,
@@ -108,6 +114,7 @@ pub fn muellner<F: Float, L: Linkage<F> + Copy>(
             size_x,
             size_y,
             end,
+            |bestd_slice, besti_slice, j| push_candidate(&mut heap, bestd_slice, besti_slice, j),
         );
 
         if y > 0 {
@@ -170,45 +177,13 @@ fn pop_valid_merge<F: Float>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn update_matrix_and_cache<F: Float, L: Linkage<F> + Copy>(
-    mat: &mut [F],
-    clustermap: &[Option<usize>],
-    bestd: &mut [F],
-    besti: &mut [usize],
-    heap: &mut BinaryHeap<HeapEntry<F>>,
-    builder: &Builder<F>,
-    linkage: L,
-    mindist: F,
-    x: usize,
-    y: usize,
-    size_x: usize,
-    size_y: usize,
-    end: usize,
-) {
-    for j in 0..end {
-        if j == x || j == y || clustermap[j].is_none() {
-            continue;
-        }
-
-        let d_xj = condensed_get(mat, x, j);
-        let d_yj = condensed_get(mat, y, j);
-        let size_j = builder.get_size(clustermap[j].expect("j must be active"));
-        let d = linkage.combine(size_x, d_xj, size_y, d_yj, size_j, mindist);
-        condensed_set(mat, y, j, d);
-
-        if update_cache(mat, clustermap, bestd, besti, x, y, j, d) {
-            push_candidate(heap, bestd, besti, j);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::cluster::hierarchical::agnes;
-    use crate::cluster::hierarchical::linkage::{AverageLinkage, CompleteLinkage};
     use crate::cluster::hierarchical::regression_support::{
         DATASETS, cluster_and_cut, evaluate_clustering, load_dataset, optionally_report,
     };
+    use crate::cluster::hierarchical::{AverageLinkage, CompleteLinkage};
 
     use super::muellner;
 

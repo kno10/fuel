@@ -1,30 +1,322 @@
-use num_traits::Float;
+use std::any::TypeId;
 
-use super::common::MergeHistory;
-use super::linear_memory_nn_chain::linear_memory_nn_chain;
+use num_traits::Float;
+use rand::{SeedableRng, rngs::StdRng};
+
+use crate::distance::DistanceFunction;
+use crate::vptree::VPTree;
+use crate::{PointSearchData, TableWithDistance};
+
+use super::WardLinkage;
+use super::common::{Builder, MergeHistory};
 use super::linkage::GeometricLinkage;
+
+#[derive(Clone, Copy, Default)]
+struct SquaredEuclidean;
+
+impl<F: Float> DistanceFunction<Vec<F>, F> for SquaredEuclidean {
+    fn distance(&self, a: &Vec<F>, b: &Vec<F>) -> F {
+        a.iter().zip(b).fold(F::zero(), |acc, (&x, &y)| {
+            let delta = x - y;
+            acc + delta * delta
+        })
+    }
+}
+
+impl<F: Float> DistanceFunction<[F], F> for SquaredEuclidean {
+    fn distance(&self, a: &[F], b: &[F]) -> F {
+        a.iter().zip(b).fold(F::zero(), |acc, (&x, &y)| {
+            let delta = x - y;
+            acc + delta * delta
+        })
+    }
+}
+
+struct UnionFind {
+    parent: Vec<usize>,
+    size: Vec<usize>,
+    cluster_id: Vec<usize>,
+}
+
+impl UnionFind {
+    fn new(n: usize) -> Self {
+        Self {
+            parent: (0..n).collect(),
+            size: vec![1; n],
+            cluster_id: (0..n).collect(),
+        }
+    }
+
+    fn find(&mut self, x: usize) -> usize {
+        let mut root = x;
+        while self.parent[root] != root {
+            root = self.parent[root];
+        }
+        let mut node = x;
+        while self.parent[node] != root {
+            let next = self.parent[node];
+            self.parent[node] = root;
+            node = next;
+        }
+        root
+    }
+
+    fn cluster_of(&mut self, x: usize) -> usize {
+        let root = self.find(x);
+        self.cluster_id[root]
+    }
+
+    fn union(&mut self, a: usize, b: usize, new_id: usize) -> usize {
+        let mut ra = self.find(a);
+        let mut rb = self.find(b);
+        if ra == rb {
+            return ra;
+        }
+        if self.size[ra] < self.size[rb] {
+            std::mem::swap(&mut ra, &mut rb);
+        }
+        self.parent[rb] = ra;
+        self.size[ra] += self.size[rb];
+        self.cluster_id[ra] = new_id;
+        ra
+    }
+
+    fn find_root_excluding(&mut self, exclude: Option<usize>) -> usize {
+        for i in 0..self.parent.len() {
+            let root = self.find(i);
+            if root == i && exclude.map_or(true, |x| x != root) {
+                return root;
+            }
+        }
+        panic!("no active cluster found");
+    }
+}
+
+fn ward_cutoff_factor<F: Float>(size: usize) -> F {
+    let s = F::from(size).expect("cluster size must fit into float");
+    F::from(4.0).unwrap() + F::from(4.0).unwrap() / s
+}
+
+fn ward_candidate_factor<F: Float>(size_a: usize, size_i: usize) -> F {
+    let sa = F::from(size_a).expect("cluster size must fit into float");
+    let si = F::from(size_i).expect("cluster size must fit into float");
+    F::from(4.0).unwrap() * (sa + si) / (sa * si)
+}
+
+fn center<'a, F: Float>(centers: &'a [Option<Vec<F>>], cid: usize) -> &'a [F] {
+    centers[cid]
+        .as_ref()
+        .expect("cluster center must be initialized")
+}
+
+fn grow_chain<F: Float, L: GeometricLinkage<F> + Copy>(
+    data: &TableWithDistance<'_, Vec<F>, SquaredEuclidean, F>,
+    linkage: L,
+    builder: &Builder<F>,
+    centers: &[Option<Vec<F>>],
+    uf: &mut UnionFind,
+    chain: &mut Vec<usize>,
+    visited: &mut [bool],
+    searcher: &mut crate::vptree::PrioritySearcher<F>,
+    is_ward: bool,
+) -> bool {
+    let mut a_root;
+    let mut b_root;
+
+    if chain.len() < 2 {
+        a_root = uf.find_root_excluding(None);
+        b_root = uf.find_root_excluding(Some(a_root));
+        chain.clear();
+        chain.push(a_root);
+    } else {
+        a_root = uf.find(chain[chain.len() - 2]);
+        b_root = uf.find(chain[chain.len() - 1]);
+        if a_root == b_root {
+            chain.truncate(chain.len().saturating_sub(2));
+            return false;
+        }
+        chain.pop();
+    }
+
+    let mut a_cid = uf.cluster_of(a_root);
+    let mut b_cid = uf.cluster_of(b_root);
+    let mut min_link = {
+        let size_a = builder.get_size(a_cid);
+        let size_b = builder.get_size(b_cid);
+        linkage.linkage(
+            center(centers, a_cid),
+            size_a,
+            center(centers, b_cid),
+            size_b,
+        )
+    };
+
+    loop {
+        visited.fill(false);
+
+        let size_a = builder.get_size(a_cid);
+        let a_center = center(centers, a_cid);
+        let cutoff_factor = if is_ward {
+            ward_cutoff_factor(size_a)
+        } else {
+            F::one()
+        };
+
+        searcher.reset_with_limits(cutoff_factor * min_link, F::zero());
+        let query = data.search_by_point(a_center);
+
+        let mut c_root = b_root;
+        let mut c_cid = b_cid;
+
+        while let Some(candidate) = searcher.next_filtered_bounds(&query, |_| false) {
+            let root = uf.find(candidate.index as usize);
+            let cid = uf.cluster_id[root];
+
+            if cid == a_cid || cid == b_cid {
+                if cid < visited.len() {
+                    visited[cid] = true;
+                }
+                continue;
+            }
+
+            if visited.get(cid).copied().unwrap_or(false) {
+                continue;
+            }
+
+            let size_i = builder.get_size(cid);
+            if is_ward {
+                let fi: F = ward_candidate_factor(size_a, size_i);
+                if candidate.lower_bound() > fi * min_link {
+                    visited[cid] = true;
+                    continue;
+                }
+            }
+
+            let link = linkage.linkage(a_center, size_a, center(centers, cid), size_i);
+            if link < min_link {
+                min_link = link;
+                c_root = root;
+                c_cid = cid;
+                searcher.decrease_cutoff(cutoff_factor * link);
+            }
+
+            visited[cid] = true;
+        }
+
+        b_root = a_root;
+        b_cid = a_cid;
+        a_root = c_root;
+        a_cid = c_cid;
+        chain.push(a_root);
+
+        if chain.len() >= 3 && uf.find(chain[chain.len() - 3]) == a_root {
+            break;
+        }
+    }
+
+    true
+}
 
 /// Incremental nearest-neighbor chain clustering for vector data.
 ///
-/// This Rust port currently provides the exact clustering behavior through the
-/// same merge process as linear-memory NN-chain, but without index-accelerated
-/// incremental priority search.
+/// This variant uses incremental VP-tree search to accelerate nearest
+/// neighbour discovery for geometric linkage criteria.
 #[must_use]
-pub fn incremental_nn_chain<F: Float, L: GeometricLinkage<F> + Copy>(
+pub fn incremental_nn_chain<F: Float, L: GeometricLinkage<F> + Copy + 'static>(
     vectors: &[Vec<F>],
     linkage: L,
     is_squared: bool,
 ) -> MergeHistory<F> {
-    linear_memory_nn_chain(vectors, linkage, is_squared)
+    let n = vectors.len();
+    assert!(n > 0, "number of points must be positive");
+
+    let dim = vectors[0].len();
+    assert!(
+        vectors.iter().all(|v| v.len() == dim),
+        "all vectors must have equal dimensionality"
+    );
+
+    let data = TableWithDistance::with_distance(vectors, SquaredEuclidean);
+    let mut rng = StdRng::seed_from_u64(42);
+    let tree = VPTree::new(&data, 3, &mut rng);
+
+    let mut builder = Builder::<F>::new(n);
+    let mut centers: Vec<Option<Vec<F>>> = vec![None; 2 * n - 1];
+    for (i, v) in vectors.iter().enumerate() {
+        centers[i] = Some(v.clone());
+    }
+
+    let mut uf = UnionFind::new(n);
+    let mut chain: Vec<usize> = Vec::with_capacity(n.min(64));
+    let mut visited = vec![false; 2 * n - 1];
+    let mut searcher = tree.priority_searcher();
+    let mut merged = 0usize;
+
+    let is_ward = TypeId::of::<L>() == TypeId::of::<WardLinkage>();
+
+    while merged < n - 1 {
+        if !grow_chain(
+            &data,
+            linkage,
+            &builder,
+            &centers,
+            &mut uf,
+            &mut chain,
+            &mut visited,
+            &mut searcher,
+            is_ward,
+        ) {
+            continue;
+        }
+
+        let a_root = uf.find(chain[chain.len() - 2]);
+        let b_root = uf.find(chain[chain.len() - 1]);
+        if a_root == b_root {
+            chain.truncate(chain.len().saturating_sub(2));
+            continue;
+        }
+
+        let a_cid = uf.cluster_of(a_root);
+        let b_cid = uf.cluster_of(b_root);
+        let size_a = builder.get_size(a_cid);
+        let size_b = builder.get_size(b_cid);
+        let a_center = center(&centers, a_cid);
+        let b_center = center(&centers, b_cid);
+        let min_link = linkage.linkage(a_center, size_a, b_center, size_b);
+
+        let (h1, h2) = if a_cid <= b_cid {
+            (a_cid, b_cid)
+        } else {
+            (b_cid, a_cid)
+        };
+        let new_id = builder.add(h1, linkage.restore_linkage(min_link, is_squared), h2);
+
+        let merged_center = linkage.merge(a_center, size_a, b_center, size_b);
+        centers[new_id] = Some(merged_center);
+
+        let new_root = uf.union(a_root, b_root, new_id);
+
+        if chain.len() >= 3 {
+            chain.truncate(chain.len() - 3);
+        } else {
+            chain.clear();
+        }
+        chain.push(new_root);
+
+        merged += 1;
+    }
+
+    builder.into_merges()
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::hierarchical::linkage::WardLinkage;
-    use crate::cluster::hierarchical::{incremental_nn_chain, linear_memory_nn_chain};
+    use super::incremental_nn_chain;
+    use crate::cluster::hierarchical::WardLinkage;
+    use crate::cluster::hierarchical::geometric_nn_chain::geometric_nn_chain;
 
     #[test]
-    fn incremental_nn_chain_matches_linear_memory_variant() {
+    fn incremental_nn_chain_matches_geometric_variant() {
         let points = vec![
             vec![0.0, 0.0],
             vec![0.2, 0.1],
@@ -34,7 +326,7 @@ mod tests {
         ];
 
         let a = incremental_nn_chain(&points, WardLinkage, false);
-        let b = linear_memory_nn_chain(&points, WardLinkage, false);
+        let b = geometric_nn_chain(&points, WardLinkage, false);
         assert_eq!(a, b);
     }
 }

@@ -177,7 +177,10 @@ fn clark_distance_fallback<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + '
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ClarkDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<f64>> DistanceMetric<[N]> for ClarkDistance {}
+impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceMetric<[N], F>
+    for ClarkDistance
+{
+}
 
 impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
     for ClarkDistance

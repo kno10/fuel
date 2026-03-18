@@ -13,13 +13,15 @@ mod histogram_intersection;
 mod jeffrey;
 mod jensen_shannon;
 mod manhattan;
+mod minkowski;
+mod partial;
 mod squared_euclidean;
 
-pub trait DistanceFunction<T: ?Sized, F = f64> {
+pub trait DistanceFunction<T: ?Sized, F: Float> {
     fn distance(&self, a: &T, b: &T) -> F;
 }
 
-impl<T: ?Sized, D, F> DistanceFunction<T, F> for Box<D>
+impl<T: ?Sized, D, F: Float> DistanceFunction<T, F> for Box<D>
 where
     D: DistanceFunction<T, F>,
 {
@@ -28,7 +30,11 @@ where
     }
 }
 // Marker trait for distance metrics that satisfy the triangle inequality.
-pub trait DistanceMetric<T: ?Sized>: DistanceFunction<T> {}
+pub trait DistanceMetric<T: ?Sized, F: Float>: DistanceFunction<T, F> {}
+
+pub use minkowski::MinkowskiDistance;
+use num_traits::Float;
+pub use partial::PartialDistance;
 
 pub use binary::{
     DiceDistance, HammingDistance, JaccardDistance, KulsinskiDistance, MatchingDistance,

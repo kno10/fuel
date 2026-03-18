@@ -121,21 +121,14 @@ pub fn agnes<F: Float, L: Linkage<F> + Copy>(
                 continue;
             }
             // compute current distances from j to x and y
-            let dist_to_x = if x > j {
-                mat[triangle_index(x, j)]
-            } else {
-                mat[triangle_index(j, x)]
-            };
-            let dist_to_y = if y > j {
-                mat[triangle_index(y, j)]
-            } else {
-                mat[triangle_index(j, y)]
-            };
+            // triangle_index is order‑agnostic, so we can call it
+            // directly without sorting the arguments.
+            let dist_to_x = mat[triangle_index(x, j)];
+            let dist_to_y = mat[triangle_index(y, j)];
             let size_j = builder.get_size(clustermap[j].unwrap());
             let combined = linkage.combine(size_x, dist_to_x, size_y, dist_to_y, size_j, mindist);
-            // store result in slot for pair (max(y,j), min(y,j))
-            let (i, k) = if y > j { (y, j) } else { (j, y) };
-            mat[triangle_index(i, k)] = combined;
+            // triangle_index will handle the ordering of (y,j) internally
+            mat[triangle_index(y, j)] = combined;
         }
 
         // shrink active set if tail objects have disappeared
@@ -151,7 +144,7 @@ pub fn agnes<F: Float, L: Linkage<F> + Copy>(
 mod tests {
     use super::*;
     use crate::cluster::hierarchical::Merge;
-    use crate::cluster::hierarchical::linkage::{
+    use crate::cluster::hierarchical::{
         AverageLinkage, CompleteLinkage, SingleLinkage, WardLinkage,
     };
 

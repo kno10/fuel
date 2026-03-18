@@ -61,6 +61,18 @@ fn read_comma_separated(path: &str, limit: Option<usize>) -> Result<Vec<Vec<f64>
             continue;
         }
 
+        // Detect and skip a header row if it appears to contain non-numeric data.
+        // The problem statement guarantees that a header row begins with a non-number
+        // character, so we can simply try parsing the first row and skip it if
+        // any field fails to parse. This mirrors the logic used in
+        // `benchmark/kd_vs_vp.rs`.
+        if rows.is_empty() {
+            if record.iter().any(|v| v.trim().parse::<f64>().is_err()) {
+                // skip header and continue to next record
+                continue;
+            }
+        }
+
         let dims = record.len();
         if let Some(expected) = expected_dims {
             if expected != dims {
@@ -116,6 +128,13 @@ fn read_whitespace_separated(
         let parts: Vec<&str> = trimmed.split_whitespace().collect();
         let dims = parts.len();
 
+        // skip header row for whitespace-separated data as well
+        if rows.is_empty() {
+            if parts.iter().any(|v| v.trim().parse::<f64>().is_err()) {
+                continue;
+            }
+        }
+
         if let Some(expected) = expected_dims {
             if expected != dims {
                 return Err(format!(
@@ -149,4 +168,39 @@ fn parse_value(value: &str, line_no: usize) -> Result<f64, Box<dyn Error>> {
         .trim()
         .parse::<f64>()
         .map_err(|_| format!("failed to parse numeric value '{value}' at row {line_no}").into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    // helper to get dataset path
+    fn data_path(name: &str) -> String {
+        let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("data/hierarchical");
+        path.push(name);
+        path.to_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn skip_header_csv() {
+        let path = data_path("nested_clusters.csv");
+        let rows = read_numeric_data(&path).unwrap();
+        // first row is header, remaining rows start with numeric
+        assert!(!rows.is_empty());
+        // sanity check first data point
+        assert_eq!(rows[0].len(), 4); // includes label column
+        assert!(rows[0][0].is_finite());
+    }
+
+    #[test]
+    fn error_on_all_header() {
+        // construct a temporary file with just a header to ensure error path still works
+        let mut tmp = std::fs::File::create("test_header_only.csv").unwrap();
+        writeln!(tmp, "a,b,c").unwrap();
+        let err = read_numeric_data("test_header_only.csv").unwrap_err();
+        assert!(err.to_string().contains("no data rows"));
+        std::fs::remove_file("test_header_only.csv").unwrap();
+    }
 }

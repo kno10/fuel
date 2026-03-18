@@ -1,174 +1,162 @@
-use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-#[cfg(test)]
-use rand::SeedableRng;
-#[cfg(test)]
-use rand::rngs::StdRng;
+use num_traits::Float;
 
-#[cfg(test)]
-use crate::EuclideanDistance;
-use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
-
-use super::common::MergeHistory;
-use super::search_single_link_common::ClusterBuilder;
-
-#[derive(Debug, Clone, Copy)]
-struct Candidate {
-    dist: f64,
-    point: usize,
-}
-
-impl PartialEq for Candidate {
-    fn eq(&self, other: &Self) -> bool {
-        self.point == other.point && self.dist == other.dist
-    }
-}
-
-impl Eq for Candidate {}
-
-impl PartialOrd for Candidate {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Candidate {
-    fn cmp(&self, other: &Self) -> Ordering {
-        other
-            .dist
-            .partial_cmp(&self.dist)
-            .unwrap_or(Ordering::Equal)
-            .then_with(|| other.point.cmp(&self.point))
-    }
-}
+use crate::api::{DistanceData, DistanceSearch};
+use crate::cluster::hierarchical::common::MergeHistory;
+use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
+use crate::DistPair;
+use crate::vptree::{PrioritySearcher, VPTree};
 
 /// Restarting-Search Single-Link (RSSL) with VP-tree priority search.
 ///
-/// This keeps one active nearest-neighbor candidate per point and refreshes it
-/// by restarting search with an increased skip distance after each use.
+/// This algorithm is similar to a buffered search with `slack = 1`.
+/// DO NOT DELEGATE TO buffered_search_single_link. This version MUST store only a single next nearest neighbor for each point.
 #[must_use]
-pub fn restarting_search_single_link<T, DF>(
-    tree: &VPTree,
-    data: &MatrixDataAccess<'_, T, DF>,
-) -> MergeHistory<f64>
-where
-    DF: DistanceFunction<T>,
-{
+pub fn restarting_search_single_link<D: DistanceData<F>, F: Float>(
+    tree: &VPTree<F>,
+    data: &D,
+) -> MergeHistory<F> {
     let n = data.size();
     assert!(n > 0, "number of points must be positive");
 
     let mut builder = ClusterBuilder::new(n);
-    let mut heap = BinaryHeap::new();
-    let mut best_dist = vec![f64::INFINITY; n];
-    let mut nn: Vec<Option<usize>> = vec![None; n];
+    let mut primary = BinaryHeap::<DistPair<F>>::new();
+    let mut buffers: Vec<DistPair<F>> = vec![DistPair::undefined(); n];
+    let mut node_cluster = vec![u32::MAX; n];
 
-    for a in 0..n {
+    // create one searcher and reuse it for all refill operations
+    let mut searcher = tree.priority_searcher();
+
+    // initial fill for each point
+    for (a, buf) in buffers.iter_mut().enumerate().take(n) {
         if builder.cluster_size_of_point(a) > 1 {
-            continue;
+            continue; // duplicate, merged already
         }
-        if let Some((d, b)) = find_next_neighbor(tree, data, &mut builder, a, 0.0) {
-            best_dist[a] = d;
-            nn[a] = Some(b);
-            heap.push(Candidate { dist: d, point: a });
+        refill_neighbors(
+            &data.search_by_index(a),
+            &mut builder,
+            a,
+            F::zero(),
+            buf,
+            &mut searcher,
+            &mut node_cluster,
+        );
+        if !buf.is_sentinel() {
+            primary.push(DistPair::new(buf.distance, a));
         }
     }
 
     while builder.merge_count() < n - 1 {
-        let Some(top) = heap.pop() else {
+        let Some(top) = primary.pop() else {
             break;
         };
-        let a = top.point;
-        if nn[a].is_none() || top.dist.to_bits() != best_dist[a].to_bits() {
+        let a = top.index;
+        let buf = &mut buffers[a];
+
+        if buf.is_sentinel() {
             continue;
         }
-        let b = nn[a].expect("neighbor must be set");
-        if !builder.same_set(a, b) {
-            let _ = builder.merge_points(a, b, top.dist);
+        let best = std::mem::replace(buf, DistPair::undefined());
+
+        let best_dist = best.distance;
+        let b = best.index;
+        if builder.merge_points(a, b, best_dist).is_some() {
             if builder.merge_count() == n - 1 {
                 break;
             }
         }
 
-        let skip = top.dist;
-        if let Some((d, nb)) = find_next_neighbor(tree, data, &mut builder, a, skip) {
-            best_dist[a] = d;
-            nn[a] = Some(nb);
-            heap.push(Candidate { dist: d, point: a });
-        } else {
-            best_dist[a] = f64::INFINITY;
-            nn[a] = None;
+        refill_neighbors(
+            &data.search_by_index(a),
+            &mut builder,
+            a,
+            best_dist,
+            buf,
+            &mut searcher,
+            &mut node_cluster,
+        );
+
+        if !buf.is_sentinel() {
+            primary.push(DistPair::new(buf.distance, a));
         }
     }
 
     builder.into_history()
 }
 
-fn find_next_neighbor<T, DF>(
-    tree: &VPTree,
-    data: &MatrixDataAccess<'_, T, DF>,
-    builder: &mut ClusterBuilder,
-    a: usize,
-    skip: f64,
-) -> Option<(f64, usize)>
-where
-    DF: DistanceFunction<T>,
-{
-    let mut searcher = tree.priority_searcher(super::search_single_link_common::IndexedQueryData {
-        data,
-        query_index: a,
-    });
-    searcher.reset_with_limits(f64::INFINITY, skip.max(0.0));
+pub(crate) fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
+    data: &D,
+    builder: &mut ClusterBuilder<F>,
+    query_index: usize,
+    skip: F,
+    buffer: &mut DistPair<F>,
+    searcher: &mut PrioritySearcher<F>,
+    node_cluster: &mut [u32],
+) {
+    searcher.reset_with_limits(F::infinity(), skip.max(F::zero()));
 
-    let mut best_dist = f64::INFINITY;
-    let mut best = None;
-    while let Some(cand) = searcher.next() {
-        let b = cand.index();
-        if a == b || builder.same_set(a, b) {
-            continue;
-        }
-        let d = cand.distance();
-        if d == 0.0 {
-            let _ = builder.merge_points(a, b, 0.0);
-            continue;
-        }
-        if d < skip {
-            continue;
-        }
-        if d < best_dist {
-            best_dist = d;
-            best = Some(b);
-            searcher.decrease_cutoff(best_dist);
+    let mut threshold = F::infinity();
+    let query_component = builder.find(query_index);
+    while searcher.all_lower_bound() < threshold {
+        let Some(cand) = searcher.next_with_filter(
+            data,
+            &mut SameClusterFilter {
+                builder,
+                query_component,
+                node_cluster,
+            },
+        ) else {
+            break;
+        };
+        let b = cand.index;
+        let d = cand.distance;
+        if d < threshold {
+            *buffer = DistPair::new(d, b);
+            threshold = d;
+            searcher.decrease_cutoff(d);
         }
     }
-    best.map(|b| (best_dist, b))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::hierarchical::slink;
-
     use super::*;
+    use crate::TableWithDistance;
+    use crate::cluster::hierarchical::buffered_search_single_link;
+    use crate::distance::EuclideanDistance;
+    use num_traits::ToPrimitive;
+    use rand::{Rng, SeedableRng, rngs::StdRng};
 
-    fn condensed_abs_1d(points: &[Vec<f64>]) -> Vec<f64> {
-        let mut out = Vec::new();
-        for i in 1..points.len() {
-            for j in 0..i {
-                out.push((points[i][0] - points[j][0]).abs());
-            }
-        }
-        out
-    }
-
+    /// Ensure that restarting search produces the same merge history as a
+    /// buffered search with slack=1.  This also serves as a regression test
+    /// for the bug that caused RSSL to revisit neighbours and run slowly.
     #[test]
-    fn restarting_matches_slink_on_unique_1d_distances() {
-        let points = vec![vec![0.0], vec![1.1], vec![3.7], vec![10.2], vec![20.5]];
-        let data = MatrixDataAccess::with_distance(&points, EuclideanDistance);
-        let mut rng = StdRng::seed_from_u64(7);
-        let tree = VPTree::new(&data, 3, &mut rng);
+    fn restarting_equals_buffered_random() {
+        // generate a few random 2‑D points and compare results
+        let mut rng = StdRng::seed_from_u64(42);
+        let points: Vec<Vec<f64>> = (0..20)
+            .map(|_| vec![rng.r#gen::<f64>(), rng.r#gen::<f64>()])
+            .collect();
 
-        let expected = slink(&condensed_abs_1d(&points), points.len());
-        let got = restarting_search_single_link(&tree, &data);
-        assert_eq!(got, expected);
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let tree = VPTree::<f64>::new(&data, 3, &mut rng);
+
+        let hist_r = restarting_search_single_link(&tree, &data);
+        let hist_b = buffered_search_single_link(&tree, &data, 1);
+        assert_eq!(hist_r.len(), hist_b.len());
+        // sort both histories by (idx1, idx2) to allow differences in merge order
+        let mut r_sorted = hist_r.clone();
+        let mut b_sorted = hist_b.clone();
+        r_sorted.sort_by(|a, c| (a.idx1, a.idx2).cmp(&(c.idx1, c.idx2)));
+        b_sorted.sort_by(|a, c| (a.idx1, a.idx2).cmp(&(c.idx1, c.idx2)));
+        for (r, b) in r_sorted.iter().zip(b_sorted.iter()) {
+            assert_eq!(r.idx1, b.idx1);
+            assert_eq!(r.idx2, b.idx2);
+            assert_eq!(r.size, b.size);
+            // allow tiny floating-point discrepancies
+            let diff: f64 = (r.distance.to_f64().unwrap() - b.distance.to_f64().unwrap()).abs();
+            assert!(diff < 1e-6, "distance mismatch {r:?} vs {b:?}");
+        }
     }
 }

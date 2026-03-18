@@ -1,13 +1,24 @@
-use std::cmp::Ordering;
+use num_traits::{Float, FromPrimitive};
 
+use super::common::{OutlierScoreEntry, sort_outlier_scores};
 #[cfg(test)]
-use crate::EuclideanDistance;
-use crate::{DataAccess, DistanceFunction, MatrixDataAccess, VPTree};
+use crate::distance::EuclideanDistance;
+use crate::{DistanceData, KnnSearch};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LofOutlierScore {
+pub struct LofOutlierScore<F: Float> {
     pub index: usize,
-    pub score: f64,
+    pub score: F,
+}
+
+impl<F: Float> OutlierScoreEntry<F> for LofOutlierScore<F> {
+    fn index(&self) -> usize {
+        self.index
+    }
+
+    fn score(&self) -> F {
+        self.score
+    }
 }
 
 /// Compute Local Outlier Factor (LOF) scores.
@@ -18,11 +29,16 @@ pub struct LofOutlierScore {
 /// # Panics
 ///
 /// Panics if `k == 0`.
-pub fn lof_outlier_scores<T>(
-    tree: &VPTree,
-    data: &MatrixDataAccess<'_, T, impl DistanceFunction<T>>,
+pub fn lof_outlier_scores<S, D, F>(
+    tree: &S,
+    data: D,
     k: usize,
-) -> Vec<LofOutlierScore> {
+) -> Vec<LofOutlierScore<F>>
+where
+    F: Float + FromPrimitive + std::iter::Sum,
+    D: DistanceData<F>,
+    S: KnnSearch<F, D>,
+{
     assert!(k > 0, "k must be greater than 0");
 
     let size = data.size();
@@ -31,46 +47,48 @@ pub fn lof_outlier_scores<T>(
     if k_effective == 0 {
         return vec![LofOutlierScore {
             index: 0,
-            score: 1.0,
+            score: F::one(),
         }];
     }
 
-    let mut neighborhoods: Vec<Vec<(usize, f64)>> = vec![Vec::new(); size];
-    let mut k_distances: Vec<f64> = vec![0.0; size];
+    let mut neighborhoods: Vec<Vec<(usize, F)>> = vec![Vec::new(); size];
+    let mut k_distances: Vec<F> = vec![F::zero(); size];
 
     for idx in data.iter() {
-        let neighbors: Vec<(usize, f64)> = tree
-            .search_knn(&data.with_query_index(idx), (k_effective + 1).min(size))
+        let neighbors: Vec<(usize, F)> = tree
+            .search_knn_by_index(&data, idx, (k_effective + 1).min(size))
             .into_iter()
-            .filter(|neighbor| neighbor.index() != idx)
+            .filter(|neighbor| neighbor.index != idx)
             .take(k_effective)
-            .map(|neighbor| (neighbor.index(), neighbor.distance()))
+            .map(|neighbor| (neighbor.index, neighbor.distance))
             .collect();
 
-        let k_distance = neighbors.last().map_or(0.0, |(_, distance)| *distance);
+        let k_distance = neighbors
+            .last()
+            .map_or(F::zero(), |(_, distance)| *distance);
 
         neighborhoods[idx] = neighbors;
         k_distances[idx] = k_distance;
     }
 
-    let mut local_reachability_density = vec![0.0; size];
+    let mut local_reachability_density = vec![F::zero(); size];
 
     for idx in 0..size {
         let neighbors = &neighborhoods[idx];
         if neighbors.is_empty() {
-            local_reachability_density[idx] = f64::INFINITY;
+            local_reachability_density[idx] = F::infinity();
             continue;
         }
 
         let reachability_sum = neighbors
             .iter()
             .map(|(neighbor_idx, distance)| k_distances[*neighbor_idx].max(*distance))
-            .sum::<f64>();
+            .sum::<F>();
 
-        local_reachability_density[idx] = if reachability_sum > 0.0 {
-            neighbors.len() as f64 / reachability_sum
+        local_reachability_density[idx] = if reachability_sum > F::zero() {
+            F::from_usize(neighbors.len()).unwrap_or(F::zero()) / reachability_sum
         } else {
-            f64::INFINITY
+            F::infinity()
         };
     }
 
@@ -80,24 +98,21 @@ pub fn lof_outlier_scores<T>(
         let neighbors = &neighborhoods[idx];
 
         let score = if neighbors.is_empty() || local_reachability_density[idx].is_infinite() {
-            1.0
+            F::one()
         } else {
             let neighbor_lrd_sum = neighbors
                 .iter()
                 .map(|(neighbor_idx, _)| local_reachability_density[*neighbor_idx])
-                .sum::<f64>();
-            neighbor_lrd_sum / (local_reachability_density[idx] * neighbors.len() as f64)
+                .sum::<F>();
+            neighbor_lrd_sum
+                / (local_reachability_density[idx]
+                    * F::from_usize(neighbors.len()).unwrap_or(F::zero()))
         };
 
         scores.push(LofOutlierScore { index: idx, score });
     }
 
-    scores.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(Ordering::Equal)
-            .then_with(|| a.index.cmp(&b.index))
-    });
+    sort_outlier_scores(&mut scores);
 
     scores
 }
@@ -108,6 +123,9 @@ mod tests {
 
     use rand::SeedableRng;
     use rand::rngs::StdRng;
+
+    use crate::TableWithDistance;
+    use crate::vptree::VPTree;
 
     use super::*;
 
@@ -121,9 +139,9 @@ mod tests {
             vec![6.0, 6.0],
         ];
 
-        let data = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(23);
-        let tree = VPTree::new(&data, 2, &mut rng);
+        let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
         let scores = lof_outlier_scores(&tree, &data, 2);
 
@@ -144,9 +162,9 @@ mod tests {
     fn lof_matches_sklearn_reference_values() {
         let points = vec![vec![1.0, 1.0], vec![1.0, 2.0], vec![2.0, 1.0]];
 
-        let data = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(123);
-        let tree = VPTree::new(&data, 2, &mut rng);
+        let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
         let scores = lof_outlier_scores(&tree, &data, 2);
 
@@ -179,9 +197,9 @@ mod tests {
             vec![-4.0, 2.0],
         ];
 
-        let data = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(777);
-        let tree = VPTree::new(&data, 4, &mut rng);
+        let tree: VPTree<f64> = VPTree::new(&data, 4, &mut rng);
 
         let scores = lof_outlier_scores(&tree, &data, 5);
         assert_eq!(scores.len(), points.len());
@@ -215,9 +233,9 @@ mod tests {
         points.extend((0..150).map(|i| vec![0.1 + (i as f64) * 0.001]));
         points.extend((0..10).map(|i| vec![50.0 + i as f64]));
 
-        let data = MatrixDataAccess::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(20260301);
-        let tree = VPTree::new(&data, 8, &mut rng);
+        let tree: VPTree<f64> = VPTree::new(&data, 8, &mut rng);
         let scores = lof_outlier_scores(&tree, &data, 5);
 
         assert!(scores.iter().all(|entry| !entry.score.is_nan()));

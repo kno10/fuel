@@ -3,21 +3,17 @@ use std::cmp::Ordering;
 use num_traits::Float;
 use rand::{Rng, seq::index};
 
-use crate::DataAccess;
+use crate::DistanceData;
 
 use super::{Bounds, PrioritySearcher, VPTree, vpsize};
 
 impl<T: Float> VPTree<T> {
-    fn cast_distance(distance: f64) -> T {
-        T::from(distance).expect("distance cannot be represented by target float type")
-    }
-
     /// Create a new VP-Tree from the given data with improved vantage point selection
     ///
     /// # Panics
     ///
     /// Panics if the input data set is empty.
-    pub fn new<D: DataAccess, R: Rng>(data: &D, sample_size: usize, rng: &mut R) -> Self {
+    pub fn new<D: DistanceData<T>, R: Rng>(data: &D, sample_size: usize, rng: &mut R) -> Self {
         let size = data.size();
         assert!(size > 0, "Data set must contain at least one point.");
 
@@ -45,13 +41,13 @@ impl<T: Float> VPTree<T> {
     ///
     /// The returned searcher can be reused across queries with `reset` to avoid
     /// repeated internal reallocations.
-    pub fn priority_searcher<D: DataAccess>(&self, data: D) -> PrioritySearcher<'_, D, T> {
-        PrioritySearcher::new(self, data)
+    pub fn priority_searcher(&self) -> PrioritySearcher<'_, T> {
+        PrioritySearcher::new(self)
     }
 
     /// Recursively build the VP-Tree with sampling for vantage point selection
     #[allow(clippy::too_many_arguments)]
-    fn build_tree<D: DataAccess, R: Rng>(
+    fn build_tree<D: DistanceData<T>, R: Rng>(
         &mut self,
         data: &D,
         indices: &mut [usize],
@@ -93,7 +89,7 @@ impl<T: Float> VPTree<T> {
         // Partition remaining points based on distance to vantage point
         let mut dists: Vec<(T, usize)> = Vec::with_capacity(right - left - 1);
         for &idx in indices.iter().take(right).skip(left + 1) {
-            dists.push((Self::cast_distance(data.distance(vp_idx, idx)), idx));
+            dists.push((data.distance(vp_idx, idx), idx));
         }
 
         // Sort by distance
@@ -151,7 +147,7 @@ impl<T: Float> VPTree<T> {
     }
 
     /// Choose a vantage point from a sample that maximizes the spread of distances
-    fn choose_vantage_point<D: DataAccess, R: Rng>(
+    fn choose_vantage_point<D: DistanceData<T>, R: Rng>(
         data: &D,
         indices: &[usize],
         left: usize,
@@ -177,7 +173,7 @@ impl<T: Float> VPTree<T> {
             let mut distances = Vec::with_capacity(sample_size);
             for &p in &sample {
                 if p != vp {
-                    distances.push(Self::cast_distance(data.distance(vp, p)));
+                    distances.push(data.distance(vp, p));
                 }
             }
 
