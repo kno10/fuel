@@ -1,88 +1,85 @@
-use crate::intrinsicdimensionality::{
-    DistanceBasedIntrinsicDimensionalityEstimator, KnnBasedIntrinsicDimensionalityEstimator,
-};
+use crate::intrinsicdimensionality::DistanceIDEstimator;
 
-pub fn method_of_moments(distances: &[f64]) -> f64 {
-    let n = distances.len();
-    if n < 2 {
+/// Method-of-moments intrinsic dimensionality estimator.
+///
+/// Reference:
+/// - A. Kleindessner et al., "Geometric Moment-based Estimation of Intrinsic Dimension".
+/// - EM algorithms from ELKI ID estimators.
+///
+/// For sorted distances \(d_1, ..., d_n\), it uses critical ratio:
+/// \(v_1 = \frac{1}{n-1} \sum_{i=1}^{n-1} \frac{d_i}{d_n} \) and
+/// \(\hat{m} = \frac{v_1}{1-v_1} \).
+///
+/// Returns `NaN` for invalid / insufficient data.
+pub fn method_of_moments_id(distances: &[f64]) -> f64 {
+    let len = distances.len();
+    if len < 2 {
         return f64::NAN;
     }
-    let last = n - 1;
-    let mut v1 = 0.0;
-    let mut valid = 0;
-    for &v in &distances[..last] {
-        if v > 0.0 {
-            v1 += v;
-            valid += 1;
+
+    let w = distances[len - 1];
+
+    let (mut v1, mut valid) = (0.0, 0);
+    for &d in &distances[..len - 1] {
+        if !d.is_finite() || d <= 0.0 {
+            continue;
         }
+        v1 += d;
+        valid += 1;
     }
+
     if valid <= 1 {
         return f64::NAN;
     }
-    let w = distances[last];
-    v1 /= (valid as f64) * w;
-    if v1 >= 1.0 {
-        return f64::INFINITY;
-    }
-    v1 / (1.0 - v1)
+
+    let v1 = v1 / ((valid as f64) * w);
+    if v1 >= 1.0 { f64::INFINITY } else { v1 / (1.0 - v1) }
 }
 
 pub struct MethodOfMoments;
-pub type MOMEstimator = MethodOfMoments;
 
-impl DistanceBasedIntrinsicDimensionalityEstimator for MethodOfMoments {
-    fn estimate_from_distances(distances: &[f64]) -> f64 { method_of_moments(distances) }
-}
-
-pub fn method_of_moments_from_knn<'a, S, D, F>(
-    tree: &S, data: &'a D, query_idx: usize, k: usize,
-) -> f64
-where
-    F: crate::Float,
-    D: crate::DistanceData<F> + 'a,
-    S: crate::KnnSearch<F, D::Query<'a>> + Sync,
-{
-    MethodOfMoments::estimate_from_knn(tree, data, query_idx, k)
+impl DistanceIDEstimator for MethodOfMoments {
+    fn estimate_from_distances(distances: &[f64]) -> f64 { method_of_moments_id(distances) }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intrinsicdimensionality::{
-        KnnBasedIntrinsicDimensionalityEstimator, make_hypersphere_embedded_data, regression_test,
-        test_zeros,
+    use crate::intrinsicdimensionality::KNNIDEstimator;
+    use crate::intrinsicdimensionality::test::{
+        make_intrinsic_subspace_data, regression_test, test_zeros,
     };
 
     #[test]
     fn method_of_moments_regression() {
-        let v = method_of_moments(&[1.0, 2.0, 3.0, 4.0]);
+        let v = method_of_moments_id(&[1.0, 2.0, 3.0, 4.0]);
         assert!(v.is_finite());
         assert_eq!(v, MethodOfMoments::estimate_from_distances(&[1.0, 2.0, 3.0, 4.0]));
     }
 
     #[test]
     fn mom_estimator_regression() {
-        regression_test::<MOMEstimator>(5, 1000, 0, 4.8704752769340836);
-        regression_test::<MOMEstimator>(7, 10000, 0, 6.946161496762817);
+        regression_test::<MethodOfMoments>(5, 1000, 0, 4.8704752769340836);
+        regression_test::<MethodOfMoments>(7, 10000, 0, 6.946161496762817);
     }
 
     #[test]
-    fn mom_estimator_zeros() { test_zeros::<MOMEstimator>(); }
+    fn mom_estimator_zeros() { test_zeros::<MethodOfMoments>(); }
 
     #[test]
     fn mom_estimator_hypersphere_close_to_5() {
-        let data = make_hypersphere_embedded_data(10000, 0);
+        let data = make_intrinsic_subspace_data(10000, 0);
         let table = crate::data::TableWithDistance::with_distance(
             &data,
             crate::distance::EuclideanDistance,
         );
         let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
 
-        let estimate = MOMEstimator::estimate_from_knn(&tree, &table, 0, 100);
-        let expected = 5.375015257293149;
+        let estimate = MethodOfMoments::estimate_from_knn(&tree, &table, 0, 100);
+        let expected = 5.285970290371168;
         assert!(
             (estimate - expected).abs() < 1e-6,
-            "mom estimate {} deviates from data-based expected {}",
+            "MoM estimate {} deviates from data-based expected {}",
             estimate,
             expected
         );

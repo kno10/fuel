@@ -4,13 +4,17 @@ use ndarray_linalg::{Eigh, UPLO};
 use crate::api::IndexQuery;
 use crate::{DistanceData, Float, KnnSearch};
 
-/// Local PCA intrinsic dimensionality estimation from kNN neighborhoods.
+/// Local PCA intrinsic dimensionality estimator.
 ///
-/// This baseline estimator computes a covariance matrix of neighbor coordinates
-/// and performs a simple power-iteration eigenvalue decomposition.
-/// It returns the minimum number of principal components required to reach
-/// at least `alpha` fraction of explained variance.
-pub fn local_pca_intrinsic_dimensionality<'a, S, D, F>(
+/// Reference:
+/// - A. K. Jain, "Fundamentals of Digital Image Processing" (PCA as a dimension estimator)
+///
+/// Given k-nearest neighbor points, compute covariance matrix `C` and spectral decomposition:
+/// \(C = V \Lambda V^T\).
+///
+/// ID is the smallest integer `m` such that:
+/// \(\sum_{i=1}^m \lambda_i / \sum_{j=1}^d \lambda_j \ge \alpha\).
+pub fn local_pca_id<'a, S, D, F>(
     tree: &S, data: &'a D, query_idx: usize, k: usize, alpha: f64,
 ) -> f64
 where
@@ -40,11 +44,11 @@ where
     }
 
     // Build centered data matrix of size (k x dim)
-    let mut points = vec![0.0; k * dim];
-    for (i, n) in neighbors.iter().enumerate() {
+    let mut points = Vec::with_capacity(k * dim);
+    for n in neighbors.iter() {
         let pt = data.point(n.index);
-        for j in 0..dim {
-            points[i * dim + j] = pt[j].to_f64().unwrap_or(0.0);
+        for &x in pt.iter().take(dim) {
+            points.push(x.to_f64().unwrap_or(0.0));
         }
     }
 
@@ -117,9 +121,10 @@ where
     dim as f64
 }
 
-pub struct LocalPCA;
+/// Type wrapper for Local PCA ID estimator.
+pub struct LocalPCAID;
 
-impl LocalPCA {
+impl LocalPCAID {
     pub fn estimate_from_knn<'a, S, D, F>(
         tree: &S, data: &'a D, query_idx: usize, k: usize, alpha: f64,
     ) -> f64
@@ -128,7 +133,7 @@ impl LocalPCA {
         D: DistanceData<F> + crate::VectorData<F> + 'a,
         S: KnnSearch<F, D::Query<'a>> + Sync,
     {
-        local_pca_intrinsic_dimensionality(tree, data, query_idx, k, alpha)
+        local_pca_id(tree, data, query_idx, k, alpha)
     }
 }
 
@@ -137,6 +142,7 @@ mod tests {
     use super::*;
     use crate::data::TableWithDistance;
     use crate::distance::EuclideanDistance;
+    use crate::intrinsicdimensionality::test::make_intrinsic_subspace_data;
     use crate::kd::{AxisCycleSplit, KdTree};
 
     #[test]
@@ -146,7 +152,7 @@ mod tests {
         let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let tree = KdTree::new(&data, AxisCycleSplit);
 
-        let dim = LocalPCA::estimate_from_knn(&tree, &data, 0, 4, 0.95);
+        let dim = LocalPCAID::estimate_from_knn(&tree, &data, 0, 4, 0.95);
         assert!((1.0..=2.0).contains(&dim));
     }
 
@@ -157,20 +163,20 @@ mod tests {
         let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let tree = KdTree::new(&data, AxisCycleSplit);
 
-        let dim = LocalPCA::estimate_from_knn(&tree, &data, 0, 4, 0.95);
+        let dim = LocalPCAID::estimate_from_knn(&tree, &data, 0, 4, 0.95);
         assert!((1.0..=2.0).contains(&dim));
     }
 
     #[test]
     fn local_pca_estimator_hypersphere_close_to_5() {
-        let data = crate::intrinsicdimensionality::make_hypersphere_embedded_data(1000, 0);
+        let data = make_intrinsic_subspace_data(1000, 0);
         let table = crate::data::TableWithDistance::with_distance(
             &data,
             crate::distance::EuclideanDistance,
         );
         let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
 
-        let estimate = LocalPCA::estimate_from_knn(&tree, &table, 0, 100, 0.95);
+        let estimate = LocalPCAID::estimate_from_knn(&tree, &table, 0, 100, 0.95);
         let expected = 5.0;
 
         assert!(

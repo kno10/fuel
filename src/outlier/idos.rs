@@ -1,6 +1,6 @@
 use std::f64;
 
-use crate::intrinsicdimensionality::KnnBasedIntrinsicDimensionalityEstimator;
+use crate::intrinsicdimensionality::KNNIDEstimator;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
 use crate::{DistanceData, Float, KnnSearch};
 
@@ -15,7 +15,7 @@ where
     F: Float + Send + Sync,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
-    E: KnnBasedIntrinsicDimensionalityEstimator,
+    E: KNNIDEstimator,
 {
     let size = data.size();
     if size == 0 {
@@ -56,7 +56,7 @@ mod tests {
     use crate::data::TableWithDistance;
     use crate::distance::EuclideanDistance;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
-    use crate::intrinsicdimensionality::{AggregatedHillEstimator, HillEstimator};
+    use crate::intrinsicdimensionality::{AggregatedHillID, HillID};
     use crate::outlier::common::*;
     use crate::vptree::VPTree;
 
@@ -67,7 +67,7 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let result = intrinsic_dimensionality_outlier_score::<_, _, _, AggregatedHillEstimator>(
+        let result = intrinsic_dimensionality_outlier_score::<_, _, _, AggregatedHillID>(
             &tree, &data, 10, 10,
         );
         let reference = load_reference_scores();
@@ -92,7 +92,7 @@ mod tests {
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
         let result =
-            intrinsic_dimensionality_outlier_score::<_, _, _, HillEstimator>(&tree, &data, 20, 20);
+            intrinsic_dimensionality_outlier_score::<_, _, _, HillID>(&tree, &data, 20, 20);
         let reference = load_reference_scores();
         let expected = reference.get("IDOS-20-Hill").expect("No reference for IDOS-20-Hill");
         let labels: Vec<u8> = label_from_reference(&reference);

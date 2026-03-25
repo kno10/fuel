@@ -1,81 +1,85 @@
-use crate::intrinsicdimensionality::{
-    DistanceBasedIntrinsicDimensionalityEstimator, KnnBasedIntrinsicDimensionalityEstimator,
-};
+use crate::intrinsicdimensionality::DistanceIDEstimator;
 
-pub struct ZipfEstimator;
+/// Zipf estimator (qq-estimator) of intrinsic dimensionality.
+///
+/// Reference:
+///
+/// M. Kratz, S. I. Resnick
+/// The QQ-estimator and heavy tails
+/// Communications in Statistics. Stochastic Models 12(4)
+///
+/// J. Schultze, J. Steinebach
+/// On Least Squares Estimates of an Exponential Tail Coefficient
+/// Statistics & Risk Modeling 14(4)
+///
+/// J. Beirlant, G. Dierckx, A. Guillou
+/// Estimation of the extreme-value index and generalized quantile plots
+/// Bernoulli 11(6)
+///
+/// Uses weighted least-squares regression on \(\ln(r_i)\) vs \(\ln(d_i)\) with bias-corrected rank weights.
+///
+/// Returns `NaN` for insufficient or invalid data.
+pub fn zipf_id(distances: &[f64]) -> f64 {
+    let begin = crate::intrinsicdimensionality::find_begin(distances);
+    let len_d = distances.len() - begin;
+    if len_d < 2 {
+        return f64::NAN;
+    }
+    let len = len_d as f64;
+    let bias = 0.6;
+    let nplus1 = len + bias;
 
-pub fn zipf_estimate_from_knn<'a, S, D, F>(tree: &S, data: &'a D, query_idx: usize, k: usize) -> f64
-where
-    F: crate::Float,
-    D: crate::DistanceData<F> + 'a,
-    S: crate::KnnSearch<F, D::Query<'a>> + Sync,
-{
-    ZipfEstimator::estimate_from_knn(tree, data, query_idx, k)
+    let (mut wls, mut ws, mut ls, mut wws) = (0.0, 0.0, 0.0, 0.0);
+    for (i, &v) in distances[begin..].iter().enumerate() {
+        if !v.is_finite() || v <= 0.0 {
+            continue;
+        }
+        let logv = v.ln();
+        let weight = (nplus1 / ((i as f64) + bias)).ln();
+        wls += weight * logv;
+        ws += weight;
+        ls += logv;
+        wws += weight * weight;
+    }
+
+    let denom = len * wws - ws * ws;
+    if denom == 0.0 { f64::NAN } else { -1.0 / ((len * wls - ws * ls) / denom) }
 }
 
-impl DistanceBasedIntrinsicDimensionalityEstimator for ZipfEstimator {
-    fn estimate_from_distances(distances: &[f64]) -> f64 {
-        let n = distances.len();
-        let mut begin = 0;
-        while begin < n && distances[begin] <= 0.0 {
-            begin += 1;
-        }
-        let len = (n - begin) as f64;
-        if len < 2.0 {
-            return f64::NAN;
-        }
-        let bias = 0.6;
-        let nplus1 = len + bias;
+pub struct ZipfID;
 
-        let (mut wls, mut ws, mut ls, mut wws) = (0.0, 0.0, 0.0, 0.0);
-        for (i, &v) in distances[begin..].iter().enumerate() {
-            if v <= 0.0 {
-                continue;
-            }
-            let logv = v.ln();
-            let weight = (nplus1 / ((i as f64) + bias)).ln();
-            wls += weight * logv;
-            ws += weight;
-            ls += logv;
-            wws += weight * weight;
-        }
-
-        let denom = len * wws - ws * ws;
-        if denom == 0.0 {
-            return f64::NAN;
-        }
-        -1.0 / ((len * wls - ws * ls) / denom)
-    }
+impl DistanceIDEstimator for ZipfID {
+    fn estimate_from_distances(distances: &[f64]) -> f64 { zipf_id(distances) }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intrinsicdimensionality::{
-        KnnBasedIntrinsicDimensionalityEstimator, make_hypersphere_embedded_data, regression_test,
-        test_zeros,
+    use crate::intrinsicdimensionality::KNNIDEstimator;
+    use crate::intrinsicdimensionality::test::{
+        make_intrinsic_subspace_data, regression_test, test_zeros,
     };
 
     #[test]
     fn zipf_estimator_regression() {
-        regression_test::<ZipfEstimator>(5, 1000, 0, 4.702443328729227);
-        regression_test::<ZipfEstimator>(7, 10000, 0, 6.943453727205677);
+        regression_test::<ZipfID>(5, 1000, 0, 4.702443328729227);
+        regression_test::<ZipfID>(7, 10000, 0, 6.943453727205677);
     }
 
     #[test]
-    fn zipf_estimator_zeros() { test_zeros::<ZipfEstimator>(); }
+    fn zipf_estimator_zeros() { test_zeros::<ZipfID>(); }
 
     #[test]
     fn zipf_estimator_hypersphere_close_to_5() {
-        let data = make_hypersphere_embedded_data(1000, 0);
+        let data = make_intrinsic_subspace_data(1000, 0);
         let table = crate::data::TableWithDistance::with_distance(
             &data,
             crate::distance::EuclideanDistance,
         );
         let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
 
-        let estimate = ZipfEstimator::estimate_from_knn(&tree, &table, 0, 100);
-        let expected = 4.6440800430869675;
+        let estimate = ZipfID::estimate_from_knn(&tree, &table, 0, 100);
+        let expected = 4.873777675926932;
         assert!(
             (estimate - expected).abs() < 1e-6,
             "zipf estimate {} deviates from data-based expected {}",

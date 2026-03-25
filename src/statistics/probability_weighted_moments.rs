@@ -2,7 +2,10 @@
 /// Compute sample L-moments from sorted data using the method of probability-weighted moments.
 ///
 /// The returned vector contains B(0)=L1, B(1)=L2, then tau3... for nmom>=3.
-pub fn sam_lmr(sorted: &[f64], nmom: usize) -> Vec<f64> {
+pub fn sam_lmr<I>(sorted: I, nmom: usize) -> Vec<f64>
+where
+    I: ExactSizeIterator<Item = f64>,
+{
     let n = sorted.len();
     let nmom = std::cmp::min(n, nmom);
     if nmom == 0 {
@@ -10,16 +13,16 @@ pub fn sam_lmr(sorted: &[f64], nmom: usize) -> Vec<f64> {
     }
     let mut sum = vec![0.0; nmom];
 
-    for (i, &val) in sorted.iter().enumerate() {
+    for (i, val) in sorted.enumerate() {
         if !val.is_finite() {
             continue;
         }
         let mut term = val;
         sum[0] += term;
         let mut z = i as f64;
-        for j in 1..nmom {
+        for value in sum.iter_mut().take(nmom).skip(1) {
             term *= z;
-            sum[j] += term;
+            *value += term;
             z -= 1.0;
             if z < 0.0 {
                 break;

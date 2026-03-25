@@ -1,43 +1,31 @@
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use rand_distr::Distribution;
 
-use crate::intrinsicdimensionality::DistanceBasedIntrinsicDimensionalityEstimator;
+use crate::intrinsicdimensionality::DistanceIDEstimator;
 
 const ZERO_PADDING: usize = 100;
 
-pub fn make_hypersphere_embedded_data(n: usize, seed: u64) -> Vec<Vec<f64>> {
+pub fn make_intrinsic_subspace_data(n: usize, seed: u64) -> Vec<Vec<f64>> {
     let mut rng = StdRng::seed_from_u64(seed);
-    let big = rand_distr::Normal::new(0.0, 1.0).unwrap();
-    let small = rand_distr::Normal::new(0.0, 0.05).unwrap();
+    let uniform_large = rand::distributions::Uniform::new(-1.0, 1.0);
+    let uniform_small = rand::distributions::Uniform::new(-0.05, 0.05);
 
     let mut data = Vec::with_capacity(n);
     data.push(vec![0.0; 10]);
-    data.push(vec![0.0; 10]); // Deliberate duplicate, to test handling of distance zero.
+    data.push(vec![0.0; 10]); // deliberate duplicate, to test handling of distance zero
     for _ in 2..n {
         let mut pt = vec![0.0; 10];
         for (i, value) in pt.iter_mut().enumerate() {
-            if i < 5 {
-                *value = big.sample(&mut rng);
-            } else {
-                *value = small.sample(&mut rng);
-            }
+            *value = if i < 5 { rng.sample(uniform_large) } else { rng.sample(uniform_small) };
         }
         data.push(pt);
     }
     data
 }
 
-pub fn hypersphere_distances(data: &[Vec<f64>]) -> Vec<f64> {
-    let mut dist: Vec<f64> =
-        data.iter().skip(1).map(|p| p.iter().map(|v| v * v).sum::<f64>().sqrt()).collect();
-    dist.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    dist
-}
-
 pub fn regression_test<E>(dim: usize, size: usize, seed: u64, expected: f64)
 where
-    E: DistanceBasedIntrinsicDimensionalityEstimator,
+    E: DistanceIDEstimator,
 {
     let mut rng = StdRng::seed_from_u64(seed);
     let mut data = Vec::with_capacity(size + ZERO_PADDING);
@@ -62,7 +50,7 @@ where
 
 pub fn test_zeros<E>()
 where
-    E: DistanceBasedIntrinsicDimensionalityEstimator,
+    E: DistanceIDEstimator,
 {
     let _ = E::estimate_from_distances(&[0.0, 0.0, 0.0, 0.0]);
     let _ = E::estimate_from_distances(&[0.0, 0.0, 0.0, 1.0]);

@@ -51,7 +51,7 @@ where
     F: Float + Send + Sync,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
-    E: crate::intrinsicdimensionality::KnnBasedIntrinsicDimensionalityEstimator,
+    E: crate::intrinsicdimensionality::KNNIDEstimator,
 {
     let size = data.size();
     if size == 0 {
@@ -129,7 +129,7 @@ mod tests {
     use crate::TableWithDistance;
     use crate::distance::EuclideanDistance;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
-    use crate::intrinsicdimensionality::HillEstimator;
+    use crate::intrinsicdimensionality::HillID;
     use crate::outlier::common::*;
 
     #[test]
@@ -140,7 +140,7 @@ mod tests {
         let tree: crate::vptree::VPTree<f64> = crate::vptree::VPTree::new(&data, 2, &mut rng);
 
         let result =
-            intrinsic_stochastic_outlier_selection::<_, _, _, HillEstimator>(&tree, &data, 20);
+            intrinsic_stochastic_outlier_selection::<_, _, _, HillID>(&tree, &data, 20);
         let reference = load_reference_scores();
         let expected = reference.get("ISOS-20-Hill").expect("No reference for ISOS-20-Hill");
         let labels: Vec<u8> = label_from_reference(&reference);
@@ -165,7 +165,7 @@ mod tests {
             _,
             _,
             _,
-            crate::intrinsicdimensionality::AggregatedHillEstimator,
+            crate::intrinsicdimensionality::AggregatedHillID,
         >(&tree, &data, 10);
         let reference = load_reference_scores();
         let expected = reference.get("ISOS-10").expect("No reference for ISOS-10");

@@ -1,5 +1,24 @@
 use crate::api::IndexQuery;
 
+/// Intrinsic dimensionality estimators.
+///
+/// This module exposes multiple algorithms for local ID estimation from neighborhood distances:
+///
+/// - `aggregated_hill_id`: aggregated Hill maximum-likelihood tail index.
+/// - `hill_id`: classic Hill estimator.
+/// - `method_of_moments_id`: moment ratio estimator.
+/// - `lmoments_id`: L-moments-based estimator.
+/// - `probability_weighted_moments_id`: PWM based estimator.
+/// - `probability_weighted_moments_2_id`: extended PWM variant.
+/// - `regularly_varying_id`: regular variation quantile estimator.
+/// - `zipf_id`: Zipf-weighted log-distance fit.
+/// - `generalized_expansion_dimension`: robust median-of-ratios estimator.
+/// - `tightlid`: TightLID local geometric estimator.
+/// - `abid` / `rabid`: angle-based intrinsic dimensionality estimators.
+/// - `alid`: adaptive local intrinsic dimensionality.
+///
+/// Each estimator provides both a functional API and a wrapper struct implementing
+/// the `DistanceIDEstimator` / `KNNIDEstimator` traits (via `*_ID`/`*` names).
 pub mod aggregated_hill_estimator;
 pub mod alid_estimator;
 pub mod angle_based_id;
@@ -11,41 +30,33 @@ pub mod method_of_moments;
 pub mod probability_weighted_moments;
 pub mod probability_weighted_moments_2;
 pub mod regularly_varying_id;
-pub mod tests;
+#[cfg(test)]
+mod test;
 pub mod tightlid_estimator;
 pub mod zipf_estimator;
 
-pub use aggregated_hill_estimator::{AggregatedHillEstimator, aggregated_hill_estimate_from_knn};
-pub use alid_estimator::ALIDEstimator;
-pub use angle_based_id::{ABIDEstimator, RABIDEstimator, abid_estimate, rabid_estimate};
+pub use aggregated_hill_estimator::{AggregatedHillID, aggregated_hill_id};
+pub use alid_estimator::{ALID, alid};
+pub use angle_based_id::{ABID, RABID, abid, rabid};
 pub use generalized_expansion_dimension::{
     GeneralizedExpansionDimension, generalized_expansion_dimension,
-    generalized_expansion_dimension_from_knn,
 };
-pub use hill_estimator::{HillEstimator, hill_estimate_from_distances, hill_estimate_from_knn};
-pub use lmoments_estimator::{LMomentsEstimator, lmoments_estimate_from_knn};
-pub use local_pca::{LocalPCA, local_pca_intrinsic_dimensionality};
-pub use method_of_moments::{
-    MOMEstimator, MethodOfMoments, method_of_moments, method_of_moments_from_knn,
-};
+pub use hill_estimator::{HillID, hill_id};
+pub use lmoments_estimator::{LMomentsEstimator, lmoments_id};
+pub use local_pca::{LocalPCAID, local_pca_id};
+pub use method_of_moments::{MethodOfMoments, method_of_moments_id};
 pub use probability_weighted_moments::{
-    PWMEstimator, ProbabilityWeightedMoments, probability_weighted_moments,
-    probability_weighted_moments_from_knn,
+    ProbabilityWeightedMoments, probability_weighted_moments_id,
 };
 pub use probability_weighted_moments_2::{
-    PWM2Estimator, ProbabilityWeightedMoments2, probability_weighted_moments_2,
-    probability_weighted_moments_2_from_knn,
+    ProbabilityWeightedMoments2, probability_weighted_moments_2_id,
 };
-pub use regularly_varying_id::{RVEstimator, rv_estimate_from_distances, rv_estimate_from_knn};
-#[cfg(test)]
-pub use tests::{
-    hypersphere_distances, make_hypersphere_embedded_data, regression_test, test_zeros,
-};
-pub use tightlid_estimator::{TightLIDEstimator, tightlid_estimate_from_knn};
-pub use zipf_estimator::{ZipfEstimator, zipf_estimate_from_knn};
+pub use regularly_varying_id::{RVEstimator, regularly_varying_id};
+pub use tightlid_estimator::{TightLID, tightlid};
+pub use zipf_estimator::{ZipfID, zipf_id};
 
 /// kNN-based intrinsic dimensionality estimator API (may require neighbor graph).
-pub trait KnnBasedIntrinsicDimensionalityEstimator {
+pub trait KNNIDEstimator {
     /// Estimate from a kNN searcher around a query point index.
     fn estimate_from_knn<'a, S, D, F>(tree: &S, data: &'a D, query_idx: usize, k: usize) -> f64
     where
@@ -55,14 +66,14 @@ pub trait KnnBasedIntrinsicDimensionalityEstimator {
 }
 
 /// Distance-list intrinsic dimensionality estimator API.
-pub trait DistanceBasedIntrinsicDimensionalityEstimator {
+pub trait DistanceIDEstimator {
     /// Estimate from a sorted set of nearest-neighbor distances (excluding the query point).
     fn estimate_from_distances(distances: &[f64]) -> f64;
 }
 
-impl<T> KnnBasedIntrinsicDimensionalityEstimator for T
+impl<T> KNNIDEstimator for T
 where
-    T: DistanceBasedIntrinsicDimensionalityEstimator,
+    T: DistanceIDEstimator,
 {
     /// Every distance-based ID estimator can run for k-nearest neighbors.
     /// Note: we _do_ include the query point itself.
@@ -81,4 +92,19 @@ where
             .collect::<Vec<_>>();
         Self::estimate_from_distances(&neighbors)
     }
+}
+
+/// Find first finite positive distance or len.
+pub(crate) fn find_begin(distances: &[f64]) -> usize {
+    if cfg!(debug_assertions) {
+        for window in distances.windows(2) {
+            let a = window[0];
+            let b = window[1];
+            debug_assert!(a.is_finite(), "distance contains non-finite value");
+            debug_assert!(b.is_finite(), "distance contains non-finite value");
+            debug_assert!(a <= b, "distance array must be sorted ascending");
+        }
+    }
+
+    distances.iter().position(|&d| d.is_finite() && d > 0.0).unwrap_or(distances.len())
 }
