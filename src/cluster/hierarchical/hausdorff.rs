@@ -1,8 +1,6 @@
-use crate::{DistanceData, cluster::hierarchical::PrototypeMergeHistory};
-use num_traits::Float;
-
 use super::linkage::HausdorffLinkage;
-use crate::cluster::hierarchical::set_linkage;
+use crate::cluster::hierarchical::{PrototypeMergeHistory, set_linkage};
+use crate::{DistanceData, Float};
 
 /// Hierarchical clustering with Hausdorff linkage.
 #[must_use]
@@ -22,7 +20,8 @@ mod tests {
 
     #[test]
     fn hausdorff_produces_valid_history() {
-        let data = TableWithDistance::with_distance(&[0.0, 1.0, 3.0, 10.0], ScalarDistance);
+        let points = [vec![0.0], vec![1.0], vec![3.0], vec![10.0]];
+        let data = TableWithDistance::with_distance(&points, ScalarDistance);
         let h = hausdorff(&data);
         assert_eq!(h.len(), 3);
         assert_eq!(h.last().expect("non-empty").size, 4);

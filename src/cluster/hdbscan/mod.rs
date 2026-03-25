@@ -24,12 +24,9 @@ pub mod extraction;
 
 pub use boruvka_searchers_hdbscan::boruvka_searchers_hdbscan;
 pub use buffered_search_hdbscan::buffered_search_hdbscan;
+pub use hdbscan_common::HdbscanHierarchy;
 pub use hdbscan_prim::hdbscan_prim;
 pub use heap_of_searchers_hdbscan::heap_of_searchers_hdbscan;
 pub use lazy_buffered_search_hdbscan::lazy_buffered_search_hdbscan;
 pub use restarting_search_hdbscan::restarting_search_hdbscan;
 pub use slink_hdbscan::slink_hdbscan;
-
-// re-export the most commonly used items at crate root so callers can
-// say `use crate::cluster::hdbscan::heap_of_searchers_hdbscan` etc.
-pub use hdbscan_common::HdbscanHierarchy;

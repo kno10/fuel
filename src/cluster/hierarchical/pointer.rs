@@ -1,8 +1,7 @@
 use std::cmp::Ordering;
 
-use num_traits::Float;
-
 use super::common::MergeHistory;
+use crate::Float;
 
 /// Native pointer representation used by SLINK/CLINK.
 ///
@@ -24,9 +23,7 @@ impl<F: Float> PointerRepresentation<F> {
 
     /// Convert pointer representation to SciPy-style merge history.
     #[must_use]
-    pub fn to_merge_history(&self) -> MergeHistory<F> {
-        pointer_to_merge_history(self)
-    }
+    pub fn to_merge_history(&self) -> MergeHistory<F> { pointer_to_merge_history(self) }
 }
 
 /// Port of ELKI's builder-based conversion from pointer representation to
@@ -97,10 +94,9 @@ fn uf_find(parent: &mut [usize], x: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use super::pointer_to_merge_history;
     use crate::cluster::hierarchical::slink::slink_pointer;
     use crate::data::CondensedDistanceMatrix;
-
-    use super::pointer_to_merge_history;
 
     #[test]
     fn pointer_conversion_builds_full_history() {

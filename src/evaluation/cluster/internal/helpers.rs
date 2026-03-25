@@ -1,8 +1,7 @@
 //! Common types and utility functions shared by the various internal
 //! clustering quality measures.
 
-use num_traits::Float;
-
+use crate::Float;
 use crate::distance::squared_euclidean_distance;
 
 /// Strategy for handling points tagged as noise while computing a measure.
@@ -60,16 +59,14 @@ pub struct NeighborConsistencyStats<F: Float> {
     pub per_element_full: Vec<F>,
 }
 
+// FIXME: this is trivial, remove.
 /// Basic squared‑and‑euclidean helpers operating on `&[f64]` slices.
 #[inline]
-pub fn sq_euc(a: &[f64], b: &[f64]) -> f64 {
-    squared_euclidean_distance::<f64, f64>(a, b)
-}
+pub fn sq_euc(a: &[f64], b: &[f64]) -> f64 { squared_euclidean_distance::<f64, f64>(a, b) }
 
+// FIXME: this is trivial, remove
 #[inline]
-pub fn euc(a: &[f64], b: &[f64]) -> f64 {
-    squared_euclidean_distance::<f64, f64>(a, b).sqrt()
-}
+pub fn euc(a: &[f64], b: &[f64]) -> f64 { squared_euclidean_distance::<f64, f64>(a, b).sqrt() }
 
 pub fn mean_std(xs: &[f64]) -> (f64, f64) {
     if xs.is_empty() {
@@ -103,9 +100,7 @@ pub fn centroid(data: &[Vec<f64>], members: &[usize]) -> Vec<f64> {
 }
 
 pub fn build_clusters(
-    labels: &[isize],
-    noise_label: Option<isize>,
-    nh: NoiseHandling,
+    labels: &[isize], noise_label: Option<isize>, nh: NoiseHandling,
 ) -> (Vec<Cluster>, usize) {
     let mut map: std::collections::BTreeMap<isize, Vec<usize>> = std::collections::BTreeMap::new();
     for (i, &l) in labels.iter().enumerate() {
@@ -125,10 +120,7 @@ pub fn build_clusters(
                 }
                 NoiseHandling::TreatNoiseAsSingletons => {
                     for idx in members {
-                        clusters.push(Cluster {
-                            members: vec![idx],
-                            is_noise: true,
-                        });
+                        clusters.push(Cluster { members: vec![idx], is_noise: true });
                     }
                     continue;
                 }
@@ -142,9 +134,7 @@ pub fn build_clusters(
 }
 
 pub fn cluster_centroids(
-    data: &[Vec<f64>],
-    clusters: &[Cluster],
-    nh: NoiseHandling,
+    data: &[Vec<f64>], clusters: &[Cluster], nh: NoiseHandling,
 ) -> Vec<Option<Vec<f64>>> {
     clusters
         .iter()

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use num_traits::Float;
 use rayon::prelude::*;
 
+use crate::api::{DistanceData, RangeSearch};
 use crate::cluster::dbscan::NOISE;
-use crate::{api::DistanceData, vptree::VPTree};
+use crate::{Float, IndexQuery};
 
 /// Run DBSCAN in parallel by finding connected components of core points.
 ///
@@ -13,12 +13,13 @@ use crate::{api::DistanceData, vptree::VPTree};
 /// connecting every pair of neighboring cores. After the union-find has merged
 /// connected components, every point is assigned either the cluster label of a
 /// nearby core point or `NOISE`.
-pub fn parallel_dbscan<D: DistanceData<F> + Sync, F: Float + Sync>(
-    tree: &VPTree<F>,
-    data: &D,
-    eps: F,
-    min_points: usize,
-) -> Vec<isize> {
+pub fn parallel_dbscan<'a, S, D, F>(tree: &S, data: &'a D, eps: F, min_points: usize) -> Vec<isize>
+where
+    F: Float + Sync,
+    D: DistanceData<F> + Sync + 'a,
+    D::Query<'a>: Send,
+    S: RangeSearch<F, D::Query<'a>> + Sync,
+{
     assert!(eps >= F::zero(), "eps must be non-negative");
     assert!(min_points > 0, "min_points must be greater than 0");
 
@@ -30,13 +31,17 @@ pub fn parallel_dbscan<D: DistanceData<F> + Sync, F: Float + Sync>(
     // Identify core points in parallel.
     let is_core: Vec<bool> = (0..size)
         .into_par_iter()
-        .map(|idx| {
-            let mut neighbors = 0usize;
-            tree.search_range_unsorted(&data.search_by_index(idx), eps, |_pair| {
-                neighbors += 1;
-            });
-            neighbors >= min_points
-        })
+        .map_init(
+            || data.query(),
+            |query, idx| {
+                query.set_index(idx);
+                let mut neighbors = 0usize;
+                for _ in tree.search_range(query, eps) {
+                    neighbors += 1;
+                }
+                neighbors >= min_points
+            },
+        )
         .collect();
 
     let mut core_ids = vec![None; size];
@@ -56,12 +61,14 @@ pub fn parallel_dbscan<D: DistanceData<F> + Sync, F: Float + Sync>(
     let mut union_find = UnionFind::new(num_cores);
     let core_id_by_point = core_ids;
 
+    let mut query = data.query();
     for (core_idx, &point_idx) in cores.iter().enumerate() {
-        tree.search_range_unsorted(&data.search_by_index(point_idx), eps, |pair| {
+        query.set_index(point_idx);
+        for pair in tree.search_range(&query, eps) {
             if let Some(neighbor_core_idx) = core_id_by_point[pair.index] {
                 union_find.union(core_idx, neighbor_core_idx);
             }
-        });
+        }
     }
 
     let mut root_to_label = HashMap::with_capacity(num_cores);
@@ -80,21 +87,25 @@ pub fn parallel_dbscan<D: DistanceData<F> + Sync, F: Float + Sync>(
     // Assign every point to its cluster label (or noise).
     (0..size)
         .into_par_iter()
-        .map(|idx| {
-            if let Some(core_idx) = core_id_by_point[idx] {
-                return cluster_label_by_core[core_idx];
-            }
-            let mut assigned = NOISE;
-            tree.search_range_unsorted(&data.search_by_index(idx), eps, |pair| {
-                if assigned != NOISE {
-                    return;
+        .map_init(
+            || data.query(),
+            |query, idx| {
+                if let Some(core_idx) = core_id_by_point[idx] {
+                    return cluster_label_by_core[core_idx];
                 }
-                if let Some(neighbor_core_idx) = core_id_by_point[pair.index] {
-                    assigned = cluster_label_by_core[neighbor_core_idx];
+                let mut assigned = NOISE;
+                query.set_index(idx);
+                for pair in tree.search_range(query, eps) {
+                    if assigned != NOISE {
+                        break;
+                    }
+                    if let Some(neighbor_core_idx) = core_id_by_point[pair.index] {
+                        assigned = cluster_label_by_core[neighbor_core_idx];
+                    }
                 }
-            });
-            assigned
-        })
+                assigned
+            },
+        )
         .collect()
 }
 
@@ -105,12 +116,7 @@ struct UnionFind {
 }
 
 impl UnionFind {
-    fn new(n: usize) -> Self {
-        Self {
-            parent: (0..n).collect(),
-            size: vec![1; n],
-        }
-    }
+    fn new(n: usize) -> Self { Self { parent: (0..n).collect(), size: vec![1; n] } }
 
     fn find(&mut self, mut x: usize) -> usize {
         while self.parent[x] != x {
@@ -143,19 +149,17 @@ impl UnionFind {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::TableWithDistance;
-    use crate::distance::EuclideanDistance;
-
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
+    use super::*;
+    use crate::TableWithDistance;
+    use crate::distance::EuclideanDistance;
+    use crate::vptree::VPTree;
+
     fn build_tree<'a>(
         points: &'a [Vec<f64>],
-    ) -> (
-        TableWithDistance<'a, Vec<f64>, EuclideanDistance, f64>,
-        VPTree<f64>,
-    ) {
+    ) -> (TableWithDistance<'a, f64, Vec<f64>, EuclideanDistance, f64>, VPTree<f64>) {
         let data = TableWithDistance::with_distance(points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(7);
         let tree = VPTree::new(&data, 2, &mut rng);
@@ -182,15 +186,8 @@ mod tests {
 
     #[test]
     fn matches_expected_noise_cases() {
-        let points = vec![
-            vec![0.0],
-            vec![2.0],
-            vec![3.0],
-            vec![4.0],
-            vec![6.0],
-            vec![8.0],
-            vec![10.0],
-        ];
+        let points =
+            vec![vec![0.0], vec![2.0], vec![3.0], vec![4.0], vec![6.0], vec![8.0], vec![10.0]];
         let (data, tree) = build_tree(&points);
         let expected_cases = [
             (1, vec![0, 1, 1, 1, 2, 3, 4]),

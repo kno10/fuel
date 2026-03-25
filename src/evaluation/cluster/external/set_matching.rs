@@ -1,6 +1,6 @@
 #![allow(clippy::cast_precision_loss)]
 
-use super::contingency_table::ClusterContingencyTable;
+use crate::evaluation::cluster::external::contingency_table::ClusterContingencyTable;
 use crate::evaluation::cluster::f1_measure;
 
 /// Purity metrics based on set matching of contingency tables.
@@ -69,7 +69,5 @@ impl SetMatchingPurity {
         }
     }
 
-    pub fn f1_measure(&self) -> f64 {
-        f1_measure(self.purity, self.inverse_purity)
-    }
+    pub fn f1_measure(&self) -> f64 { f1_measure(self.purity, self.inverse_purity) }
 }

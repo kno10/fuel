@@ -1,57 +1,8 @@
 use std::collections::BinaryHeap;
 
-use num_traits::Float;
-
-use crate::{DistanceSearch, DistPair};
-
 use super::{SearchCandidate, VPTree};
-
-/// View of all point indices covered by a single VP-tree node.
-#[derive(Clone, Copy)]
-pub struct NodePoints<'a> {
-    points: &'a [u32],
-}
-
-impl<'a> NodePoints<'a> {
-    pub const fn new(points: &'a [u32]) -> Self {
-        Self { points }
-    }
-
-    /// Iterate over dataset indices stored in this node.
-    #[must_use]
-    pub fn indices(self) -> impl ExactSizeIterator<Item = usize> + 'a {
-        self.points.iter().map(|&point| point as usize)
-    }
-
-    /// Number of points covered by this node.
-    #[must_use]
-    pub const fn len(self) -> usize {
-        self.points.len()
-    }
-
-    /// Whether this node covers no points.
-    #[must_use]
-    pub const fn is_empty(self) -> bool {
-        self.points.is_empty()
-    }
-
-    /// Dataset index of the vantage point (first element) of this node.
-    #[must_use]
-    pub fn first_index(self) -> usize {
-        self.points[0] as usize
-    }
-}
-
-/// Filter consulted by the VP-tree priority searcher.
-pub trait SearchFilter {
-    /// Return `true` to skip this entire node and all of its descendants.
-    fn skip_node(&mut self, _points: NodePoints<'_>) -> bool {
-        false
-    }
-
-    /// Return `true` to skip the pivot point for the current node.
-    fn skip_point(&mut self, index: usize) -> bool;
-}
+use crate::api::{NodePoints, SearchFilter};
+use crate::{DistPair, DistanceSearch, Float};
 
 struct PointFilter<P> {
     skip_point: P,
@@ -61,9 +12,7 @@ impl<P> SearchFilter for PointFilter<P>
 where
     P: FnMut(usize) -> bool,
 {
-    fn skip_point(&mut self, index: usize) -> bool {
-        (self.skip_point)(index)
-    }
+    fn skip_point(&mut self, index: usize) -> bool { (self.skip_point)(index) }
 }
 
 // The priority queue entries used by the VP-tree searcher are different
@@ -71,36 +20,25 @@ where
 // definition here rather than reusing `cluster::hierarchical::common::
 // QueueEntry` because we need both left‑ and right‑child indices.
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct QueueEntry<F = f64> {
+struct QueueEntry<F> {
     distance: F,
     left: usize,
     right: usize,
 }
 
 impl<F> QueueEntry<F> {
-    const fn new(distance: F, left: usize, right: usize) -> Self {
-        Self {
-            distance,
-            left,
-            right,
-        }
-    }
+    const fn new(distance: F, left: usize, right: usize) -> Self { Self { distance, left, right } }
 }
 
 impl<F: PartialEq> Eq for QueueEntry<F> {}
 
 impl<F: PartialOrd + PartialEq> PartialOrd for QueueEntry<F> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> { Some(self.cmp(other)) }
 }
 
 impl<F: PartialOrd + PartialEq> Ord for QueueEntry<F> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other
-            .distance
-            .partial_cmp(&self.distance)
-            .unwrap_or(std::cmp::Ordering::Equal)
+        other.distance.partial_cmp(&self.distance).unwrap_or(std::cmp::Ordering::Equal)
     }
 }
 
@@ -150,9 +88,7 @@ impl<'a, F: Float> PrioritySearcher<'a, F> {
         };
 
         // Initialize with root node
-        searcher
-            .heap
-            .push(QueueEntry::new(F::zero(), 0, searcher.tree.points.len()));
+        searcher.heap.push(QueueEntry::new(F::zero(), 0, searcher.tree.points.len()));
         searcher
     }
 
@@ -166,8 +102,7 @@ impl<'a, F: Float> PrioritySearcher<'a, F> {
         self.current_node_dist = F::zero();
         self.current_vp_dist = None;
         self.heap.clear();
-        self.heap
-            .push(QueueEntry::new(F::zero(), 0, self.tree.points.len()));
+        self.heap.push(QueueEntry::new(F::zero(), 0, self.tree.points.len()));
     }
 
     /// Reset this searcher for a new query and initialize search bounds.
@@ -220,9 +155,8 @@ impl<'a, F: Float> PrioritySearcher<'a, F> {
             let child = self.tree.bounds[left_child];
             let (min_dist, max_dist) = if let Some(vp_dist) = self.current_vp_dist {
                 let max_dist = vp_dist + child.upper;
-                let min_dist = (vp_dist - child.upper)
-                    .max(child.lower - vp_dist)
-                    .max(self.current_node_dist);
+                let min_dist =
+                    (vp_dist - child.upper).max(child.lower - vp_dist).max(self.current_node_dist);
                 (min_dist, max_dist)
             } else {
                 (self.current_node_dist, F::infinity())
@@ -237,26 +171,21 @@ impl<'a, F: Float> PrioritySearcher<'a, F> {
             let child = self.tree.bounds[right_child];
             let (min_dist, max_dist) = if let Some(vp_dist) = self.current_vp_dist {
                 let max_dist = vp_dist + child.upper;
-                let min_dist = (vp_dist - child.upper)
-                    .max(child.lower - vp_dist)
-                    .max(self.current_node_dist);
+                let min_dist =
+                    (vp_dist - child.upper).max(child.lower - vp_dist).max(self.current_node_dist);
                 (min_dist, max_dist)
             } else {
                 (self.current_node_dist, F::infinity())
             };
             if min_dist <= self.threshold && max_dist >= self.skip_threshold {
-                self.heap
-                    .push(QueueEntry::new(min_dist, right_child, right));
+                self.heap.push(QueueEntry::new(min_dist, right_child, right));
             }
         }
     }
 
     /// Decrease search cutoff; values must only decrease.
     pub fn decrease_cutoff(&mut self, threshold: F) {
-        debug_assert!(
-            threshold <= self.threshold,
-            "Thresholds must only decrease."
-        );
+        debug_assert!(threshold <= self.threshold, "Thresholds must only decrease.");
         self.threshold = threshold;
         if threshold < self.heap.peek().map_or(F::zero(), |entry| entry.distance) {
             self.heap.clear();
@@ -280,10 +209,7 @@ impl<'a, F: Float> PrioritySearcher<'a, F> {
 
     /// Increase lower skip threshold; values must only increase.
     pub fn increase_skip(&mut self, threshold: F) {
-        debug_assert!(
-            threshold >= self.skip_threshold,
-            "Skip thresholds must only increase."
-        );
+        debug_assert!(threshold >= self.skip_threshold, "Skip thresholds must only increase.");
         self.skip_threshold = threshold;
     }
 
@@ -292,24 +218,20 @@ impl<'a, F: Float> PrioritySearcher<'a, F> {
         if self.has_current_candidate {
             self.current_node_dist
         } else {
-            self.heap
-                .peek()
-                .map_or(F::infinity(), |entry| entry.distance)
+            self.heap.peek().map_or(F::infinity(), |entry| entry.distance)
         }
     }
 }
 
-impl<F: Float> PrioritySearcher<'_, F> {
+impl<'a, F: Float> PrioritySearcher<'a, F> {
     /// Like `next_candidate`, but consults a filter before evaluating a node.
     ///
     /// `skip_node` can prune an entire subtree before any exact distance is
     /// computed. `skip_point` can reject just the pivot while still exploring
     /// the node's children.
     /// Like `next_candidate`, but consults a filter before evaluating a node.
-    pub fn next_with_filter<D: DistanceSearch<F>, S>(
-        &mut self,
-        data: &D,
-        filter: &mut S,
+    pub fn next_with_filter<D: DistanceSearch<F> + ?Sized, S>(
+        &mut self, query: &D, filter: &mut S,
     ) -> Option<DistPair<F>>
     where
         S: SearchFilter,
@@ -343,9 +265,7 @@ impl<F: Float> PrioritySearcher<'_, F> {
                 // anyway, so compute it before pushing children. This yields the
                 // tight subtree bounds required for cutoff/skip pruning and for
                 // `all_lower_bound` to track the remaining queue accurately.
-                let vp_dist = *self
-                    .current_vp_dist
-                    .get_or_insert_with(|| data.query_distance(vp));
+                let vp_dist = *self.current_vp_dist.get_or_insert_with(|| query.query_distance(vp));
 
                 self.push_children();
 
@@ -367,10 +287,8 @@ impl<F: Float> PrioritySearcher<'_, F> {
 
     /// Like `next_with_filter`, but also returns the lower bound associated with
     /// the candidate.
-    pub fn next_with_filter_bounds<D: DistanceSearch<F>, S>(
-        &mut self,
-        data: &D,
-        filter: &mut S,
+    pub fn next_with_filter_bounds<D: DistanceSearch<F> + ?Sized, S>(
+        &mut self, query: &D, filter: &mut S,
     ) -> Option<SearchCandidate<F>>
     where
         S: SearchFilter,
@@ -395,9 +313,7 @@ impl<F: Float> PrioritySearcher<'_, F> {
                 }
 
                 let lower_bound = self.current_node_dist;
-                let vp_dist = *self
-                    .current_vp_dist
-                    .get_or_insert_with(|| data.query_distance(vp));
+                let vp_dist = *self.current_vp_dist.get_or_insert_with(|| query.query_distance(vp));
 
                 self.push_children();
                 self.has_current_candidate = false;
@@ -419,43 +335,29 @@ impl<F: Float> PrioritySearcher<'_, F> {
     /// Like `next_candidate`, but skips pivot points selected by the supplied
     /// predicate without evaluating their exact query distance.
     /// Basic candidate generator with no filtering.
-    pub fn next<D: DistanceSearch<F>>(&mut self, data: &D) -> Option<DistPair<F>> {
-        self.next_filtered(data, |_| false)
+    pub fn next<D: DistanceSearch<F> + ?Sized>(&mut self, query: &D) -> Option<DistPair<F>> {
+        self.next_filtered(query, |_| false)
     }
 
     /// Like `next_filtered`, but skips pivot points selected by the supplied
     /// predicate without evaluating their exact query distance.
-    pub fn next_filtered<D: DistanceSearch<F>, P>(
-        &mut self,
-        data: &D,
-        skip_pred: P,
+    pub fn next_filtered<D: DistanceSearch<F> + ?Sized, P>(
+        &mut self, query: &D, skip_pred: P,
     ) -> Option<DistPair<F>>
     where
         P: FnMut(usize) -> bool,
     {
-        self.next_with_filter(
-            data,
-            &mut PointFilter {
-                skip_point: skip_pred,
-            },
-        )
+        self.next_with_filter(query, &mut PointFilter { skip_point: skip_pred })
     }
 
     /// Like `next_filtered`, but also returns the lower bound associated with
     /// the candidate.
-    pub fn next_filtered_bounds<D: DistanceSearch<F>, P>(
-        &mut self,
-        data: &D,
-        skip_pred: P,
+    pub fn next_filtered_bounds<D: DistanceSearch<F> + ?Sized, P>(
+        &mut self, query: &D, skip_pred: P,
     ) -> Option<SearchCandidate<F>>
     where
         P: FnMut(usize) -> bool,
     {
-        self.next_with_filter_bounds(
-            data,
-            &mut PointFilter {
-                skip_point: skip_pred,
-            },
-        )
+        self.next_with_filter_bounds(query, &mut PointFilter { skip_point: skip_pred })
     }
 }

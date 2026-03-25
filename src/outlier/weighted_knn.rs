@@ -1,25 +1,7 @@
-use num_traits::Float;
-
-use super::common::{OutlierScoreEntry, sort_outlier_scores};
 #[cfg(test)]
 use crate::distance::EuclideanDistance;
-use crate::{DistanceData, KnnSearch};
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct WeightedKnnOutlierScore<F: Float> {
-    pub index: usize,
-    pub score: F,
-}
-
-impl<F: Float> OutlierScoreEntry<F> for WeightedKnnOutlierScore<F> {
-    fn index(&self) -> usize {
-        self.index
-    }
-
-    fn score(&self) -> F {
-        self.score
-    }
-}
+use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::{DistanceData, Float, KnnSearch};
 
 /// Compute weighted KNN outlier scores for each point in the data set.
 ///
@@ -29,41 +11,22 @@ impl<F: Float> OutlierScoreEntry<F> for WeightedKnnOutlierScore<F> {
 /// # Panics
 ///
 /// Panics if `k == 0`.
-pub fn weighted_knn_outlier_scores<S, D, F>(
-    tree: &S,
-    data: D,
-    k: usize,
-) -> Vec<WeightedKnnOutlierScore<F>>
+pub fn weighted_knn<'a, S, D, F>(tree: &S, data: &'a D, k: usize) -> OutlierResult<F>
 where
-    F: Float + std::iter::Sum,
-    D: DistanceData<F>,
-    S: KnnSearch<F, D>,
+    F: Float + std::iter::Sum + Send + Sync,
+    D: DistanceData<F> + Sync + 'a,
+    S: KnnSearch<F, D::Query<'a>> + Sync,
 {
     assert!(k > 0, "k must be greater than 0");
 
-    let size = data.size();
-    let k_effective = k.min(size.saturating_sub(1));
+    let k_effective = k.min(data.size().saturating_sub(1));
 
-    let mut scores = Vec::with_capacity(size);
+    let scores: Vec<F> =
+        crate::outlier::common::for_each_knn(tree, data, k_effective, false, |_idx, neighbors| {
+            neighbors.iter().map(|(_, distance)| *distance).sum::<F>()
+        });
 
-    for idx in data.iter() {
-        let score = if k_effective == 0 {
-            F::zero()
-        } else {
-            tree.search_knn_by_index(&data, idx, (k_effective + 1).min(size))
-                .into_iter()
-                .filter(|neighbor| neighbor.index != idx)
-                .take(k_effective)
-                .map(|neighbor| neighbor.distance)
-                .sum::<F>()
-        };
-
-        scores.push(WeightedKnnOutlierScore { index: idx, score });
-    }
-
-    sort_outlier_scores(&mut scores);
-
-    scores
+    make_outlier_result(scores, "WeightedKNN", false, F::zero(), F::zero(), F::infinity())
 }
 
 #[cfg(test)]
@@ -71,29 +34,52 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
-    use crate::TableWithDistance;
-    use crate::vptree::VPTree;
-
     use super::*;
+    use crate::TableWithDistance;
+    use crate::evaluation::outlier::receiver_operating_curve::auc;
+    use crate::outlier::common::*;
+    use crate::vptree::VPTree;
 
     #[test]
     fn weighted_knn_outlier_ranks_remote_point_highest() {
-        let points = vec![
-            vec![0.0, 0.0],
-            vec![0.1, 0.0],
-            vec![0.0, 0.1],
-            vec![6.0, 6.0],
-            vec![0.1, 0.1],
-        ];
+        let points =
+            vec![vec![0.0, 0.0], vec![0.1, 0.0], vec![0.0, 0.1], vec![6.0, 6.0], vec![0.1, 0.1]];
 
         let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let scores = weighted_knn_outlier_scores(&tree, &data, 2);
+        let results = weighted_knn(&tree, &data, 2);
 
-        assert_eq!(scores.len(), points.len());
-        assert_eq!(scores[0].index, 3);
-        assert!(scores[0].score > scores[1].score);
+        assert_eq!(results.scores.len(), points.len());
+        let (best_index, best_score) = results
+            .scores
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .unwrap();
+        assert_eq!(best_index, 3);
+        assert!(*best_score > 0.0);
+    }
+
+    #[test]
+    fn knnw_matches_reference_outlier_score() {
+        let points = load_gaussian4d_points();
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let mut rng = StdRng::seed_from_u64(42);
+        let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
+
+        let result = weighted_knn(&tree, &data, 10);
+        let reference = load_reference_scores();
+        let expected = reference.get("KNNW-10").expect("No reference for KNNW-10");
+        let labels: Vec<u8> = label_from_reference(&reference);
+
+        assert_outlier_auc_approx(
+            "KNNW-10",
+            auc(&result.scores, &labels),
+            auc(expected, &labels),
+            1e-12,
+        );
+        assert_outlier_scores_approx("KNNW-10", &result.scores, expected, 1e-6);
     }
 }

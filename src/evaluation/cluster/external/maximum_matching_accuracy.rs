@@ -1,5 +1,5 @@
-use super::assignment::hungarian_min_cost_assignment;
-use super::contingency_table::ClusterContingencyTable;
+use crate::evaluation::cluster::external::assignment::hungarian_min_cost_assignment;
+use crate::evaluation::cluster::external::contingency_table::ClusterContingencyTable;
 
 /// Accuracy obtained by solving the optimal matching between clusters.
 #[derive(Debug, Clone, Copy)]

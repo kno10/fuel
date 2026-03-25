@@ -1,11 +1,9 @@
-use crate::DistanceData;
-use num_traits::Float;
-
 use super::common::{
     PrototypeBuilder, PrototypeMergeHistory, condensed_get, find_active, initialize_set_clusters,
     shrink_active_end, triangle_index, update_set_entry,
 };
 use crate::cluster::hierarchical::SetLinkage;
+use crate::{DistanceData, Float};
 
 /// Nearest‑neighbor chain heuristic agglomeration using an arbitrary set‑based
 /// linkage criterion.
@@ -82,9 +80,7 @@ where
         members[y].extend(cx);
 
         let summary_x = summaries[x].take().expect("summary missing for x");
-        let summary_y = summaries[y]
-            .as_mut()
-            .expect("summary missing for y while merging");
+        let summary_y = summaries[y].as_mut().expect("summary missing for y while merging");
         L::merge_summary(summary_y, summary_x, proto, distances[offset]);
 
         update_matrices::<D, L, F, S>(
@@ -115,14 +111,8 @@ where
 }
 
 fn update_matrices<D, L, F, S>(
-    data: &D,
-    distances: &mut [F],
-    prototypes: &mut [Option<usize>],
-    clustermap: &[Option<usize>],
-    members: &[Vec<usize>],
-    summaries: &[Option<S>],
-    c: usize,
-    end: usize,
+    data: &D, distances: &mut [F], prototypes: &mut [Option<usize>], clustermap: &[Option<usize>],
+    members: &[Vec<usize>], summaries: &[Option<S>], c: usize, end: usize,
 ) where
     D: DistanceData<F>,
     F: Float,
@@ -134,12 +124,7 @@ fn update_matrices<D, L, F, S>(
         }
         update_set_entry::<D, L, F, S>(data, distances, prototypes, members, summaries, c, y);
     }
-    for (x, opt) in clustermap
-        .iter()
-        .enumerate()
-        .skip(c + 1)
-        .take(end - (c + 1))
-    {
+    for (x, opt) in clustermap.iter().enumerate().skip(c + 1).take(end - (c + 1)) {
         if opt.is_none() {
             continue;
         }
@@ -149,16 +134,16 @@ fn update_matrices<D, L, F, S>(
 
 #[cfg(test)]
 mod tests {
-    use crate::TableWithDistance;
-    use crate::cluster::hierarchical::test_utils::ScalarDistance;
-
     use super::set_nn_chain;
+    use crate::TableWithDistance;
     use crate::cluster::hierarchical::linkage::MinimaxLinkage;
     use crate::cluster::hierarchical::set_agnes::set_agnes;
+    use crate::cluster::hierarchical::test_utils::ScalarDistance;
 
     #[test]
     fn set_nn_chain_matches_set_agnes() {
-        let data = TableWithDistance::with_distance(&[0.0, 0.8, 2.0, 5.0, 9.0], ScalarDistance);
+        let points = [vec![0.0], vec![0.8], vec![2.0], vec![5.0], vec![9.0]];
+        let data = TableWithDistance::with_distance(&points, ScalarDistance);
         let a = set_agnes(&data);
         let b = set_nn_chain::<_, MinimaxLinkage, f64, ()>(&data);
         assert_eq!(a, b);

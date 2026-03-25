@@ -3,10 +3,7 @@ use super::helpers::{NoiseHandling, build_clusters, cluster_centroids, euc};
 /// Pakhira-Bandyopadhyay-Maulik (PBM) index.
 #[must_use]
 pub fn pbm_index(
-    data: &[Vec<f64>],
-    labels: &[isize],
-    noise_label: Option<isize>,
-    nh: NoiseHandling,
+    data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>, nh: NoiseHandling,
 ) -> f64 {
     assert_eq!(data.len(), labels.len());
     if data.is_empty() {
@@ -90,9 +87,5 @@ pub fn pbm_index(
         }
     }
 
-    if a <= 0.0 || n_cl <= 0.0 {
-        0.0
-    } else {
-        ((1.0 / n_cl) * (b / a) * maxd).powi(2)
-    }
+    if a <= 0.0 || n_cl <= 0.0 { 0.0 } else { ((1.0 / n_cl) * (b / a) * maxd).powi(2) }
 }

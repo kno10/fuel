@@ -3,9 +3,8 @@
 pub struct MinimumVarianceLinkage;
 
 use super::Linkage;
-use crate::DistanceData;
 use crate::cluster::hierarchical::SetLinkage;
-use num_traits::Float;
+use crate::{DistanceData, Float};
 
 impl<F: Float> Linkage<F> for MinimumVarianceLinkage {
     fn initial(&self, d: F, issquare: bool) -> F {
@@ -13,11 +12,7 @@ impl<F: Float> Linkage<F> for MinimumVarianceLinkage {
     }
 
     fn restore(&self, d: F, issquare: bool) -> F {
-        if issquare {
-            F::from(4.0).unwrap() * d
-        } else {
-            (F::from(4.0).unwrap() * d).sqrt()
-        }
+        if issquare { F::from(4.0).unwrap() * d } else { (F::from(4.0).unwrap() * d).sqrt() }
     }
 
     fn combine(&self, sizex: usize, dx: F, sizey: usize, dy: F, sizej: usize, dxy: F) -> F {
@@ -32,11 +27,7 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for MinimumVarianceLinka
     fn summarize(_data: &D, _members: &[usize]) {}
 
     fn cluster_distance(
-        data: &D,
-        _summary_a: &(),
-        _summary_b: &(),
-        a: &[usize],
-        b: &[usize],
+        data: &D, _summary_a: &(), _summary_b: &(), a: &[usize], b: &[usize],
     ) -> (F, Option<usize>) {
         let mut sum = F::zero();
         let mut count = 0usize;

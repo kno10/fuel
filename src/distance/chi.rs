@@ -1,23 +1,15 @@
-use num_traits::{AsPrimitive, Float, ToPrimitive};
+use crate::Float;
+use crate::distance::{DistanceFunction, chi_squared_distance};
 
-use super::{DistanceFunction, chi_squared_distance};
-
-pub fn chi_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F {
+pub fn chi_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     chi_squared_distance::<N, F>(a, b).sqrt()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ChiDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
-    for ChiDistance
-{
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        chi_distance(a, b)
-    }
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for ChiDistance {
+    fn distance(&self, a: &[N], b: &[N]) -> F { chi_distance(a, b) }
 }
 
 #[cfg(test)]

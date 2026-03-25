@@ -1,19 +1,15 @@
-use num_traits::{AsPrimitive, Float, ToPrimitive};
+use crate::Float;
+use crate::distance::DistanceFunction;
 
-use super::DistanceFunction;
-
-pub fn jensen_shannon_divergence<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F {
+pub fn jensen_shannon_divergence<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     let d = a.len().min(b.len());
     let mut sum = F::zero();
     let half = F::one() / (F::one() + F::one());
 
     for i in 0..d {
         unsafe {
-            let left: F = (*a.get_unchecked(i)).as_();
-            let right: F = (*b.get_unchecked(i)).as_();
+            let left: F = (*a.get_unchecked(i)).to_float::<F>();
+            let right: F = (*b.get_unchecked(i)).to_float::<F>();
             let mean = (left + right) * half;
 
             if left > F::zero() && mean > F::zero() {
@@ -32,12 +28,8 @@ pub fn jensen_shannon_divergence<N: Float + ToPrimitive + AsPrimitive<F>, F: Flo
 #[derive(Debug, Clone, Copy, Default)]
 pub struct JensenShannonDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
-    for JensenShannonDistance
-{
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        jensen_shannon_divergence(a, b)
-    }
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for JensenShannonDistance {
+    fn distance(&self, a: &[N], b: &[N]) -> F { jensen_shannon_divergence(a, b) }
 }
 
 #[cfg(test)]
@@ -67,10 +59,7 @@ mod tests {
     fn jensen_shannon_one_hot_is_ln2() {
         let a = [1.0, 0.0];
         let b = [0.0, 1.0];
-        approx_eq(
-            jensen_shannon_divergence::<f64, f64>(&a, &b),
-            std::f64::consts::LN_2,
-        );
+        approx_eq(jensen_shannon_divergence::<f64, f64>(&a, &b), std::f64::consts::LN_2);
     }
 
     #[test]

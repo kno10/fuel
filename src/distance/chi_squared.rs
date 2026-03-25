@@ -1,18 +1,14 @@
-use num_traits::{AsPrimitive, Float, ToPrimitive};
-
 use super::DistanceFunction;
+use crate::Float;
 
-pub fn chi_squared_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F {
+pub fn chi_squared_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     let d = a.len().min(b.len());
     let mut sum = F::zero();
 
     for i in 0..d {
         unsafe {
-            let left: F = (*a.get_unchecked(i)).as_();
-            let right: F = (*b.get_unchecked(i)).as_();
+            let left: F = (*a.get_unchecked(i)).to_float::<F>();
+            let right: F = (*b.get_unchecked(i)).to_float::<F>();
             let denominator = left + right;
 
             if denominator != F::zero() {
@@ -28,12 +24,8 @@ pub fn chi_squared_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ChiSquaredDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
-    for ChiSquaredDistance
-{
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        chi_squared_distance(a, b)
-    }
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for ChiSquaredDistance {
+    fn distance(&self, a: &[N], b: &[N]) -> F { chi_squared_distance(a, b) }
 }
 
 #[cfg(test)]

@@ -1,22 +1,70 @@
+pub mod abod;
+pub mod aloci;
 pub mod baseline;
+pub mod cof;
 pub mod common;
+pub mod cop;
+pub mod db_outlier_detection;
+pub mod db_outlier_score;
+pub mod dwof;
+pub mod fast_abod;
+pub mod flexible_lof;
+pub mod idos;
+pub mod inflo;
+pub mod isolation_forest;
+pub mod isos;
+pub mod kdeos;
+pub mod kernel;
 pub mod knn;
+pub mod knndd;
+pub mod knnsos;
+pub mod lbabod;
+pub mod ldf;
+pub mod ldof;
+pub mod lid;
+pub mod local_isolation_coefficient;
+pub mod loci;
 pub mod lof;
 pub mod r#loop;
 pub mod odin;
+pub mod simple_kernel_density_lof;
+pub mod simple_kd_lof;
+pub mod simplified_lof;
+pub mod sod;
+pub mod sos;
+pub mod variance_of_volume;
 pub mod weighted_knn;
 
-// convenience exports: users can refer to `crate::outlier::lof_outlier_scores` etc.
-// without having to traverse the submodule explicitly.
-
-pub use self::baseline::{
-    distance_from_center_outlier_scores, distance_from_origin_outlier_scores,
-    random_outlier_scores, zero_outlier_scores,
-};
-
-pub use self::baseline::BaselineOutlierScore;
-pub use self::knn::{KnnOutlierScore, knn_outlier_scores};
-pub use self::lof::{LofOutlierScore, lof_outlier_scores};
-pub use self::r#loop::{LoopOutlierScore, loop_outlier_scores};
-pub use self::odin::{OdinOutlierScore, odin_outlier_scores};
-pub use self::weighted_knn::{WeightedKnnOutlierScore, weighted_knn_outlier_scores};
+pub use self::abod::angle_based_outlier_detection;
+pub use self::aloci::approximate_local_correlation_integral;
+pub use self::baseline::{distance_from_center, distance_from_origin, random, zero};
+pub use self::cof::connectivity_outlier_factor;
+pub use self::cop::{CopDistanceDist, correlation_outlier_probabilities};
+pub use self::db_outlier_detection::db_outlier_detection;
+pub use self::db_outlier_score::db_outlier_score;
+pub use self::dwof::dynamic_window_outlier_factor;
+pub use self::fast_abod::fast_angle_based_outlier_detection;
+pub use self::flexible_lof::flexible_lof;
+pub use self::idos::intrinsic_dimensionality_outlier_score;
+pub use self::inflo::influence_outlier;
+pub use self::isolation_forest::isolation_forest;
+pub use self::isos::intrinsic_stochastic_outlier_selection;
+pub use self::knn::k_nearest_neighbors_outlier;
+pub use self::knndd::k_nearest_neighbors_distance_deviation;
+pub use self::knnsos::k_nearest_neighbors_sos;
+pub use self::lbabod::{locality_based_abod, locality_based_abod_kernel};
+pub use self::ldf::local_density_factor;
+pub use self::ldof::local_density_outlier_factor;
+pub use self::lid::local_intrinsic_dimensionality;
+pub use self::local_isolation_coefficient::local_isolation_coefficient;
+pub use self::loci::local_correlation_integral;
+pub use self::lof::local_outlier_factor;
+pub use self::r#loop::local_outlier_probabilities;
+pub use self::odin::outlier_detection_independence_neighbor;
+pub use self::simple_kernel_density_lof::simple_kernel_density_lof;
+pub use self::simple_kd_lof::simple_kd_lof;
+pub use self::simplified_lof::simplified_lof;
+pub use self::sod::subspace_outlier_degree;
+pub use self::sos::stochastic_outlier_selection;
+pub use self::variance_of_volume::variance_of_volume;
+pub use self::weighted_knn::weighted_knn;

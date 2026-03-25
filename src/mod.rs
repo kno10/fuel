@@ -1,4 +1,7 @@
-#![allow(clippy::too_many_arguments)]
+#![allow(
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+)]
 
 pub mod api;
 pub mod cluster;
@@ -6,12 +9,14 @@ pub mod data;
 pub mod distance;
 pub mod distance_matrix;
 pub mod evaluation;
+pub mod intrinsicdimensionality;
+pub mod kernel;
 pub mod outlier;
+pub mod statistics;
 
 pub mod kd;
 pub mod vptree;
 pub use crate::api::*;
-
 // convenience data types that are widely used by examples/tests
 // `data` module already re-exports the contents of `tabular`, so we can
 // refer to `crate::data::TableWithDistance` instead of leaking the private

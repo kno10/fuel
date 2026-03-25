@@ -7,9 +7,7 @@ use super::helpers::{NeighborConsistencyStats, euc};
 /// K‑nearest‑neighbour based neighbor consistency statistics.
 #[must_use]
 pub fn neighbor_consistency_knn(
-    data: &[Vec<f64>],
-    labels: &[isize],
-    k: usize,
+    data: &[Vec<f64>], labels: &[isize], k: usize,
 ) -> NeighborConsistencyStats<f64> {
     assert_eq!(data.len(), labels.len());
     let n = data.len();

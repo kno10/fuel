@@ -1,14 +1,13 @@
-use num_traits::{AsPrimitive, Float, ToPrimitive};
 use std::any::TypeId;
-
-use super::DistanceFunction;
-use crate::distance::partial::PartialDistance;
-
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{
     _mm256_fmadd_pd, _mm256_fmadd_ps, _mm256_loadu_pd, _mm256_loadu_ps, _mm256_setzero_pd,
     _mm256_setzero_ps, _mm256_storeu_pd, _mm256_storeu_ps, _mm256_sub_pd, _mm256_sub_ps,
 };
+
+use crate::Float;
+use crate::distance::DistanceFunction;
+use crate::distance::partial::PartialDistance;
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
@@ -66,10 +65,11 @@ unsafe fn squared_euclidean_distance_f64_avx_fma(a: &[f64], b: &[f64]) -> f64 {
     sum
 }
 
-pub fn squared_euclidean_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F {
+pub fn squared_euclidean_distance<N, F>(a: &[N], b: &[N]) -> F
+where
+    N: Float + 'static,
+    F: Float + 'static,
+{
     #[cfg(target_arch = "x86_64")]
     if is_x86_feature_detected!("avx") && is_x86_feature_detected!("fma") {
         if TypeId::of::<N>() == TypeId::of::<f32>() && TypeId::of::<F>() == TypeId::of::<f32>() {
@@ -93,79 +93,70 @@ pub fn squared_euclidean_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Fl
     squared_euclidean_distance_fallback(a, b)
 }
 
-fn squared_euclidean_distance_fallback<
-    N: Float + ToPrimitive + AsPrimitive<F>,
+fn squared_euclidean_distance_fallback<N, F>(a: &[N], b: &[N]) -> F
+where
+    N: Float + 'static,
     F: Float + 'static,
->(
-    a: &[N],
-    b: &[N],
-) -> F {
+{
     const LANES: usize = 8;
 
     let d = a.len().min(b.len());
     let sd = d & !(LANES - 1);
-    let mut vsum = [F::zero(); LANES];
+    let mut vsum = [N::zero(); LANES];
 
     for i in (0..sd).step_by(LANES) {
         for j in 0..LANES {
             unsafe {
-                let left: F = (*a.get_unchecked(i + j)).as_();
-                let right: F = (*b.get_unchecked(i + j)).as_();
+                let left = *a.get_unchecked(i + j);
+                let right = *b.get_unchecked(i + j);
                 let diff = left - right;
                 *vsum.get_unchecked_mut(j) = diff * diff + *vsum.get_unchecked(j);
             }
         }
     }
 
-    let mut sum = vsum
-        .iter()
-        .copied()
-        .fold(F::zero(), |acc, value| acc + value);
+    let mut sum_n = vsum.iter().copied().fold(N::zero(), |acc, value| acc + value);
 
     for i in sd..d {
         unsafe {
-            let left: F = (*a.get_unchecked(i)).as_();
-            let right: F = (*b.get_unchecked(i)).as_();
+            let left = *a.get_unchecked(i);
+            let right = *b.get_unchecked(i);
             let diff = left - right;
-            sum = diff * diff + sum;
+            sum_n = diff * diff + sum_n;
         }
     }
 
-    sum
+    sum_n.to_float::<F>()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SquaredEuclideanDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
-    for SquaredEuclideanDistance
+impl<N, F> DistanceFunction<[N], F> for SquaredEuclideanDistance
+where
+    N: Float + 'static,
+    F: Float + 'static,
 {
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        squared_euclidean_distance(a, b)
-    }
+    fn distance(&self, a: &[N], b: &[N]) -> F { squared_euclidean_distance(a, b) }
 }
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<Vec<N>, F>
-    for SquaredEuclideanDistance
+impl<N, F> DistanceFunction<Vec<N>, F> for SquaredEuclideanDistance
+where
+    N: Float + 'static,
+    F: Float + 'static,
 {
-    fn distance(&self, a: &Vec<N>, b: &Vec<N>) -> F {
-        squared_euclidean_distance(a, b)
-    }
+    fn distance(&self, a: &Vec<N>, b: &Vec<N>) -> F { squared_euclidean_distance(a, b) }
 }
 
-impl<F: Float + Copy> PartialDistance<F> for SquaredEuclideanDistance {
-    fn distance(&self, a: &[F], b: &[F]) -> F {
-        a.iter().zip(b).fold(F::zero(), |acc, (&x, &y)| {
-            let delta = x - y;
-            acc + delta * delta
-        })
+impl<N, F> PartialDistance<N, F> for SquaredEuclideanDistance
+where
+    N: Float + 'static,
+    F: Float + 'static,
+{
+    fn axis_distance(&self, delta: N) -> F {
+        let delta_f: F = delta.to_float::<F>();
+        delta_f * delta_f
     }
 
-    fn axis_distance(&self, delta: F) -> F {
-        delta * delta
-    }
-
-    fn combine_axis_distances(&self, a: F, b: F) -> F {
-        a + b
-    }
+    fn combine_axis_distances(&self, a: F, b: F) -> F { a + b }
 }

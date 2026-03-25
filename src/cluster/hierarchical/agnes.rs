@@ -15,10 +15,9 @@
 //! SciPy (`pdist` output) except that SciPy uses the upper triangle; users can
 //! simply transpose their indices to convert between the two representations.
 
-use num_traits::Float;
-
 use super::common::{Builder, MergeHistory, shrink_active_end, triangle_index};
 use super::linkage::Linkage;
+use crate::Float;
 
 // (linkage implementations live in `hierarchical::linkage`)
 /// Perform the AGNES algorithm on a condensed lower‑triangular distance
@@ -40,23 +39,13 @@ use super::linkage::Linkage;
 /// The function converts the provided condensed matrix into an agglomerative
 /// merge history and will `panic!` when the preconditions above are violated.
 pub fn agnes<F: Float, L: Linkage<F> + Copy>(
-    distances: &[F],
-    n: usize,
-    linkage: L,
-    is_squared: bool,
+    distances: &[F], n: usize, linkage: L, is_squared: bool,
 ) -> MergeHistory<F> {
     assert!(n > 0, "number of points must be positive");
-    assert_eq!(
-        distances.len(),
-        n * (n - 1) / 2,
-        "bad condensed matrix length"
-    );
+    assert_eq!(distances.len(), n * (n - 1) / 2, "bad condensed matrix length");
 
     let mut builder = Builder::<F>::new(n);
-    let mut mat: Vec<F> = distances
-        .iter()
-        .map(|&d| linkage.initial(d, is_squared))
-        .collect();
+    let mut mat: Vec<F> = distances.iter().map(|&d| linkage.initial(d, is_squared)).collect();
     let mut clustermap: Vec<Option<usize>> = (0..n).map(Some).collect();
     let mut end = n;
 
@@ -100,11 +89,7 @@ pub fn agnes<F: Float, L: Linkage<F> + Copy>(
         // create new cluster id (keep y and drop x).  force the smaller
         // index to appear first in the history record so that our output
         // mirrors SciPy's convention.  restore the distance before storing.
-        let (a, b) = if cid_y <= cid_x {
-            (cid_y, cid_x)
-        } else {
-            (cid_x, cid_y)
-        };
+        let (a, b) = if cid_y <= cid_x { (cid_y, cid_x) } else { (cid_x, cid_y) };
         let newcid = builder.add(a, linkage.restore(mindist, is_squared), b);
         // note: even though we sorted (a,b) above, we still store the new
         // cluster in position `y` so that the distance update logic remains
@@ -143,9 +128,8 @@ pub fn agnes<F: Float, L: Linkage<F> + Copy>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cluster::hierarchical::Merge;
     use crate::cluster::hierarchical::{
-        AverageLinkage, CompleteLinkage, SingleLinkage, WardLinkage,
+        AverageLinkage, CompleteLinkage, Merge, SingleLinkage, WardLinkage,
     };
 
     #[test]
@@ -154,24 +138,9 @@ mod tests {
         let d = vec![1.0, 2.0, 3.0, 1.5, 2.5, 1.0];
         let result = agnes(&d, 4, SingleLinkage, false);
         let expected = vec![
-            Merge {
-                idx1: 0,
-                idx2: 1,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 2,
-                idx2: 3,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 4,
-                idx2: 5,
-                distance: 1.5,
-                size: 4,
-            },
+            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
+            Merge { idx1: 2, idx2: 3, distance: 1.0, size: 2 },
+            Merge { idx1: 4, idx2: 5, distance: 1.5, size: 4 },
         ];
         assert_eq!(result, expected);
     }
@@ -184,24 +153,9 @@ mod tests {
         let d = vec![1.0, 2.0, 3.0, 1.5, 2.5, 1.0];
         let result = agnes(&d, 4, CompleteLinkage, false);
         let expected = vec![
-            Merge {
-                idx1: 0,
-                idx2: 1,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 2,
-                idx2: 3,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 4,
-                idx2: 5,
-                distance: 3.0,
-                size: 4,
-            },
+            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
+            Merge { idx1: 2, idx2: 3, distance: 1.0, size: 2 },
+            Merge { idx1: 4, idx2: 5, distance: 3.0, size: 4 },
         ];
         assert_eq!(result, expected);
     }
@@ -223,7 +177,7 @@ mod tests {
         assert_eq!(a.len(), 2);
         assert_eq!(w.len(), 2);
         assert_eq!(a[0].distance, 0.1);
-        assert!((a[1].distance - 0.25).abs() < 1e-12);
+        assert!((a[1].distance - 0.25f64).abs() < 1e-12);
         assert_eq!(w[0].distance, 0.1);
         assert_eq!(a[1].size, 3);
         assert_eq!(w[1].size, 3);

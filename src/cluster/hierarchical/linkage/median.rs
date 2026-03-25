@@ -3,7 +3,7 @@
 pub struct MedianLinkage;
 
 use super::{GeometricLinkage, Linkage};
-use num_traits::Float;
+use crate::Float;
 
 impl<F: Float> Linkage<F> for MedianLinkage {
     fn combine(&self, _sizex: usize, dx: F, _sizey: usize, dy: F, _sizej: usize, dxy: F) -> F {
@@ -14,10 +14,7 @@ impl<F: Float> Linkage<F> for MedianLinkage {
 impl<F: Float> GeometricLinkage<F> for MedianLinkage {
     fn merge(&self, x: &[F], _sizex: usize, y: &[F], _sizey: usize) -> Vec<F> {
         let half = F::from(0.5).unwrap();
-        x.iter()
-            .zip(y.iter())
-            .map(|(&xi, &yi)| half * (xi + yi))
-            .collect()
+        x.iter().zip(y.iter()).map(|(&xi, &yi)| half * (xi + yi)).collect()
     }
 
     fn linkage(&self, x: &[F], _sizex: usize, y: &[F], _sizey: usize) -> F {

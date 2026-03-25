@@ -1,10 +1,8 @@
-use num_traits::Float;
-
 use super::hdbscan_common::{
     HdbscanHierarchy, WeightedEdge, compute_core_distances, edges_to_merge_history,
     mutual_reachability_distance,
 };
-use crate::DistanceData;
+use crate::{DistanceData, Float};
 
 /// Perform HDBSCAN clustering via Prim's MST construction on
 /// mutual reachability distances.  This was formerly exposed as
@@ -13,8 +11,7 @@ use crate::DistanceData;
 #[must_use]
 /// generic float version of prim-based HDBSCAN
 pub fn hdbscan_prim<F: Float, D: DistanceData<F>>(
-    data: &D,
-    min_points: usize,
+    data: &D, min_points: usize,
 ) -> HdbscanHierarchy<F> {
     let n = data.size();
     assert!(n > 0, "number of points must be positive");
@@ -69,12 +66,10 @@ pub fn hdbscan_prim<F: Float, D: DistanceData<F>>(
 
 #[cfg(test)]
 mod tests {
-    use crate::TableWithDistance;
-    use crate::cluster::hdbscan::HdbscanHierarchy;
-    use crate::distance::EuclideanDistance;
-
     use super::hdbscan_prim;
-    use crate::cluster::hdbscan::slink_hdbscan;
+    use crate::TableWithDistance;
+    use crate::cluster::hdbscan::{HdbscanHierarchy, slink_hdbscan};
+    use crate::distance::EuclideanDistance;
 
     #[test]
     fn prim_hdbscan_matches_slink_hdbscan() {

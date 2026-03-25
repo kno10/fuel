@@ -1,16 +1,13 @@
-mod counting_distance;
+mod counting_euclidean_distance;
 mod data_loading;
 
 use std::error::Error;
 use std::time::Instant;
 
-use counting_distance::CountingEuclideanDistance;
+use counting_euclidean_distance::CountingEuclideanDistance;
 use data_loading::read_numeric_data;
 use fuel::TableWithDistance;
-use fuel::outlier::{
-    distance_from_center_outlier_scores, distance_from_origin_outlier_scores,
-    random_outlier_scores, zero_outlier_scores,
-};
+use fuel::outlier::{distance_from_center, distance_from_origin, random, zero};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
@@ -30,14 +27,10 @@ fn run() -> Result<(), Box<dyn Error>> {
         "usage: cargo run --features benchmark --bin baseline -- <csv_path> <mode> [seed]",
     )?;
 
-    let mode = args
-        .next()
-        .ok_or("missing mode (origin|center|random|zero)")?;
+    let mode = args.next().ok_or("missing mode (origin|center|random|zero)")?;
 
-    let seed: u64 = args
-        .next()
-        .map(|s| s.parse().expect("seed must be an integer"))
-        .unwrap_or(RNG_SEED);
+    let seed: u64 =
+        args.next().map(|s| s.parse().expect("seed must be an integer")).unwrap_or(RNG_SEED);
 
     let rows = read_numeric_data(&csv_path)?;
     if rows.is_empty() {
@@ -57,17 +50,17 @@ fn run() -> Result<(), Box<dyn Error>> {
     let distance_count_after_index = distance_count.load(std::sync::atomic::Ordering::Relaxed);
 
     let scores = match mode.as_str() {
-        "origin" => distance_from_origin_outlier_scores(&data),
-        "center" => distance_from_center_outlier_scores(&data),
-        "random" => random_outlier_scores(&data, seed),
-        "zero" => zero_outlier_scores(&data),
+        "origin" => distance_from_origin(&data),
+        "center" => distance_from_center(&data),
+        "random" => random(&data, seed),
+        "zero" => zero(&data),
         other => return Err(format!("unknown mode: {}", other).into()),
     };
 
     let dist_count = distance_count.load(std::sync::atomic::Ordering::Relaxed);
     let elapsed = start.elapsed();
 
-    let avg_score = scores.iter().map(|entry| entry.score).sum::<f64>() / scores.len() as f64;
+    let avg_score = scores.scores.iter().copied().sum::<f64>() / scores.scores.len() as f64;
 
     println!("time_ms={:.3}", elapsed.as_secs_f64() * 1_000.0);
     println!("avg_score={avg_score:.12}");

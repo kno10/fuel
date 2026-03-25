@@ -1,21 +1,24 @@
 use std::collections::BinaryHeap;
 
-use num_traits::Float;
-
-use crate::DistanceSearch;
 use crate::api::DistanceData;
 use crate::cluster::hdbscan::hdbscan_common::{HdbscanHierarchy, compute_core_distances_tree};
 use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
-use crate::DistPair;
-use crate::vptree::{PrioritySearcher, VPTree};
+use crate::{
+    DistPair, DistanceSearch, Float, IndexQuery, KnnSearch, PrioritySearcher,
+    PrioritySearcherFactory,
+};
 
 /// Restarting-search HDBSCAN-RS (RSSL-style acceleration with VP-tree search).
 #[must_use]
-pub fn restarting_search_hdbscan<'a, D: DistanceData<F>, F: Float>(
-    tree: &'a VPTree<F>,
-    data: &'a D,
-    min_points: usize,
-) -> HdbscanHierarchy<F> {
+pub fn restarting_search_hdbscan<'a, S, D, F>(
+    tree: &'a S, data: &'a D, min_points: usize,
+) -> HdbscanHierarchy<F>
+where
+    F: Float + 'a,
+    D: DistanceData<F> + ?Sized + 'a,
+    S: PrioritySearcherFactory<F, D::Query<'a>>,
+    S: KnnSearch<F, D::Query<'a>>,
+{
     let n = data.size();
     assert!(n > 0, "number of points must be positive");
     assert!(min_points > 0, "min_points must be greater than 0");
@@ -28,17 +31,20 @@ pub fn restarting_search_hdbscan<'a, D: DistanceData<F>, F: Float>(
     let mut node_cluster = vec![u32::MAX; n];
 
     // create one searcher and reuse it for all refill operations
-    let mut searcher = tree.priority_searcher();
+    let mut searcher = S::priority_searcher(tree);
+
+    let mut query = data.query();
 
     // initial fill for each point
     for (a, buf) in buffers.iter_mut().enumerate().take(n) {
         if builder.cluster_size_of_point(a) > 1 {
             continue; // duplicate, merged already
         }
+        query.set_index(a);
         refill_neighbors(
-            &data.search_by_index(a),
             &mut builder,
             a,
+            &query,
             buf,
             &mut searcher,
             &core_distances,
@@ -63,16 +69,15 @@ pub fn restarting_search_hdbscan<'a, D: DistanceData<F>, F: Float>(
 
         let best_dist = best.distance;
         let b = best.index;
-        if builder.merge_points(a, b, best_dist).is_some()
-            && builder.merge_count() == n - 1
-        {
+        if builder.merge_points(a, b, best_dist).is_some() && builder.merge_count() == n - 1 {
             break;
         }
 
+        query.set_index(a);
         refill_neighbors(
-            &data.search_by_index(a),
             &mut builder,
             a,
+            &query,
             buf,
             &mut searcher,
             &core_distances,
@@ -88,15 +93,13 @@ pub fn restarting_search_hdbscan<'a, D: DistanceData<F>, F: Float>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
-    data: &D,
-    builder: &mut ClusterBuilder<F>,
-    query_index: usize,
-    buffer: &mut DistPair<F>,
-    searcher: &mut PrioritySearcher<F>,
-    core_distances: &[F],
-    node_cluster: &mut [u32],
-) {
+pub(crate) fn refill_neighbors<F: Float, Q, S>(
+    builder: &mut ClusterBuilder<F>, query_index: usize, query: &Q, buffer: &mut DistPair<F>,
+    searcher: &mut S, core_distances: &[F], node_cluster: &mut [u32],
+) where
+    Q: DistanceSearch<F> + ?Sized,
+    S: PrioritySearcher<F, Q>,
+{
     searcher.reset();
 
     let cd = core_distances[query_index];
@@ -104,12 +107,8 @@ pub(crate) fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
     let query_component = builder.find(query_index);
     while searcher.all_lower_bound() < threshold {
         let Some(cand) = searcher.next_with_filter(
-            data,
-            &mut SameClusterFilter {
-                builder,
-                query_component,
-                node_cluster,
-            },
+            query,
+            &mut SameClusterFilter { builder, query_component, node_cluster },
         ) else {
             break;
         };
@@ -126,17 +125,16 @@ pub(crate) fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
 
 #[cfg(test)]
 mod tests {
-    use crate::TableWithDistance;
-    use crate::cluster::hdbscan::hdbscan_prim;
-    use crate::distance::EuclideanDistance;
-    use crate::vptree::VPTree;
-    use rand::{SeedableRng, rngs::StdRng};
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
 
     use super::restarting_search_hdbscan;
+    use crate::TableWithDistance;
     use crate::api::Data;
-    use crate::cluster::hdbscan::buffered_search_hdbscan;
     use crate::cluster::hdbscan::extraction::extract_clusters_with_noise;
-    use rand::Rng;
+    use crate::cluster::hdbscan::{buffered_search_hdbscan, hdbscan_prim};
+    use crate::distance::EuclideanDistance;
+    use crate::vptree::VPTree;
 
     #[test]
     fn restarting_search_hdbscan_matches_linear_mst() {
@@ -161,9 +159,8 @@ mod tests {
     fn restarting_equals_buffered_random() {
         // RNG-based regression: ensure both variants produce the same *clustering*.
         let mut rng = StdRng::seed_from_u64(42);
-        let points: Vec<Vec<f64>> = (0..30)
-            .map(|_| vec![rng.r#gen::<f64>(), rng.r#gen::<f64>()])
-            .collect();
+        let points: Vec<Vec<f64>> =
+            (0..30).map(|_| vec![rng.r#gen::<f64>(), rng.r#gen::<f64>()]).collect();
 
         let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let tree = VPTree::<f64>::new(&data, 3, &mut rng);

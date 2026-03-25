@@ -1,4 +1,4 @@
-mod counting_distance;
+mod counting_euclidean_distance;
 mod data_loading;
 
 use std::collections::BTreeMap;
@@ -6,23 +6,24 @@ use std::error::Error;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use counting_distance::CountingEuclideanDistance;
+use counting_euclidean_distance::CountingEuclideanDistance;
 use data_loading::read_numeric_data;
+use fuel::cluster::dbscan::NOISE;
+use fuel::cluster::hdbscan::extraction::extract_clusters_with_noise;
 use fuel::cluster::hdbscan::{
-    HdbscanHierarchy, boruvka_searchers_hdbscan, buffered_search_hdbscan,
-    extraction::extract_clusters_with_noise, hdbscan_prim, heap_of_searchers_hdbscan,
-    lazy_buffered_search_hdbscan, restarting_search_hdbscan, slink_hdbscan,
+    HdbscanHierarchy, boruvka_searchers_hdbscan, buffered_search_hdbscan, hdbscan_prim,
+    heap_of_searchers_hdbscan, lazy_buffered_search_hdbscan, restarting_search_hdbscan,
+    slink_hdbscan,
 };
-use fuel::{
-    Data, TableWithDistance, cluster::dbscan::NOISE, cluster::hierarchical::Merge,
-    vptree::VPTree,
-};
+use fuel::cluster::hierarchical::Merge;
+use fuel::vptree::VPTree;
+use fuel::{Data, TableWithDistance};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
 const RNG_SEED: u64 = 42;
-const BUFFERED_SLACK: usize = 5;
-const USAGE: &str = "usage: cargo run --features benchmark --bin hdbscan -- <csv_path> <min_points> [--variant=<heap|boruvka|restarting|buffered|lazy-buffered|linear|slink|all>]";
+const BUFFERED_SLACK: usize = 4;
+const USAGE: &str = "usage: cargo run --features benchmark --bin hdbscan -- <csv_path> <min_points> [--algorithms=<heap|boruvka|restarting|buffered|lazy-buffered|linear|slink|all>]";
 
 fn main() {
     if let Err(err) = run() {
@@ -56,11 +57,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         maybe_tree = Some(tree);
 
         // print index statistics once at the beginning
-        println!(
-            "index time_ms={:.3} distance_count={}",
-            index_time_ms, index_dist_count
-        );
-
+        println!("index time_ms={:.3} distance_count={}", index_time_ms, index_dist_count);
     }
 
     // prepare data access for algorithm runs (new counter)
@@ -69,13 +66,8 @@ fn run() -> Result<(), Box<dyn Error>> {
     let data = TableWithDistance::with_distance(&rows, distance);
 
     for &variant in selection.variants() {
-        let result = benchmark_variant(
-            &data,
-            min_points,
-            variant,
-            maybe_tree.as_ref(),
-            &distance_counter,
-        );
+        let result =
+            benchmark_variant(&data, min_points, variant, maybe_tree.as_ref(), &distance_counter);
         print_result(&result);
     }
 
@@ -90,12 +82,16 @@ where
     let mut positional = Vec::new();
     let mut iter = args.into_iter();
     while let Some(arg) = iter.next() {
-        if let Some(value) = arg.strip_prefix("--variant=") {
+        if let Some(value) = arg.strip_prefix("--algorithms=") {
+            selection = VariantSelection::from_list(value)?;
+        } else if arg == "--algorithms" {
+            let value = iter.next().ok_or_else(|| "--algorithms requires a value".to_string())?;
+            selection = VariantSelection::from_list(&value)?;
+        } else if let Some(value) = arg.strip_prefix("--variant=") {
+            // legacy alias for compatibility with older benchmark flag naming
             selection = VariantSelection::from_list(value)?;
         } else if arg == "--variant" {
-            let value = iter
-                .next()
-                .ok_or_else(|| "--variant requires a value".to_string())?;
+            let value = iter.next().ok_or_else(|| "--variant requires a value".to_string())?;
             selection = VariantSelection::from_list(&value)?;
         } else {
             positional.push(arg);
@@ -110,9 +106,8 @@ where
     let csv_path = pos_iter.next().unwrap();
     let min_points_str = pos_iter.next().unwrap();
 
-    let min_points: usize = min_points_str
-        .parse()
-        .map_err(|_| "min_points must be a positive integer".to_string())?;
+    let min_points: usize =
+        min_points_str.parse().map_err(|_| "min_points must be a positive integer".to_string())?;
 
     if min_points == 0 {
         return Err("min_points must be greater than 0".into());
@@ -122,10 +117,8 @@ where
 }
 
 fn benchmark_variant(
-    data: &TableWithDistance<'_, Vec<f64>, CountingEuclideanDistance, f64>,
-    min_points: usize,
-    variant: Variant,
-    prebuilt_tree: Option<&VPTree<f64>>,
+    data: &TableWithDistance<'_, f64, Vec<f64>, CountingEuclideanDistance, f64>, min_points: usize,
+    variant: Variant, prebuilt_tree: Option<&VPTree<f64>>,
     distance_counter: &std::sync::atomic::AtomicU64,
 ) -> BenchmarkResult {
     let baseline = distance_counter.load(Ordering::Relaxed);
@@ -181,15 +174,8 @@ enum Variant {
 }
 
 impl Variant {
-    const ALL: [Variant; 7] = [
-        Self::Heap,
-        Self::Boruvka,
-        Self::Restarting,
-        Self::Buffered,
-        Self::LazyBuffered,
-        Self::Slink,
-        Self::Prim,
-    ];
+    const ALL: [Variant; 5] =
+        [Self::Heap, Self::Boruvka, Self::Restarting, Self::Slink, Self::Prim];
 
     fn label(&self) -> &'static str {
         match self {
@@ -203,14 +189,11 @@ impl Variant {
         }
     }
 
-    fn requires_tree(&self) -> bool {
-        !matches!(self, Variant::Prim | Variant::Slink)
-    }
+    fn requires_tree(&self) -> bool { !matches!(self, Variant::Prim | Variant::Slink) }
 
     fn run(
-        &self,
-        tree: Option<&VPTree<f64>>,
-        data: &TableWithDistance<'_, Vec<f64>, CountingEuclideanDistance, f64>,
+        &self, tree: Option<&VPTree<f64>>,
+        data: &TableWithDistance<'_, f64, Vec<f64>, CountingEuclideanDistance, f64>,
         min_points: usize,
     ) -> HdbscanHierarchy<f64> {
         match self {
@@ -231,12 +214,9 @@ impl Variant {
                 min_points,
                 BUFFERED_SLACK,
             ),
-            Variant::LazyBuffered => lazy_buffered_search_hdbscan(
-                tree.expect("tree required"),
-                data,
-                min_points,
-                1,
-            ),
+            Variant::LazyBuffered => {
+                lazy_buffered_search_hdbscan(tree.expect("tree required"), data, min_points, 1)
+            }
         }
     }
 
@@ -262,15 +242,9 @@ struct VariantSelection {
 }
 
 impl VariantSelection {
-    fn all() -> Self {
-        Self {
-            variants: Variant::ALL.to_vec(),
-        }
-    }
+    fn all() -> Self { Self { variants: Variant::ALL.to_vec() } }
 
-    fn variants(&self) -> &[Variant] {
-        &self.variants
-    }
+    fn variants(&self) -> &[Variant] { &self.variants }
 
     fn from_list(value: &str) -> Result<Self, Box<dyn Error>> {
         if value == "all" {

@@ -10,10 +10,7 @@ pub(crate) struct UnionFind {
 impl UnionFind {
     pub(crate) fn new(n: usize) -> Self {
         let parent = (0..n).collect();
-        Self {
-            parent,
-            size: vec![1; n],
-        }
+        Self { parent, size: vec![1; n] }
     }
 
     pub(crate) fn find(&mut self, x: usize) -> usize {

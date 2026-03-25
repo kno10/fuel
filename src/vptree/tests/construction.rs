@@ -1,23 +1,16 @@
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-use super::shared::get_all_neighbors;
-use crate::DistanceData;
-use crate::TableWithDistance;
 use crate::api::Data;
 use crate::distance::EuclideanDistance;
-use crate::DistPair;
 use crate::vptree::VPTree;
+use crate::vptree::tests::shared::get_all_neighbors;
+use crate::{DistPair, DistanceData, IndexQuery, TableWithDistance};
 
 #[test]
 fn test_vptree_construction() {
-    let points = vec![
-        vec![0.0, 0.0],
-        vec![1.0, 0.0],
-        vec![0.0, 1.0],
-        vec![1.0, 1.0],
-        vec![2.0, 2.0],
-    ];
+    let points =
+        vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 1.0], vec![1.0, 1.0], vec![2.0, 2.0]];
     let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
     let rng = &mut StdRng::seed_from_u64(42);
 
@@ -73,23 +66,20 @@ fn test_sample_size_one_supports_all_searchers() {
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
 
     let query_idx = 0;
-    let knn = tree.search_knn(&dataset.search_by_index(query_idx), 3);
+    let query = dataset.query().with_index(query_idx);
+    let knn = tree.search_knn(&query, 3);
     assert_eq!(knn.len(), 3);
 
     let radius = knn.last().expect("kNN must be non-empty").distance;
     let mut range = Vec::new();
-    tree.search_range(
-        &dataset.search_by_index(query_idx),
-        radius,
-        |pair: DistPair<f64>| {
-            range.push(pair);
-        },
-    );
+    tree.search_range(&query, radius, |pair: DistPair<f64>| {
+        range.push(pair);
+    });
     assert!(range.len() >= knn.len());
 
     let mut priority = tree.priority_searcher();
     priority.decrease_cutoff(radius);
-    let priority_result = get_all_neighbors(&mut priority, &dataset.search_by_index(query_idx));
+    let priority_result = get_all_neighbors(&mut priority, &query);
     assert!(priority_result.len() >= knn.len());
 
     for p in &knn {

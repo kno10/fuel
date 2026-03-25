@@ -5,20 +5,13 @@ use super::helpers::{
 /// Simplified silhouette measure (triangle inequality approximation).
 #[must_use]
 pub fn simplified_silhouette(
-    data: &[Vec<f64>],
-    labels: &[isize],
-    noise_label: Option<isize>,
-    nh: NoiseHandling,
+    data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>, nh: NoiseHandling,
     penalize: bool,
 ) -> SilhouetteStats<f64> {
     assert_eq!(data.len(), labels.len());
     let n = data.len();
     if n == 0 {
-        return SilhouetteStats {
-            mean: 0.0,
-            stddev: 0.0,
-            values: Vec::new(),
-        };
+        return SilhouetteStats { mean: 0.0, stddev: 0.0, values: Vec::new() };
     }
 
     let (clusters, ignored) = build_clusters(labels, noise_label, nh);
@@ -65,11 +58,7 @@ pub fn simplified_silhouette(
             if !b.is_finite() {
                 b = a;
             }
-            let s = if a == 0.0 && b == 0.0 {
-                0.0
-            } else {
-                (b - a) / a.max(b)
-            };
+            let s = if a == 0.0 && b == 0.0 { 0.0 } else { (b - a) / a.max(b) };
             values[p] = s;
             included.push(s);
         }
@@ -80,30 +69,19 @@ pub fn simplified_silhouette(
         penalty = (n - ignored) as f64 / n as f64;
     }
     let (mean, stddev) = mean_std(&included);
-    SilhouetteStats {
-        mean: penalty * mean,
-        stddev: penalty * stddev,
-        values,
-    }
+    SilhouetteStats { mean: penalty * mean, stddev: penalty * stddev, values }
 }
 
 /// Full silhouette score.
 #[must_use]
 pub fn silhouette(
-    data: &[Vec<f64>],
-    labels: &[isize],
-    noise_label: Option<isize>,
-    nh: NoiseHandling,
+    data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>, nh: NoiseHandling,
     penalize: bool,
 ) -> SilhouetteStats<f64> {
     assert_eq!(data.len(), labels.len());
     let n = data.len();
     if n == 0 {
-        return SilhouetteStats {
-            mean: 0.0,
-            stddev: 0.0,
-            values: Vec::new(),
-        };
+        return SilhouetteStats { mean: 0.0, stddev: 0.0, values: Vec::new() };
     }
 
     let (clusters, ignored) = build_clusters(labels, noise_label, nh);
@@ -111,11 +89,7 @@ pub fn silhouette(
     let mut included = Vec::new();
 
     if clusters.len() <= 1 {
-        return SilhouetteStats {
-            mean: 0.0,
-            stddev: 0.0,
-            values,
-        };
+        return SilhouetteStats { mean: 0.0, stddev: 0.0, values };
     }
 
     for (i, cluster) in clusters.iter().enumerate() {
@@ -157,20 +131,12 @@ pub fn silhouette(
                     }
                     continue;
                 }
-                let avg = other
-                    .members
-                    .iter()
-                    .map(|&q| euc(&data[p], &data[q]))
-                    .sum::<f64>()
+                let avg = other.members.iter().map(|&q| euc(&data[p], &data[q])).sum::<f64>()
                     / other.members.len() as f64;
                 b = b.min(avg);
             }
 
-            let s = if b.is_finite() && (a > 0.0 || b > 0.0) {
-                (b - a) / a.max(b)
-            } else {
-                0.0
-            };
+            let s = if b.is_finite() && (a > 0.0 || b > 0.0) { (b - a) / a.max(b) } else { 0.0 };
             values[p] = s;
             included.push(s);
         }
@@ -181,9 +147,5 @@ pub fn silhouette(
         penalty = (n - ignored) as f64 / n as f64;
     }
     let (mean, stddev) = mean_std(&included);
-    SilhouetteStats {
-        mean: penalty * mean,
-        stddev: penalty * stddev,
-        values,
-    }
+    SilhouetteStats { mean: penalty * mean, stddev: penalty * stddev, values }
 }

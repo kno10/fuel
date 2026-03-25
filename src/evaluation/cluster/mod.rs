@@ -10,11 +10,7 @@ use crate::evaluation::cluster::internal::*;
 #[inline]
 pub(crate) fn f1_measure(precision: f64, recall: f64) -> f64 {
     let denom = precision + recall;
-    if denom == 0.0 {
-        0.0
-    } else {
-        2.0 * precision * recall / denom
-    }
+    if denom == 0.0 { 0.0 } else { 2.0 * precision * recall / denom }
 }
 
 #[allow(dead_code)]
@@ -29,12 +25,8 @@ pub struct ClusteringEvaluation {
 
 #[allow(dead_code)]
 pub fn evaluate_clustering(
-    labels1: &[isize],
-    labels2: &[isize],
-    self_pairing: bool,
-    break_noise_clusters: bool,
-    noise_label1: Option<isize>,
-    noise_label2: Option<isize>,
+    labels1: &[isize], labels2: &[isize], self_pairing: bool, break_noise_clusters: bool,
+    noise_label1: Option<isize>, noise_label2: Option<isize>,
 ) -> ClusteringEvaluation {
     let table = ClusterContingencyTable::from_labels(
         labels1,

@@ -1,11 +1,9 @@
-use num_traits::ToPrimitive;
-
-use super::VectorData;
+use crate::{Float, VectorData};
 
 /// A strategy for choosing the splitting axis when building a KD-tree.
 pub trait SplitStrategy<F, P>
 where
-    F: num_traits::Float + Copy,
+    F: Float,
     P: VectorData<F> + ?Sized,
 {
     /// Decide which axis to split on for the current subset.
@@ -18,7 +16,7 @@ pub struct AxisCycleSplit;
 
 impl<F, P> SplitStrategy<F, P> for AxisCycleSplit
 where
-    F: num_traits::Float + Copy,
+    F: Float,
     P: VectorData<F> + ?Sized,
 {
     fn choose_axis(&self, data: &P, _candidates: &[usize], depth: usize) -> usize {
@@ -34,7 +32,7 @@ pub struct LargestSpreadSplit;
 
 impl<F, P> SplitStrategy<F, P> for LargestSpreadSplit
 where
-    F: num_traits::Float + Copy + ToPrimitive,
+    F: Float,
     P: VectorData<F> + ?Sized,
 {
     fn choose_axis(&self, data: &P, candidates: &[usize], _depth: usize) -> usize {
@@ -76,7 +74,7 @@ pub struct MaxVarianceSplit;
 
 impl<F, P> SplitStrategy<F, P> for MaxVarianceSplit
 where
-    F: num_traits::Float + Copy + ToPrimitive,
+    F: Float,
     P: VectorData<F> + ?Sized,
 {
     fn choose_axis(&self, data: &P, candidates: &[usize], _depth: usize) -> usize {
@@ -120,24 +118,18 @@ mod tests {
     use crate::TableWithDistance;
     use crate::distance::EuclideanDistance;
 
-    fn sample_points() -> Vec<Vec<f64>> {
-        vec![vec![0.0, 0.0], vec![1.0, 10.0], vec![1.5, -20.0]]
-    }
+    fn sample_points() -> Vec<Vec<f64>> { vec![vec![0.0, 0.0], vec![1.0, 10.0], vec![1.5, -20.0]] }
 
     fn sample_points_variance() -> Vec<Vec<f64>> {
-        vec![
-            vec![0.0, 0.0],
-            vec![5.0, 0.0],
-            vec![10.0, 0.0],
-            vec![5.0, 0.1],
-        ]
+        vec![vec![0.0, 0.0], vec![5.0, 0.0], vec![10.0, 0.0], vec![5.0, 0.1]]
     }
 
     #[test]
     fn largest_spread_prefers_widest_axis() {
         let points = sample_points();
         let split = LargestSpreadSplit;
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data: TableWithDistance<'_, f64, Vec<f64>, EuclideanDistance, f64> =
+            TableWithDistance::with_distance(&points, EuclideanDistance);
         let axis = split.choose_axis(&data, &[0, 1, 2], 0);
         assert_eq!(axis, 1);
     }
@@ -146,7 +138,8 @@ mod tests {
     fn max_variance_prefers_noisy_axis() {
         let points = sample_points_variance();
         let split = MaxVarianceSplit;
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data: TableWithDistance<'_, f64, Vec<f64>, EuclideanDistance, f64> =
+            TableWithDistance::with_distance(&points, EuclideanDistance);
         let axis = split.choose_axis(&data, &[0, 1, 2, 3], 0);
         assert_eq!(axis, 0);
     }

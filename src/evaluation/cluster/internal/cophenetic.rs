@@ -1,5 +1,4 @@
-use num_traits::Float;
-
+use crate::Float;
 use crate::cluster::hierarchical::MergeHistory;
 
 /// Compute pairwise cophenetic distances from a dendrogram.
@@ -65,9 +64,7 @@ pub fn cophenetic_distances<F: Float>(history: &MergeHistory<F>, n: usize) -> Ve
 /// and returns their Pearson correlation coefficient.  A value of 1.0
 /// means the dendrograms induce identical cophenetic distances.
 pub fn cophenetic_correlation(
-    base: &MergeHistory<f64>,
-    other: &MergeHistory<f64>,
-    n: usize,
+    base: &MergeHistory<f64>, other: &MergeHistory<f64>, n: usize,
 ) -> f64 {
     let x = cophenetic_distances(base, n);
     let y = cophenetic_distances(other, n);
@@ -109,18 +106,8 @@ mod tests {
     ///   coph(2, 1) = 3.0
     fn three_point_history() -> Vec<Merge<f64>> {
         vec![
-            Merge {
-                idx1: 0,
-                idx2: 1,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 3,
-                idx2: 2,
-                distance: 3.0,
-                size: 3,
-            },
+            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
+            Merge { idx1: 3, idx2: 2, distance: 3.0, size: 3 },
         ]
     }
 
@@ -139,24 +126,9 @@ mod tests {
     fn cophenetic_distances_four_points_chain() {
         // Chain dendrogram: 0-1 at 1.0, then +2 at 2.0, then +3 at 5.0
         let history = vec![
-            Merge {
-                idx1: 0,
-                idx2: 1,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 4,
-                idx2: 2,
-                distance: 2.0,
-                size: 3,
-            },
-            Merge {
-                idx1: 5,
-                idx2: 3,
-                distance: 5.0,
-                size: 4,
-            },
+            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
+            Merge { idx1: 4, idx2: 2, distance: 2.0, size: 3 },
+            Merge { idx1: 5, idx2: 3, distance: 5.0, size: 4 },
         ];
         let coph = cophenetic_distances(&history, 4);
         assert_eq!(coph.len(), 6);
@@ -173,24 +145,9 @@ mod tests {
     fn cophenetic_distances_balanced_tree() {
         // Balanced: {0,1} at 1.0, {2,3} at 1.5, then merge at 4.0
         let history = vec![
-            Merge {
-                idx1: 0,
-                idx2: 1,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 2,
-                idx2: 3,
-                distance: 1.5,
-                size: 2,
-            },
-            Merge {
-                idx1: 4,
-                idx2: 5,
-                distance: 4.0,
-                size: 4,
-            },
+            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
+            Merge { idx1: 2, idx2: 3, distance: 1.5, size: 2 },
+            Merge { idx1: 4, idx2: 5, distance: 4.0, size: 4 },
         ];
         let coph = cophenetic_distances(&history, 4);
         // (1,0)=1.0, (2,0)=4.0, (2,1)=4.0, (3,0)=4.0, (3,1)=4.0, (3,2)=1.5
@@ -213,42 +170,19 @@ mod tests {
     fn cophenetic_correlation_identical_dendrograms() {
         let h = three_point_history();
         let r = cophenetic_correlation(&h, &h, 3);
-        assert!(
-            (r - 1.0).abs() < 1e-12,
-            "identical dendrograms should give r=1.0, got {r}"
-        );
+        assert!((r - 1.0).abs() < 1e-12, "identical dendrograms should give r=1.0, got {r}");
     }
 
     #[test]
     fn cophenetic_correlation_different_dendrograms() {
         let h1 = vec![
-            Merge {
-                idx1: 0,
-                idx2: 1,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 3,
-                idx2: 2,
-                distance: 3.0,
-                size: 3,
-            },
+            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
+            Merge { idx1: 3, idx2: 2, distance: 3.0, size: 3 },
         ];
         // Different merge order: {0,2} first, then +1
         let h2 = vec![
-            Merge {
-                idx1: 0,
-                idx2: 2,
-                distance: 2.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 3,
-                idx2: 1,
-                distance: 4.0,
-                size: 3,
-            },
+            Merge { idx1: 0, idx2: 2, distance: 2.0, size: 2 },
+            Merge { idx1: 3, idx2: 1, distance: 4.0, size: 3 },
         ];
         let r = cophenetic_correlation(&h1, &h2, 3);
         // h1: [1, 3, 3], h2: [4, 2, 4] -> r should be negative

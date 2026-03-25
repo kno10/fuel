@@ -1,51 +1,33 @@
 use std::cmp::Ordering;
 
-use num_traits::Float;
-
-use crate::{DistanceSearch, DistPair};
-
-use super::VPTree;
+use crate::vptree::VPTree;
+use crate::{DistPair, DistanceSearch, Float};
 
 impl<F: Float> VPTree<F> {
     /// Find all points within radius r of the query point, without sorting.
-    pub fn search_range_unsorted<D: DistanceSearch<F>>(
-        &self,
-        data: &D,
-        radius: F,
-        mut callback: impl FnMut(DistPair<F>),
+    pub fn search_range_unsorted<Q: DistanceSearch<F> + ?Sized>(
+        &self, query: &Q, radius: F, mut callback: impl FnMut(DistPair<F>),
     ) {
-        self.search_range_recursive(data, radius, 0, self.points.len(), &mut callback);
+        self.search_range_recursive(query, radius, 0, self.points.len(), &mut callback);
     }
 
     /// Find all points within radius r of the query point
-    pub fn search_range<D: DistanceSearch<F>>(
-        &self,
-        data: &D,
-        radius: F,
-        mut callback: impl FnMut(DistPair<F>),
+    pub fn search_range<Q: DistanceSearch<F> + ?Sized>(
+        &self, query: &Q, radius: F, mut callback: impl FnMut(DistPair<F>),
     ) {
         let mut result = Vec::new();
-        self.search_range_unsorted(data, radius, |pair| result.push(pair));
+        self.search_range_unsorted(query, radius, |pair| result.push(pair));
 
         // Sort results by distance
-        result.sort_by(|a, b| {
-            a.distance
-                .partial_cmp(&b.distance)
-                .unwrap_or(Ordering::Equal)
-        });
+        result.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(Ordering::Equal));
         for pair in result {
             callback(pair);
         }
     }
 
     /// Recursively search for points within radius
-    fn search_range_recursive<D: DistanceSearch<F>, C: FnMut(DistPair<F>)>(
-        &self,
-        data: &D,
-        radius: F,
-        left: usize,
-        right: usize,
-        callback: &mut C,
+    fn search_range_recursive<D: DistanceSearch<F> + ?Sized, C: FnMut(DistPair<F>)>(
+        &self, data: &D, radius: F, left: usize, right: usize, callback: &mut C,
     ) {
         let node_idx = left;
         let vp = self.points[node_idx];

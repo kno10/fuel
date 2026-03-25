@@ -1,24 +1,22 @@
 use std::collections::HashSet;
 
-use num_traits::Float;
-
-use crate::DistanceData;
-use crate::vptree::VPTree;
+use crate::api::RangeSearch;
+use crate::{DistanceData, Float, IndexQuery};
 
 const UNVISITED: isize = -2;
 pub const NOISE: isize = -1;
 
-/// Run DBSCAN using VP-tree range search for neighborhood queries.
+/// Run DBSCAN using a generic range search index for neighborhood queries.
 ///
 /// Returns a label per point:
 /// - `NOISE` (-1) for noise points
 /// - `0..` for cluster ids
-pub fn dbscan<D: DistanceData<F>, F: Float>(
-    tree: &VPTree<F>,
-    data: D,
-    eps: F,
-    min_points: usize,
-) -> Vec<isize> {
+pub fn dbscan<'a, S, D, F>(tree: &S, data: &'a D, eps: F, min_points: usize) -> Vec<isize>
+where
+    F: Float,
+    D: DistanceData<F> + 'a,
+    S: RangeSearch<F, D::Query<'a>>,
+{
     assert!(eps >= F::zero(), "eps must be non-negative");
 
     let size = data.size();
@@ -27,15 +25,17 @@ pub fn dbscan<D: DistanceData<F>, F: Float>(
     let mut frontier = HashSet::new();
     let mut neighbors = Vec::with_capacity(min_points);
 
+    let mut query = data.query();
     for point_idx in 0..size {
         if labels[point_idx] != UNVISITED {
             continue;
         }
         frontier.clear();
 
-        tree.search_range_unsorted(&data.search_by_index(point_idx), eps, |pair| {
+        query.set_index(point_idx);
+        for pair in tree.search_range(&query, eps) {
             frontier.insert(pair.index);
-        });
+        }
         if frontier.len() < min_points {
             labels[point_idx] = NOISE;
 
@@ -57,9 +57,10 @@ pub fn dbscan<D: DistanceData<F>, F: Float>(
             labels[current_idx] = cluster_id;
 
             neighbors.clear();
-            tree.search_range_unsorted(&data.search_by_index(current_idx), eps, |pair| {
+            query.set_index(current_idx);
+            for pair in tree.search_range(&query, eps) {
                 neighbors.push(pair.index);
-            });
+            }
             if neighbors.len() >= min_points {
                 for &neighbor_idx in &neighbors {
                     if labels[neighbor_idx] == NOISE {
@@ -85,10 +86,10 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
+    use super::*;
     use crate::TableWithDistance;
     use crate::distance::EuclideanDistance;
-
-    use super::*;
+    use crate::vptree::VPTree;
 
     #[test]
     fn dbscan_finds_two_clusters_and_noise() {
@@ -128,15 +129,8 @@ mod tests {
 
     #[test]
     fn dbscan_matches_sklearn_toy_labels() {
-        let points = vec![
-            vec![0.0],
-            vec![2.0],
-            vec![3.0],
-            vec![4.0],
-            vec![6.0],
-            vec![8.0],
-            vec![10.0],
-        ];
+        let points =
+            vec![vec![0.0], vec![2.0], vec![3.0], vec![4.0], vec![6.0], vec![8.0], vec![10.0]];
 
         let expected_cases = [
             (1, vec![0, 1, 1, 1, 2, 3, 4]),

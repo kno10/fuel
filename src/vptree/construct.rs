@@ -1,11 +1,10 @@
 use std::cmp::Ordering;
 
-use num_traits::Float;
-use rand::{Rng, seq::index};
-
-use crate::DistanceData;
+use rand::Rng;
+use rand::seq::index;
 
 use super::{Bounds, PrioritySearcher, VPTree, vpsize};
+use crate::{DistanceData, Float};
 
 impl<T: Float> VPTree<T> {
     /// Create a new VP-Tree from the given data with improved vantage point selection
@@ -37,25 +36,15 @@ impl<T: Float> VPTree<T> {
 
     /// Create an incremental priority searcher for a query.
     ///
-    /// The query must be configured on `data` before searching.
-    ///
     /// The returned searcher can be reused across queries with `reset` to avoid
     /// repeated internal reallocations.
-    pub fn priority_searcher(&self) -> PrioritySearcher<'_, T> {
-        PrioritySearcher::new(self)
-    }
+    pub fn priority_searcher(&self) -> PrioritySearcher<'_, T> { PrioritySearcher::new(self) }
 
     /// Recursively build the VP-Tree with sampling for vantage point selection
     #[allow(clippy::too_many_arguments)]
     fn build_tree<D: DistanceData<T>, R: Rng>(
-        &mut self,
-        data: &D,
-        indices: &mut [usize],
-        left: usize,
-        right: usize,
-        bounds: Bounds<T>,
-        sample_size: usize,
-        rng: &mut R,
+        &mut self, data: &D, indices: &mut [usize], left: usize, right: usize, bounds: Bounds<T>,
+        sample_size: usize, rng: &mut R,
     ) {
         assert!(left < right);
         let node_idx = left;
@@ -76,11 +65,7 @@ impl<T: Float> VPTree<T> {
 
         // Swap the vantage point to the first position
         if indices[left] != vp_idx {
-            let vp_pos = indices[left..right]
-                .iter()
-                .position(|&i| i == vp_idx)
-                .unwrap()
-                + left;
+            let vp_pos = indices[left..right].iter().position(|&i| i == vp_idx).unwrap() + left;
             indices.swap(left, vp_pos);
         }
 
@@ -148,21 +133,14 @@ impl<T: Float> VPTree<T> {
 
     /// Choose a vantage point from a sample that maximizes the spread of distances
     fn choose_vantage_point<D: DistanceData<T>, R: Rng>(
-        data: &D,
-        indices: &[usize],
-        left: usize,
-        right: usize,
-        sample_size: usize,
-        rng: &mut R,
+        data: &D, indices: &[usize], left: usize, right: usize, sample_size: usize, rng: &mut R,
     ) -> usize {
         // Draw distinct sample positions from the active partition.
         let partition_len = right - left;
         let sample_len = sample_size.min(partition_len);
         let sampled_positions = index::sample(rng, partition_len, sample_len);
-        let sample: Vec<usize> = sampled_positions
-            .iter()
-            .map(|offset| indices[left + offset])
-            .collect();
+        let sample: Vec<usize> =
+            sampled_positions.iter().map(|offset| indices[left + offset]).collect();
 
         // For each candidate, calculate the spread (variance) of distances
         let mut best_spread = T::neg_infinity();

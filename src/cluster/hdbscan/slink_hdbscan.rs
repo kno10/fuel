@@ -1,10 +1,8 @@
-use crate::DistanceData;
-use num_traits::Float;
-
 use super::hdbscan_common::{
     HdbscanHierarchy, compute_core_distances, mutual_reachability_distance,
 };
 use crate::cluster::hierarchical::pointer::{PointerRepresentation, pointer_to_merge_history};
+use crate::{DistanceData, Float};
 
 /// Perform HDBSCAN's linear-memory SLINK variant on arbitrary metric data.
 ///
@@ -12,8 +10,7 @@ use crate::cluster::hierarchical::pointer::{PointerRepresentation, pointer_to_me
 /// pairwise metric distance with mutual reachability distance.
 #[must_use]
 pub fn slink_hdbscan_pointer<F: Float, D: DistanceData<F>>(
-    data: &D,
-    min_points: usize,
+    data: &D, min_points: usize,
 ) -> (PointerRepresentation<F>, Vec<F>) {
     let n = data.size();
     assert!(n > 0, "number of points must be positive");
@@ -62,8 +59,7 @@ pub fn slink_hdbscan_pointer<F: Float, D: DistanceData<F>>(
 
 #[must_use]
 pub fn slink_hdbscan<F: Float, D: DistanceData<F>>(
-    data: &D,
-    min_points: usize,
+    data: &D, min_points: usize,
 ) -> HdbscanHierarchy<F> {
     let (pointer, core_distances) = slink_hdbscan_pointer::<F, _>(data, min_points);
     HdbscanHierarchy::new(pointer_to_merge_history(&pointer), core_distances)
@@ -71,21 +67,15 @@ pub fn slink_hdbscan<F: Float, D: DistanceData<F>>(
 
 #[cfg(test)]
 mod tests {
+    use super::slink_hdbscan;
     use crate::TableWithDistance;
     use crate::cluster::hdbscan::HdbscanHierarchy;
     use crate::distance::EuclideanDistance;
 
-    use super::slink_hdbscan;
-
     #[test]
     fn slink_hdbscan_produces_complete_hierarchy() {
-        let points = vec![
-            vec![0.0, 0.0],
-            vec![0.1, 0.0],
-            vec![3.0, 3.0],
-            vec![3.2, 3.1],
-            vec![10.0, 10.0],
-        ];
+        let points =
+            vec![vec![0.0, 0.0], vec![0.1, 0.0], vec![3.0, 3.0], vec![3.2, 3.1], vec![10.0, 10.0]];
 
         let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let result: HdbscanHierarchy<f64> = slink_hdbscan(&data, 2);

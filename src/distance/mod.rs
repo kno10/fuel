@@ -25,16 +25,10 @@ impl<T: ?Sized, D, F: Float> DistanceFunction<T, F> for Box<D>
 where
     D: DistanceFunction<T, F>,
 {
-    fn distance(&self, a: &T, b: &T) -> F {
-        (**self).distance(a, b)
-    }
+    fn distance(&self, a: &T, b: &T) -> F { (**self).distance(a, b) }
 }
 // Marker trait for distance metrics that satisfy the triangle inequality.
 pub trait DistanceMetric<T: ?Sized, F: Float>: DistanceFunction<T, F> {}
-
-pub use minkowski::MinkowskiDistance;
-use num_traits::Float;
-pub use partial::PartialDistance;
 
 pub use binary::{
     DiceDistance, HammingDistance, JaccardDistance, KulsinskiDistance, MatchingDistance,
@@ -54,4 +48,8 @@ pub use histogram_intersection::{HistogramIntersectionDistance, histogram_inters
 pub use jeffrey::{JeffreyDistance, jeffrey_divergence};
 pub use jensen_shannon::{JensenShannonDistance, jensen_shannon_divergence};
 pub use manhattan::ManhattanDistance;
+pub use minkowski::MinkowskiDistance;
+pub use partial::PartialDistance;
 pub use squared_euclidean::{SquaredEuclideanDistance, squared_euclidean_distance};
+
+use crate::Float;

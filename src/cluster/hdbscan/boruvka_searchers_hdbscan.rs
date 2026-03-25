@@ -1,18 +1,14 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-use num_traits::Float;
-
-use crate::api::{DistanceData, DistanceSearch};
-use crate::DistPair;
-use crate::vptree::{PrioritySearcher, VPTree};
-
 use super::hdbscan_common::{
     HdbscanHierarchy, SameComponentFilter, compute_core_distances_tree,
     mutual_reachability_distance,
 };
+use crate::api::{DistanceData, PrioritySearcher, PrioritySearcherFactory, VectorData};
 use crate::cluster::hierarchical::common::UnionFind;
 use crate::cluster::hierarchical::search_single_link_common::ClusterBuilder;
+use crate::{DistPair, DistanceSearch, Float, IndexQuery, KnnSearch};
 
 #[derive(Debug, Clone, Copy)]
 struct Edge<F: Float> {
@@ -30,9 +26,7 @@ impl<F: Float> PartialEq for Edge<F> {
 impl<F: Float> Eq for Edge<F> {}
 
 impl<F: Float> PartialOrd for Edge<F> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
 impl<F: Float> Ord for Edge<F> {
@@ -47,11 +41,15 @@ impl<F: Float> Ord for Edge<F> {
 
 /// Boruvka-style heap-of-searchers HDBSCAN MST (index accelerated).
 #[must_use]
-pub fn boruvka_searchers_hdbscan<D: DistanceData<F>, F: Float>(
-    tree: &VPTree<F>,
-    data: &D,
-    min_points: usize,
-) -> HdbscanHierarchy<F> {
+pub fn boruvka_searchers_hdbscan<'a, S, D, F>(
+    tree: &'a S, data: &'a D, min_points: usize,
+) -> HdbscanHierarchy<F>
+where
+    F: Float + 'a,
+    D: DistanceData<F> + VectorData<F> + ?Sized + 'a,
+    S: PrioritySearcherFactory<F, D::Query<'a>>,
+    S: KnnSearch<F, D::Query<'a>>,
+{
     let n = data.size();
     assert!(n > 0, "number of points must be positive");
     assert!(min_points > 0, "min_points must be greater than 0");
@@ -64,25 +62,18 @@ pub fn boruvka_searchers_hdbscan<D: DistanceData<F>, F: Float>(
     let mut uf = UnionFind::new(n);
     let mut neighbor_heaps: Vec<Option<BinaryHeap<DistPair<F>>>> =
         (0..n).map(|_| Some(BinaryHeap::new())).collect();
-    let mut searchers: Vec<Option<PrioritySearcher<F>>> = (0..n).map(|_| None).collect();
+    let mut searchers: Vec<Option<S::Searcher<'a>>> = (0..n).map(|_| None).collect();
     let mut node_cluster = vec![u32::MAX; n];
 
     // Initialization: use unfiltered search (matching heap_of_searchers) so
     // that the VP-tree traversal order - and thus the candidate set in each
     // heap - is identical across algorithms.
+    let mut query = data.query();
     for a in 0..n {
         let mut searcher = tree.priority_searcher();
-        initialize_neighbors(
-            &data.search_by_index(a),
-            &mut searcher,
-            a,
-            &mut neighbor_heaps[a],
-            &core_distances,
-        );
-        if neighbor_heaps[a]
-            .as_ref()
-            .is_some_and(|heap| !heap.is_empty())
-        {
+        query.set_index(a);
+        initialize_neighbors(&query, &mut searcher, a, &mut neighbor_heaps[a], &core_distances);
+        if neighbor_heaps[a].as_ref().is_some_and(|heap| !heap.is_empty()) {
             searchers[a] = Some(searcher);
         } else {
             neighbor_heaps[a] = None;
@@ -108,17 +99,13 @@ pub fn boruvka_searchers_hdbscan<D: DistanceData<F>, F: Float>(
             }
             // MRD-aware lower bound: MRD >= max(core_a, actual_dist), so
             // any candidate must have MRD >= max(core_a, all_lower_bound).
-            let effective_lb = core_distances[a].max(
-                searchers[a]
-                    .as_ref()
-                    .map_or(F::infinity(), |s| s.all_lower_bound()),
-            );
+            let effective_lb = core_distances[a]
+                .max(searchers[a].as_ref().map_or(F::infinity(), |s| s.all_lower_bound()));
             let needs_refill = heap.peek().is_none_or(|next| next.distance > effective_lb);
-            if needs_refill
-                && let Some(ref mut searcher) = searchers[a]
-            {
+            if needs_refill && let Some(ref mut searcher) = searchers[a] {
+                query.set_index(a);
                 refill_neighbors(
-                    &data.search_by_index(a),
+                    &query,
                     searcher,
                     &mut uf,
                     a,
@@ -160,9 +147,7 @@ pub fn boruvka_searchers_hdbscan<D: DistanceData<F>, F: Float>(
             break;
         }
         candidates.sort_by(|x, y| {
-            x.0.partial_cmp(&y.0)
-                .unwrap_or(Ordering::Equal)
-                .then_with(|| x.1.cmp(&y.1))
+            x.0.partial_cmp(&y.0).unwrap_or(Ordering::Equal).then_with(|| x.1.cmp(&y.1))
         });
 
         for (dist, a) in candidates {
@@ -209,20 +194,20 @@ pub fn boruvka_searchers_hdbscan<D: DistanceData<F>, F: Float>(
 /// Using an unfiltered search ensures the VP-tree traversal order (and thus
 /// the set of candidates accumulated in the heap) is identical to the other
 /// HDBSCAN variants.
-fn initialize_neighbors<D: DistanceSearch<F>, F: Float>(
-    data: &D,
-    searcher: &mut PrioritySearcher<F>,
-    query_index: usize,
-    heap: &mut Option<BinaryHeap<DistPair<F>>>,
+fn initialize_neighbors<F: Float, Q, S>(
+    query: &Q, searcher: &mut S, query_index: usize, heap: &mut Option<BinaryHeap<DistPair<F>>>,
     core_distances: &[F],
-) {
+) where
+    Q: DistanceSearch<F> + ?Sized,
+    S: PrioritySearcher<F, Q>,
+{
     let Some(heap) = heap.as_mut() else {
         return;
     };
     let cd = core_distances[query_index];
     let mut threshold = F::infinity();
     while cd.max(searcher.all_lower_bound()) < threshold {
-        let Some(cand) = searcher.next(data) else {
+        let Some(cand) = searcher.next(query) else {
             break;
         };
         if cand.index == query_index {
@@ -235,26 +220,19 @@ fn initialize_neighbors<D: DistanceSearch<F>, F: Float>(
     }
 }
 
-fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
-    data: &D,
-    searcher: &mut PrioritySearcher<F>,
-    uf: &mut UnionFind,
-    a: usize,
-    heap: &mut BinaryHeap<DistPair<F>>,
-    core_distances: &[F],
-    node_cluster: &mut [u32],
-) {
+fn refill_neighbors<F: Float, Q, S>(
+    data: &Q, searcher: &mut S, uf: &mut UnionFind, a: usize, heap: &mut BinaryHeap<DistPair<F>>,
+    core_distances: &[F], node_cluster: &mut [u32],
+) where
+    Q: DistanceSearch<F> + ?Sized,
+    S: PrioritySearcher<F, Q>,
+{
     let cd = core_distances[a];
     let mut threshold = heap.peek().map_or(F::infinity(), |n| n.distance);
     while cd.max(searcher.all_lower_bound()) < threshold {
-        let Some(cand) = searcher.next_with_filter(
-            data,
-            &mut SameComponentFilter {
-                uf,
-                query_index: a,
-                node_cluster,
-            },
-        ) else {
+        let Some(cand) = searcher
+            .next_with_filter(data, &mut SameComponentFilter { uf, query_index: a, node_cluster })
+        else {
             break;
         };
         let b = cand.index;
@@ -266,13 +244,14 @@ fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
 
 #[cfg(test)]
 mod tests {
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
+    use super::boruvka_searchers_hdbscan;
     use crate::TableWithDistance;
     use crate::cluster::hdbscan::hdbscan_prim;
     use crate::distance::EuclideanDistance;
     use crate::vptree::VPTree;
-    use rand::{SeedableRng, rngs::StdRng};
-
-    use super::boruvka_searchers_hdbscan;
 
     #[test]
     fn boruvka_searchers_hdbscan_matches_prim_mst() {
@@ -299,9 +278,8 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let n = 200;
         let dim = 5;
-        let points: Vec<Vec<f64>> = (0..n)
-            .map(|_| (0..dim).map(|_| rng.gen_range(0.0..1.0)).collect())
-            .collect();
+        let points: Vec<Vec<f64>> =
+            (0..n).map(|_| (0..dim).map(|_| rng.gen_range(0.0..1.0)).collect()).collect();
         let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let tree = VPTree::<f64>::new(&data, n, &mut rng);
 
@@ -345,9 +323,8 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let n = 5000;
         let dim = 8;
-        let points: Vec<Vec<f64>> = (0..n)
-            .map(|_| (0..dim).map(|_| rng.gen_range(0.0..1.0)).collect())
-            .collect();
+        let points: Vec<Vec<f64>> =
+            (0..n).map(|_| (0..dim).map(|_| rng.gen_range(0.0..1.0)).collect()).collect();
         let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let tree = VPTree::<f64>::new(&data, n, &mut rng);
 

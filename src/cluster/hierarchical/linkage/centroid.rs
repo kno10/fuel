@@ -6,7 +6,7 @@
 pub struct CentroidLinkage;
 
 use super::{GeometricLinkage, Linkage};
-use num_traits::Float;
+use crate::Float;
 
 impl<F: Float> Linkage<F> for CentroidLinkage {
     fn combine(&self, sizex: usize, dx: F, sizey: usize, dy: F, _sizej: usize, dxy: F) -> F {
@@ -23,10 +23,7 @@ impl<F: Float> GeometricLinkage<F> for CentroidLinkage {
         let tot = F::from(sizex + sizey).unwrap();
         let sx = F::from(sizex).unwrap();
         let sy = F::from(sizey).unwrap();
-        x.iter()
-            .zip(y.iter())
-            .map(|(&xi, &yi)| (sx * xi + sy * yi) / tot)
-            .collect()
+        x.iter().zip(y.iter()).map(|(&xi, &yi)| (sx * xi + sy * yi) / tot).collect()
     }
 
     fn linkage(&self, x: &[F], _sizex: usize, y: &[F], _sizey: usize) -> F {
@@ -56,7 +53,7 @@ mod tests {
     fn centroid_combine_behaviour() {
         let l = CentroidLinkage;
         // simple check formula consistency
-        let d = l.combine(2, 1.0, 3, 2.0, 1, 0.5);
+        let d: f64 = l.combine(2, 1.0_f64, 3, 2.0_f64, 1, 0.5_f64);
         assert!(d.is_finite());
     }
 

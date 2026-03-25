@@ -1,13 +1,11 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-use num_traits::Float;
-
+use crate::api::RangeSearch;
+use crate::cluster::dbscan::NOISE;
 #[cfg(test)]
 use crate::distance::EuclideanDistance;
-use crate::{DistanceData, vptree::VPTree};
-
-use crate::cluster::dbscan::NOISE;
+use crate::{DistanceData, Float, IndexQuery};
 
 #[derive(Debug, Clone, Copy)]
 struct ReachCandidate<F: Float> {
@@ -24,9 +22,7 @@ impl<F: Float> PartialEq for ReachCandidate<F> {
 impl<F: Float> Eq for ReachCandidate<F> {}
 
 impl<F: Float> PartialOrd for ReachCandidate<F> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
 impl<F: Float> Ord for ReachCandidate<F> {
@@ -57,12 +53,12 @@ pub struct OpticsResult<F: Float> {
 /// # Panics
 ///
 /// Panics if `eps < 0.0` or if `min_points == 0`.
-pub fn optics<D: DistanceData<F>, F: Float>(
-    tree: &VPTree<F>,
-    data: &D,
-    eps: F,
-    min_points: usize,
-) -> OpticsResult<F> {
+pub fn optics<'a, S, D, F>(tree: &S, data: &'a D, eps: F, min_points: usize) -> OpticsResult<F>
+where
+    F: Float,
+    D: DistanceData<F> + 'a,
+    S: RangeSearch<F, D::Query<'a>>,
+{
     assert!(eps >= F::zero(), "eps must be non-negative");
     assert!(min_points > 0, "min_points must be greater than 0");
 
@@ -74,12 +70,13 @@ pub fn optics<D: DistanceData<F>, F: Float>(
     let mut ordering = Vec::with_capacity(size);
     let mut seeds = BinaryHeap::new();
 
+    let mut query = data.query();
     for point_idx in 0..size {
         if processed[point_idx] {
             continue;
         }
 
-        let mut neighbors = region_query(tree, data, point_idx, eps);
+        let mut neighbors = region_query(tree, &mut query, point_idx, eps);
         processed[point_idx] = true;
         ordering.push(point_idx);
 
@@ -106,7 +103,7 @@ pub fn optics<D: DistanceData<F>, F: Float>(
                     continue;
                 }
 
-                let mut current_neighbors = region_query(tree, data, current_idx, eps);
+                let mut current_neighbors = region_query(tree, &mut query, current_idx, eps);
                 processed[current_idx] = true;
                 ordering.push(current_idx);
 
@@ -130,13 +127,7 @@ pub fn optics<D: DistanceData<F>, F: Float>(
 
     let labels = extract_dbscan_labels(&ordering, &reachability, &core_distance, eps);
 
-    OpticsResult {
-        ordering,
-        reachability,
-        core_distance,
-        predecessor,
-        labels,
-    }
+    OpticsResult { ordering, reachability, core_distance, predecessor, labels }
 }
 
 /// Extract Xi-based cluster labels from an OPTICS run result.
@@ -152,9 +143,7 @@ pub fn optics<D: DistanceData<F>, F: Float>(
 /// Panics if `xi <= 0.0`, `xi >= 1.0`, or if `min_points == 0`.
 #[must_use]
 pub fn extract_xi_labels<F: Float>(
-    result: &OpticsResult<F>,
-    xi: F,
-    min_points: usize,
+    result: &OpticsResult<F>, xi: F, min_points: usize,
 ) -> Vec<isize> {
     assert!(xi > F::zero() && xi < F::one(), "xi must be in (0, 1)");
     assert!(min_points > 0, "min_points must be greater than 0");
@@ -205,11 +194,7 @@ pub fn extract_xi_labels<F: Float>(
                 scan += 1;
             }
 
-            sdaset.push(SteepDownArea {
-                start: startsteep,
-                maximum: startval,
-                mib: F::zero(),
-            });
+            sdaset.push(SteepDownArea { start: startsteep, maximum: startval, mib: F::zero() });
             continue;
         }
 
@@ -254,11 +239,8 @@ pub fn extract_xi_labels<F: Float>(
                     cend,
                 );
 
-                let e_u = if cend + 1 < size {
-                    reachability_by_order[cend + 1]
-                } else {
-                    F::infinity()
-                };
+                let e_u =
+                    if cend + 1 < size { reachability_by_order[cend + 1] } else { F::infinity() };
 
                 if sda.mib > sda.maximum.min(e_u) * ixi {
                     continue;
@@ -318,17 +300,14 @@ pub fn extract_xi_labels<F: Float>(
     labels
 }
 
-fn region_query<D: DistanceData<F>, F: Float>(
-    tree: &VPTree<F>,
-    data: &D,
-    point_idx: usize,
-    eps: F,
-) -> Vec<(usize, F)> {
-    let mut neighbors = Vec::new();
-    tree.search_range_unsorted(&data.search_by_index(point_idx), eps, |pair| {
-        neighbors.push((pair.index, pair.distance));
-    });
-    neighbors
+fn region_query<S, Q, F>(tree: &S, query: &mut Q, point_idx: usize, eps: F) -> Vec<(usize, F)>
+where
+    F: Float,
+    Q: IndexQuery<F>,
+    S: RangeSearch<F, Q>,
+{
+    query.set_index(point_idx);
+    tree.search_range(query, eps).into_iter().map(|pair| (pair.index, pair.distance)).collect()
 }
 
 fn compute_core_distance<F: Float>(neighbors: &mut [(usize, F)], min_points: usize) -> Option<F> {
@@ -336,19 +315,14 @@ fn compute_core_distance<F: Float>(neighbors: &mut [(usize, F)], min_points: usi
         return None;
     }
     let rank = min_points - 1;
-    let (_, candidate, _) = neighbors.select_nth_unstable_by(rank, |a, b| {
-        a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal)
-    });
+    let (_, candidate, _) = neighbors
+        .select_nth_unstable_by(rank, |a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
     Some(candidate.1)
 }
 
 fn update<F: Float>(
-    neighbors: &[(usize, F)],
-    point_idx: usize,
-    core_distance: F,
-    processed: &[bool],
-    reachability: &mut [F],
-    predecessor: &mut [Option<usize>],
+    neighbors: &[(usize, F)], point_idx: usize, core_distance: F, processed: &[bool],
+    reachability: &mut [F], predecessor: &mut [Option<usize>],
     seeds: &mut BinaryHeap<ReachCandidate<F>>,
 ) {
     for (neighbor_idx, distance) in neighbors {
@@ -360,19 +334,13 @@ fn update<F: Float>(
         if new_reachability < reachability[*neighbor_idx] {
             reachability[*neighbor_idx] = new_reachability;
             predecessor[*neighbor_idx] = Some(point_idx);
-            seeds.push(ReachCandidate {
-                reachability: new_reachability,
-                index: *neighbor_idx,
-            });
+            seeds.push(ReachCandidate { reachability: new_reachability, index: *neighbor_idx });
         }
     }
 }
 
 fn extract_dbscan_labels<F: Float>(
-    ordering: &[usize],
-    reachability: &[F],
-    core_distance: &[Option<F>],
-    eps: F,
+    ordering: &[usize], reachability: &[F], core_distance: &[Option<F>], eps: F,
 ) -> Vec<isize> {
     let mut labels = vec![NOISE; reachability.len()];
     let mut cluster_id: isize = -1;
@@ -381,18 +349,18 @@ fn extract_dbscan_labels<F: Float>(
         let reach = reachability[point_idx];
         let core = core_distance[point_idx].unwrap_or(F::infinity());
 
-        if reach > eps {
+        labels[point_idx] = if reach > eps {
             if core <= eps {
                 cluster_id += 1;
-                labels[point_idx] = cluster_id;
+                cluster_id
             } else {
-                labels[point_idx] = NOISE;
+                NOISE
             }
         } else if cluster_id >= 0 {
-            labels[point_idx] = cluster_id;
+            cluster_id
         } else {
-            labels[point_idx] = NOISE;
-        }
+            NOISE
+        };
     }
 
     labels
@@ -442,12 +410,8 @@ fn next_reachability<F: Float>(reachability_by_order: &[F], idx: usize) -> F {
 }
 
 fn predecessor_filter<F: Float>(
-    result: &OpticsResult<F>,
-    ordering: &[usize],
-    reachability_by_order: &[F],
-    point_to_pos: &[usize],
-    cstart: usize,
-    mut cend: usize,
+    result: &OpticsResult<F>, ordering: &[usize], reachability_by_order: &[F],
+    point_to_pos: &[usize], cstart: usize, mut cend: usize,
 ) -> usize {
     if cend >= ordering.len() {
         return ordering.len().saturating_sub(1);
@@ -461,11 +425,11 @@ fn predecessor_filter<F: Float>(
             break;
         }
 
-        let predecessor_inside = result.predecessor[point_idx]
-            .and_then(|pred_idx| point_to_pos.get(pred_idx).copied())
-            .is_some_and(|pred_pos| pred_pos >= cstart && pred_pos < cend);
-
-        if predecessor_inside {
+        if let Some(pred_idx) = result.predecessor[point_idx]
+            && let Some(pred_pos) = point_to_pos.get(pred_idx).copied()
+            && pred_pos >= cstart
+            && pred_pos < cend
+        {
             break;
         }
 
@@ -481,9 +445,9 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
-    use crate::TableWithDistance;
-
     use super::*;
+    use crate::TableWithDistance;
+    use crate::vptree::VPTree;
 
     #[test]
     fn optics_finds_two_clusters_and_noise() {
@@ -524,12 +488,7 @@ mod tests {
 
     #[test]
     fn optics_returns_full_ordering() {
-        let points = vec![
-            vec![0.0, 0.0],
-            vec![0.2, 0.0],
-            vec![0.4, 0.0],
-            vec![0.6, 0.0],
-        ];
+        let points = vec![vec![0.0, 0.0], vec![0.2, 0.0], vec![0.4, 0.0], vec![0.6, 0.0]];
 
         let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(99);
@@ -569,9 +528,7 @@ mod tests {
             7.0,
             9.0,
         ];
-        let predecessor = (0..n)
-            .map(|idx| if idx == 0 { None } else { Some(idx - 1) })
-            .collect();
+        let predecessor = (0..n).map(|idx| if idx == 0 { None } else { Some(idx - 1) }).collect();
 
         let result = OpticsResult {
             ordering,
@@ -605,6 +562,8 @@ mod tests {
 
         let expected_reachability = [f64::INFINITY, 10.0, 10.0, 15.0];
         for (actual, expected) in result.reachability.iter().zip(expected_reachability.iter()) {
+            let actual: f64 = *actual;
+            let expected: f64 = *expected;
             if expected.is_infinite() {
                 assert!(actual.is_infinite());
             } else {
@@ -623,11 +582,7 @@ mod tests {
     }
 
     #[test]
-    #[allow(
-        clippy::excessive_precision,
-        clippy::too_many_lines,
-        clippy::unreadable_literal
-    )]
+    #[allow(clippy::excessive_precision, clippy::too_many_lines, clippy::unreadable_literal)]
     fn optics_matches_elki_reference_ordering_and_reachability() {
         let points = vec![
             vec![-3.588758123225869, -1.6798742333062213],
@@ -769,15 +724,11 @@ mod tests {
 
         assert_eq!(result.ordering, expected_ordering);
 
-        let actual_reachability_by_order: Vec<f64> = result
-            .ordering
-            .iter()
-            .map(|&idx| result.reachability[idx])
-            .collect();
+        let actual_reachability_by_order: Vec<f64> =
+            result.ordering.iter().map(|&idx| result.reachability[idx]).collect();
 
-        for (actual, expected) in actual_reachability_by_order
-            .iter()
-            .zip(expected_reachability_by_order.iter())
+        for (actual, expected) in
+            actual_reachability_by_order.iter().zip(expected_reachability_by_order.iter())
         {
             if expected.is_infinite() {
                 assert!(actual.is_infinite());

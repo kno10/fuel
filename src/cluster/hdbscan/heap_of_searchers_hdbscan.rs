@@ -1,21 +1,21 @@
 use std::collections::BinaryHeap;
 
-use num_traits::Float;
-
-use crate::api::{DistanceData, DistanceSearch};
-use crate::DistPair;
-use crate::vptree::{PrioritySearcher, VPTree};
-
+use crate::api::{DistanceData, PrioritySearcher, PrioritySearcherFactory};
 use crate::cluster::hdbscan::hdbscan_common::{HdbscanHierarchy, compute_core_distances_tree};
 use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
+use crate::{DistPair, DistanceSearch, Float, IndexQuery, KnnSearch};
 
-/// Heap-of-searchers HDBSCAN-HS (HSSL-style acceleration with VP-tree search).
+/// Heap-of-searchers HDBSCAN-HS (HSSL-style acceleration with priority-search acceleration).
 #[must_use]
-pub fn heap_of_searchers_hdbscan<D: DistanceData<F>, F: Float>(
-    tree: &VPTree<F>,
-    data: &D,
-    min_points: usize,
-) -> HdbscanHierarchy<F> {
+pub fn heap_of_searchers_hdbscan<'a, S, D, F>(
+    tree: &'a S, data: &'a D, min_points: usize,
+) -> HdbscanHierarchy<F>
+where
+    F: Float + 'a,
+    D: DistanceData<F> + ?Sized + 'a,
+    S: PrioritySearcherFactory<F, D::Query<'a>>,
+    S: KnnSearch<F, D::Query<'a>>,
+{
     let n = data.size();
     assert!(n > 0, "number of points must be positive");
     assert!(min_points > 0, "min_points must be greater than 0");
@@ -25,8 +25,10 @@ pub fn heap_of_searchers_hdbscan<D: DistanceData<F>, F: Float>(
     let mut builder = ClusterBuilder::new(n);
     let mut primary = BinaryHeap::<DistPair<F>>::new();
     let mut neighbor_heaps: Vec<BinaryHeap<DistPair<F>>> = vec![BinaryHeap::new(); n];
-    let mut searchers: Vec<Option<PrioritySearcher<F>>> = (0..n).map(|_| None).collect();
+    let mut searchers: Vec<Option<S::Searcher<'a>>> = (0..n).map(|_| None).collect();
     let mut node_cluster = vec![u32::MAX; n];
+
+    let mut query = data.query();
 
     // initial pass: find the min_points nearest neighbors of each points
     for a in 0..n {
@@ -34,8 +36,9 @@ pub fn heap_of_searchers_hdbscan<D: DistanceData<F>, F: Float>(
             continue; // duplicate, merged already
         }
         let mut searcher = tree.priority_searcher();
+        query.set_index(a);
         initialize_neighbors(
-            &data.search_by_index(a),
+            &query,
             &mut searcher,
             &mut builder,
             a,
@@ -55,10 +58,7 @@ pub fn heap_of_searchers_hdbscan<D: DistanceData<F>, F: Float>(
         let a = top.index;
         let nn = &mut neighbor_heaps[a];
         // Peek neighbor's best, handle same-cluster inline (like Java)
-        loop {
-            let Some(best) = nn.peek().copied() else {
-                break;
-            };
+        while let Some(best) = nn.peek().copied() {
             let b = best.index;
             if builder.find(a) != builder.find(b) {
                 break; // different cluster, proceed to merge
@@ -66,11 +66,7 @@ pub fn heap_of_searchers_hdbscan<D: DistanceData<F>, F: Float>(
             nn.pop(); // discard same-cluster entry
         }
         // If neighbor heap has a valid candidate, try merge
-        if let Some(best) = nn
-            .peek()
-            .copied()
-            .filter(|best| best.distance <= top.distance)
-        {
+        if let Some(best) = nn.peek().copied().filter(|best| best.distance <= top.distance) {
             nn.pop();
             let b = best.index;
             builder.merge_points(a, b, best.distance);
@@ -84,8 +80,9 @@ pub fn heap_of_searchers_hdbscan<D: DistanceData<F>, F: Float>(
         if let Some(ref mut searcher) = searchers[a] {
             let lb = searcher.all_lower_bound();
             if nn.peek().is_none_or(|next| next.distance > lb) {
+                query.set_index(a);
                 refill_neighbors(
-                    &data.search_by_index(a),
+                    &query,
                     searcher,
                     &mut builder,
                     a,
@@ -106,18 +103,17 @@ pub fn heap_of_searchers_hdbscan<D: DistanceData<F>, F: Float>(
     HdbscanHierarchy::new(builder.into_history(), core_distances)
 }
 
-fn initialize_neighbors<D: DistanceSearch<F>, F: Float>(
-    data: &D,
-    searcher: &mut PrioritySearcher<F>,
-    builder: &mut ClusterBuilder<F>,
-    query_index: usize,
-    heap: &mut BinaryHeap<DistPair<F>>,
-    core_distances: &[F],
-) {
+fn initialize_neighbors<F: Float, Q, S>(
+    query: &Q, searcher: &mut S, builder: &mut ClusterBuilder<F>, query_index: usize,
+    heap: &mut BinaryHeap<DistPair<F>>, core_distances: &[F],
+) where
+    Q: DistanceSearch<F> + ?Sized,
+    S: PrioritySearcher<F, Q>,
+{
     let cd = core_distances[query_index];
     let mut threshold = F::infinity();
     while searcher.all_lower_bound() < threshold {
-        let Some(cand) = searcher.next(data) else {
+        let Some(cand) = searcher.next(query) else {
             break;
         };
         let b = cand.index;
@@ -135,15 +131,13 @@ fn initialize_neighbors<D: DistanceSearch<F>, F: Float>(
     }
 }
 
-fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
-    data: &D,
-    searcher: &mut PrioritySearcher<F>,
-    builder: &mut ClusterBuilder<F>,
-    query_index: usize,
-    heap: &mut BinaryHeap<DistPair<F>>,
-    core_distances: &[F],
-    node_cluster: &mut [u32],
-) {
+fn refill_neighbors<F: Float, Q, S>(
+    query: &Q, searcher: &mut S, builder: &mut ClusterBuilder<F>, query_index: usize,
+    heap: &mut BinaryHeap<DistPair<F>>, core_distances: &[F], node_cluster: &mut [u32],
+) where
+    Q: DistanceSearch<F> + ?Sized,
+    S: PrioritySearcher<F, Q>,
+{
     let query_component = builder.find(query_index);
     let cd = core_distances[query_index];
     // Purge stale same-cluster entries so threshold is not artificially low
@@ -151,12 +145,8 @@ fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
     let mut threshold = heap.peek().map_or(F::infinity(), |n| n.distance);
     while searcher.all_lower_bound() < threshold {
         let Some(cand) = searcher.next_with_filter(
-            data,
-            &mut SameClusterFilter {
-                builder,
-                query_component,
-                node_cluster,
-            },
+            query,
+            &mut SameClusterFilter { builder, query_component, node_cluster },
         ) else {
             break;
         };
@@ -169,28 +159,23 @@ fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
 
 /// Purge same-cluster entries from the top of a min-heap.
 fn purge_same_cluster_component<F: Float>(
-    heap: &mut BinaryHeap<DistPair<F>>,
-    builder: &mut ClusterBuilder<F>,
-    query_component: usize,
+    heap: &mut BinaryHeap<DistPair<F>>, builder: &mut ClusterBuilder<F>, query_component: usize,
 ) {
-    while heap
-        .peek()
-        .copied()
-        .is_some_and(|n| builder.find(n.index) == query_component)
-    {
+    while heap.peek().copied().is_some_and(|n| builder.find(n.index) == query_component) {
         heap.pop();
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
+    use super::heap_of_searchers_hdbscan;
     use crate::TableWithDistance;
     use crate::cluster::hdbscan::hdbscan_prim;
     use crate::distance::EuclideanDistance;
     use crate::vptree::VPTree;
-    use rand::{SeedableRng, rngs::StdRng};
-
-    use super::heap_of_searchers_hdbscan;
 
     #[test]
     fn heap_of_searchers_hdbscan_matches_prim_mst() {

@@ -1,15 +1,16 @@
+#![allow(clippy::type_complexity)]
+
 //! Helper utilities used by the AGNES implementation.
 //!
 //! The algorithm relies on a small helper for building the merge history
 //! while tracking cluster sizes, along with a convenience function for
 //! computing indices into the condensed distance matrix.
 
-use crate::DistanceData;
+use std::collections::BinaryHeap;
+
 use crate::cluster::hierarchical::SetLinkage;
 use crate::cluster::hierarchical::linkage::Linkage;
-use crate::DistPair;
-use num_traits::Float;
-use std::collections::BinaryHeap;
+use crate::{DistPair, DistanceData, Float};
 
 /// Compute the index in the condensed array for pair `(i, j)`, assuming
 /// `i > j`.
@@ -47,32 +48,19 @@ impl<F: Float> BufferedNeighbors<F>
 where
     F: Float,
 {
-    pub(crate) fn new() -> Self {
-        Self {
-            heap: BinaryHeap::new(),
-            threshold: F::infinity(),
-        }
-    }
+    pub(crate) fn new() -> Self { Self { heap: BinaryHeap::new(), threshold: F::infinity() } }
 
     #[inline]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.heap.is_empty()
-    }
+    pub(crate) fn is_empty(&self) -> bool { self.heap.is_empty() }
 
     #[inline]
-    pub(crate) fn push(&mut self, n: DistPair<F>) {
-        self.heap.push(n)
-    }
+    pub(crate) fn push(&mut self, n: DistPair<F>) { self.heap.push(n) }
 
     #[inline]
-    pub(crate) fn pop(&mut self) -> Option<DistPair<F>> {
-        self.heap.pop()
-    }
+    pub(crate) fn pop(&mut self) -> Option<DistPair<F>> { self.heap.pop() }
 
     #[inline]
-    pub(crate) fn peek(&self) -> Option<DistPair<F>> {
-        self.heap.peek().copied()
-    }
+    pub(crate) fn peek(&self) -> Option<DistPair<F>> { self.heap.peek().copied() }
 
     /// Reset the buffer to its initial empty state.
     #[inline]
@@ -112,10 +100,7 @@ pub(crate) fn shrink_active_end(clustermap: &[Option<usize>], end: &mut usize) {
 /// simply runs `find_best` for each active position.
 #[inline]
 pub(crate) fn initialize_nn_cache<F: Float>(
-    distances: &[F],
-    clustermap: &[Option<usize>],
-    bestd: &mut [F],
-    besti: &mut [usize],
+    distances: &[F], clustermap: &[Option<usize>], bestd: &mut [F], besti: &mut [usize],
 ) {
     let size = bestd.len();
     for x in 1..size {
@@ -134,10 +119,7 @@ pub(crate) fn initialize_nn_cache<F: Float>(
 /// known neighbour.
 #[inline]
 pub(crate) fn find_merge_scan<F: Float>(
-    bestd: &[F],
-    besti: &[usize],
-    clustermap: &[Option<usize>],
-    end: usize,
+    bestd: &[F], besti: &[usize], clustermap: &[Option<usize>], end: usize,
 ) -> (F, usize, usize) {
     let mut mindist = F::infinity();
     let mut x = usize::MAX;
@@ -155,15 +137,8 @@ pub(crate) fn find_merge_scan<F: Float>(
         }
     }
 
-    assert!(
-        x != usize::MAX && y != usize::MAX,
-        "no merge candidate found"
-    );
-    if y < x {
-        (mindist, x, y)
-    } else {
-        (mindist, y, x)
-    }
+    assert!(x != usize::MAX && y != usize::MAX, "no merge candidate found");
+    if y < x { (mindist, x, y) } else { (mindist, y, x) }
 }
 
 /// Attempt to update the nearest‑neighbour cache entry for `j` after a new
@@ -172,14 +147,8 @@ pub(crate) fn find_merge_scan<F: Float>(
 #[allow(clippy::too_many_arguments)]
 #[inline]
 pub(crate) fn update_cache<F: Float>(
-    distances: &[F],
-    clustermap: &[Option<usize>],
-    bestd: &mut [F],
-    besti: &mut [usize],
-    x: usize,
-    y: usize,
-    j: usize,
-    d: F,
+    distances: &[F], clustermap: &[Option<usize>], bestd: &mut [F], besti: &mut [usize], x: usize,
+    y: usize, j: usize, d: F,
 ) -> bool {
     if y < j && d <= bestd[j] {
         bestd[j] = d;
@@ -203,19 +172,9 @@ pub(crate) fn update_cache<F: Float>(
 /// callers can react (e.g. by pushing new candidates into a heap).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn update_matrix_and_cache_with_hook<F, L, OnUpdate>(
-    mat: &mut [F],
-    clustermap: &[Option<usize>],
-    bestd: &mut [F],
-    besti: &mut [usize],
-    builder: &Builder<F>,
-    linkage: L,
-    mindist: F,
-    x: usize,
-    y: usize,
-    size_x: usize,
-    size_y: usize,
-    end: usize,
-    mut on_update: OnUpdate,
+    mat: &mut [F], clustermap: &[Option<usize>], bestd: &mut [F], besti: &mut [usize],
+    builder: &Builder<F>, linkage: L, mindist: F, x: usize, y: usize, size_x: usize, size_y: usize,
+    end: usize, mut on_update: OnUpdate,
 ) where
     F: Float,
     L: Linkage<F> + Copy,
@@ -249,13 +208,8 @@ pub(crate) trait AgglomerativeBuilder<F: Float> {
 }
 
 pub(crate) fn run_anderberg_nn_cache<F, B, Update, Recompute, Prepare>(
-    mut distances: Vec<F>,
-    n: usize,
-    mut update: Update,
-    mut recompute: Recompute,
-    mut prepare: Prepare,
-    sort_pairs: bool,
-    prototypes: &mut [Option<usize>],
+    mut distances: Vec<F>, n: usize, mut update: Update, mut recompute: Recompute,
+    mut prepare: Prepare, sort_pairs: bool, prototypes: &mut [Option<usize>],
 ) -> B::Output
 where
     F: Float,
@@ -297,11 +251,7 @@ where
         let offset = triangle_index(x, y);
         let (record_dist, prototype) = prepare(mindist, x, y, offset, prototypes);
         let (a, b) = if sort_pairs {
-            if cid_y <= cid_x {
-                (cid_y, cid_x)
-            } else {
-                (cid_x, cid_y)
-            }
+            if cid_y <= cid_x { (cid_y, cid_x) } else { (cid_x, cid_y) }
         } else {
             (cid_x, cid_y)
         };
@@ -344,11 +294,7 @@ where
 /// `update_cache`.
 #[inline]
 pub(crate) fn find_best<F: Float>(
-    distances: &[F],
-    clustermap: &[Option<usize>],
-    bestd: &mut [F],
-    besti: &mut [usize],
-    j: usize,
+    distances: &[F], clustermap: &[Option<usize>], bestd: &mut [F], besti: &mut [usize], j: usize,
 ) {
     let mut best_dist = F::infinity();
     let mut best_idx = usize::MAX;
@@ -370,13 +316,7 @@ pub(crate) fn find_best<F: Float>(
 
 pub(crate) fn initialize_set_clusters<D, L, F, S>(
     data: &D,
-) -> (
-    Vec<Vec<usize>>,
-    Vec<Option<S>>,
-    Vec<F>,
-    Vec<Option<usize>>,
-    Vec<Option<usize>>,
-)
+) -> (Vec<Vec<usize>>, Vec<Option<S>>, Vec<F>, Vec<Option<usize>>, Vec<Option<usize>>)
 where
     D: DistanceData<F>,
     F: Float,
@@ -384,21 +324,14 @@ where
 {
     let n = data.size();
     let members: Vec<Vec<usize>> = (0..n).map(|i| vec![i]).collect();
-    let summaries: Vec<Option<S>> = members
-        .iter()
-        .map(|m| Some(L::summarize(data, m)))
-        .collect();
+    let summaries: Vec<Option<S>> = members.iter().map(|m| Some(L::summarize(data, m))).collect();
 
     let mut distances = Vec::with_capacity(n * (n - 1) / 2);
     let mut prototypes: Vec<Option<usize>> = Vec::with_capacity(n * (n - 1) / 2);
     for x in 1..n {
         for y in 0..x {
-            let summary_x = summaries[x]
-                .as_ref()
-                .expect("summary missing for active cluster");
-            let summary_y = summaries[y]
-                .as_ref()
-                .expect("summary missing for active cluster");
+            let summary_x = summaries[x].as_ref().expect("summary missing for active cluster");
+            let summary_y = summaries[y].as_ref().expect("summary missing for active cluster");
             let (d, proto) =
                 L::cluster_distance(data, summary_x, summary_y, &members[x], &members[y]);
             distances.push(d);
@@ -417,24 +350,15 @@ where
 /// those modules.
 #[inline]
 pub(crate) fn update_set_entry<D, L, F, S>(
-    data: &D,
-    distances: &mut [F],
-    prototypes: &mut [Option<usize>],
-    members: &[Vec<usize>],
-    summaries: &[Option<S>],
-    x: usize,
-    y: usize,
+    data: &D, distances: &mut [F], prototypes: &mut [Option<usize>], members: &[Vec<usize>],
+    summaries: &[Option<S>], x: usize, y: usize,
 ) where
     D: DistanceData<F>,
     F: Float,
     L: SetLinkage<D, F, S>,
 {
-    let summary_x = summaries[x]
-        .as_ref()
-        .expect("summary missing for active cluster");
-    let summary_y = summaries[y]
-        .as_ref()
-        .expect("summary missing for active cluster");
+    let summary_x = summaries[x].as_ref().expect("summary missing for active cluster");
+    let summary_y = summaries[y].as_ref().expect("summary missing for active cluster");
     let (d, proto) = L::cluster_distance(data, summary_x, summary_y, &members[x], &members[y]);
     let offset = triangle_index(x, y);
     distances[offset] = d;
@@ -443,27 +367,16 @@ pub(crate) fn update_set_entry<D, L, F, S>(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn set_update_cache<D, F, L, S>(
-    distances: &[F],
-    clustermap: &[Option<usize>],
-    summaries: &[Option<S>],
-    bestd: &mut [F],
-    besti: &mut [usize],
-    x: usize,
-    y: usize,
-    j: usize,
-    d: F,
+    distances: &[F], clustermap: &[Option<usize>], summaries: &[Option<S>], bestd: &mut [F],
+    besti: &mut [usize], x: usize, y: usize, j: usize, d: F,
 ) -> bool
 where
     F: Float,
     D: DistanceData<F>,
     L: SetLinkage<D, F, S>,
 {
-    let summary_y = summaries[y]
-        .as_ref()
-        .expect("summary missing for active cluster");
-    let summary_j = summaries[j]
-        .as_ref()
-        .expect("summary missing for active cluster");
+    let summary_y = summaries[y].as_ref().expect("summary missing for active cluster");
+    let summary_j = summaries[j].as_ref().expect("summary missing for active cluster");
     let adjusted = L::adjust_distance(d, summary_y, summary_j);
     if y < j && adjusted <= bestd[j] {
         bestd[j] = adjusted;
@@ -482,12 +395,8 @@ where
 }
 
 pub(crate) fn set_find_best<D, F, L, S>(
-    distances: &[F],
-    clustermap: &[Option<usize>],
-    summaries: &[Option<S>],
-    bestd: &mut [F],
-    besti: &mut [usize],
-    j: usize,
+    distances: &[F], clustermap: &[Option<usize>], summaries: &[Option<S>], bestd: &mut [F],
+    besti: &mut [usize], j: usize,
 ) where
     F: Float,
     D: DistanceData<F>,
@@ -495,17 +404,13 @@ pub(crate) fn set_find_best<D, F, L, S>(
 {
     let mut best_dist = F::infinity();
     let mut best_idx = usize::MAX;
-    let summary_j = summaries[j]
-        .as_ref()
-        .expect("summary missing for active cluster");
+    let summary_j = summaries[j].as_ref().expect("summary missing for active cluster");
 
     for i in 0..j {
         if clustermap[i].is_none() {
             continue;
         }
-        let summary_i = summaries[i]
-            .as_ref()
-            .expect("summary missing for active cluster");
+        let summary_i = summaries[i].as_ref().expect("summary missing for active cluster");
         let raw = distances[triangle_index(j, i)];
         let adjusted = L::adjust_distance(raw, summary_i, summary_j);
         if adjusted <= best_dist {
@@ -519,10 +424,7 @@ pub(crate) fn set_find_best<D, F, L, S>(
 }
 
 pub(crate) fn set_find_best_active_pair<D, F, L, S>(
-    distances: &[F],
-    clustermap: &[Option<usize>],
-    summaries: &[Option<S>],
-    end: usize,
+    distances: &[F], clustermap: &[Option<usize>], summaries: &[Option<S>], end: usize,
 ) -> (usize, usize, F)
 where
     F: Float,
@@ -537,16 +439,12 @@ where
         if clustermap[x].is_none() {
             continue;
         }
-        let summary_x = summaries[x]
-            .as_ref()
-            .expect("summary missing for active cluster");
+        let summary_x = summaries[x].as_ref().expect("summary missing for active cluster");
         for y in 0..x {
             if clustermap[y].is_none() {
                 continue;
             }
-            let summary_y = summaries[y]
-                .as_ref()
-                .expect("summary missing for active cluster");
+            let summary_y = summaries[y].as_ref().expect("summary missing for active cluster");
             let raw = distances[triangle_index(x, y)];
             let adjusted = L::adjust_distance(raw, summary_x, summary_y);
             if adjusted <= best_dist {
@@ -557,10 +455,7 @@ where
         }
     }
 
-    assert!(
-        best_x != usize::MAX && best_y != usize::MAX,
-        "no merge candidate found"
-    );
+    assert!(best_x != usize::MAX && best_y != usize::MAX, "no merge candidate found");
 
     (best_x.max(best_y), best_x.min(best_y), best_dist)
 }
@@ -573,12 +468,7 @@ pub(crate) struct UnionFind {
 }
 
 impl UnionFind {
-    pub(crate) fn new(n: usize) -> Self {
-        Self {
-            parent: (0..n).collect(),
-            size: vec![1; n],
-        }
-    }
+    pub(crate) fn new(n: usize) -> Self { Self { parent: (0..n).collect(), size: vec![1; n] } }
 
     pub(crate) fn find(&mut self, x: usize) -> usize {
         let mut root = x;
@@ -656,11 +546,7 @@ impl<F: Float> Builder<F> {
         // maximum of `2*n - 1` cluster ids may be referenced
         let mut sizes = Vec::with_capacity(2 * n - 1);
         sizes.resize(n, 1); // original points all have size 1
-        Self {
-            n,
-            merges: Vec::with_capacity(n - 1),
-            sizes,
-        }
+        Self { n, merges: Vec::with_capacity(n - 1), sizes }
     }
 
     pub(crate) fn get_size(&self, cid: usize) -> usize {
@@ -680,19 +566,12 @@ impl<F: Float> Builder<F> {
         } else {
             self.sizes[new_id] = size;
         }
-        self.merges.push(Merge {
-            idx1: a,
-            idx2: b,
-            distance: dist,
-            size,
-        });
+        self.merges.push(Merge { idx1: a, idx2: b, distance: dist, size });
         new_id
     }
 
     /// Consume the builder and return the collected merge history.
-    pub(crate) fn into_merges(self) -> MergeHistory<F> {
-        self.merges
-    }
+    pub(crate) fn into_merges(self) -> MergeHistory<F> { self.merges }
 }
 
 /// Builder variant that additionally tracks prototypes for each merge.
@@ -706,16 +585,10 @@ impl<F: Float> PrototypeBuilder<F> {
     pub(crate) fn new(n: usize) -> Self {
         let mut sizes = Vec::with_capacity(2 * n - 1);
         sizes.resize(n, 1);
-        Self {
-            n,
-            merges: Vec::with_capacity(n - 1),
-            sizes,
-        }
+        Self { n, merges: Vec::with_capacity(n - 1), sizes }
     }
 
-    pub(crate) fn get_size(&self, cid: usize) -> usize {
-        self.sizes[cid]
-    }
+    pub(crate) fn get_size(&self, cid: usize) -> usize { self.sizes[cid] }
 
     pub(crate) fn add(&mut self, a: usize, dist: F, b: usize, prototype: Option<usize>) -> usize {
         let size = self.get_size(a) + self.get_size(b);
@@ -725,57 +598,37 @@ impl<F: Float> PrototypeBuilder<F> {
         } else {
             self.sizes[new_id] = size;
         }
-        self.merges.push(PrototypeMerge {
-            idx1: a,
-            idx2: b,
-            distance: dist,
-            size,
-            prototype,
-        });
+        self.merges.push(PrototypeMerge { idx1: a, idx2: b, distance: dist, size, prototype });
         new_id
     }
 
-    pub(crate) fn into_merges(self) -> PrototypeMergeHistory<F> {
-        self.merges
-    }
+    pub(crate) fn into_merges(self) -> PrototypeMergeHistory<F> { self.merges }
 }
 
 impl<F: Float> AgglomerativeBuilder<F> for Builder<F> {
     type Output = MergeHistory<F>;
 
-    fn new(n: usize) -> Self {
-        Self::new(n)
-    }
+    fn new(n: usize) -> Self { Self::new(n) }
 
-    fn get_size(&self, cid: usize) -> usize {
-        self.get_size(cid)
-    }
+    fn get_size(&self, cid: usize) -> usize { self.get_size(cid) }
 
     fn add(&mut self, a: usize, dist: F, b: usize, _prototype: Option<usize>) -> usize {
         self.add(a, dist, b)
     }
 
-    fn into_merges(self) -> Self::Output {
-        self.into_merges()
-    }
+    fn into_merges(self) -> Self::Output { self.into_merges() }
 }
 
 impl<F: Float> AgglomerativeBuilder<F> for PrototypeBuilder<F> {
     type Output = PrototypeMergeHistory<F>;
 
-    fn new(n: usize) -> Self {
-        Self::new(n)
-    }
+    fn new(n: usize) -> Self { Self::new(n) }
 
-    fn get_size(&self, cid: usize) -> usize {
-        self.get_size(cid)
-    }
+    fn get_size(&self, cid: usize) -> usize { self.get_size(cid) }
 
     fn add(&mut self, a: usize, dist: F, b: usize, prototype: Option<usize>) -> usize {
         self.add(a, dist, b, prototype)
     }
 
-    fn into_merges(self) -> Self::Output {
-        self.into_merges()
-    }
+    fn into_merges(self) -> Self::Output { self.into_merges() }
 }

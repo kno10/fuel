@@ -1,29 +1,24 @@
 mod construct;
-mod knn_search;
-mod priority_search;
-mod range_search;
+mod knn;
+mod priority;
+mod range;
 
-use num_traits::Float;
+pub use priority::PrioritySearcher;
 
-pub use priority_search::{NodePoints, PrioritySearcher, SearchFilter};
+use crate::{DistPair, DistanceSearch, Float, KnnSearch, PrioritySearcherFactory, RangeSearch};
+pub use crate::{NodePoints, SearchFilter};
 
 #[allow(non_camel_case_types)]
 pub(crate) type vpsize = u32;
 
-
-
-impl<F: Float, D: crate::DistanceData<F>> crate::KnnSearch<F, D> for VPTree<F> {
-    fn search_knn_by_index(&self, data: &D, query_idx: usize, k: usize) -> Vec<crate::DistPair<F>> {
-        self.search_knn(&data.search_by_index(query_idx), k)
-    }
+impl<F: Float, Q: DistanceSearch<F> + ?Sized> KnnSearch<F, Q> for VPTree<F> {
+    fn search_knn(&self, query: &Q, k: usize) -> Vec<DistPair<F>> { self.search_knn(query, k) }
 }
 
-impl<F: Float, D: crate::DistanceData<F> + crate::VectorData<F> + ?Sized> crate::RangeSearch<F, D>
-    for VPTree<F>
-{
-    fn search_range_by_index(&self, data: &D, query_idx: usize, radius: F) -> Vec<crate::DistPair<F>> {
+impl<F: Float, Q: DistanceSearch<F> + ?Sized> RangeSearch<F, Q> for VPTree<F> {
+    fn search_range(&self, query: &Q, radius: F) -> Vec<DistPair<F>> {
         let mut result = Vec::new();
-        self.search_range(&data.search_by_index(query_idx), radius, |pair| {
+        self.search_range(query, radius, |pair| {
             result.push(pair);
         });
         result
@@ -31,69 +26,60 @@ impl<F: Float, D: crate::DistanceData<F> + crate::VectorData<F> + ?Sized> crate:
 }
 
 /// Priority searcher wrapper that binds a query point to a VP-tree search.
-pub struct VPTreePrioritySearcher<'a, F, D>
+pub struct VPTreePrioritySearcher<'a, F>
 where
     F: Float,
-    D: crate::PointSearchData<F> + crate::VectorData<F> + ?Sized,
 {
     inner: PrioritySearcher<'a, F>,
-    data: &'a D,
-    query: Vec<F>,
 }
 
-impl<'a, F, D> VPTreePrioritySearcher<'a, F, D>
+impl<'a, F> VPTreePrioritySearcher<'a, F>
 where
     F: Float,
-    D: crate::PointSearchData<F> + crate::VectorData<F> + ?Sized,
 {
-    pub fn new(tree: &'a VPTree<F>, data: &'a D, query: &[F]) -> Self {
-        Self {
-            inner: PrioritySearcher::new(tree),
-            data,
-            query: query.to_vec(),
-        }
-    }
+    pub fn new(tree: &'a VPTree<F>) -> Self { Self { inner: PrioritySearcher::new(tree) } }
 }
 
-impl<'a, F, D> crate::PrioritySearcherCore<F> for VPTreePrioritySearcher<'a, F, D>
+impl<'a, F, Q> crate::PrioritySearcher<F, Q> for VPTreePrioritySearcher<'a, F>
 where
     F: Float,
-    D: crate::PointSearchData<F> + crate::VectorData<F> + ?Sized,
+    Q: DistanceSearch<F> + ?Sized,
 {
-    fn reset(&mut self) {
-        self.inner.reset();
+    fn reset(&mut self) { self.inner.reset(); }
+
+    fn reset_with_limits(&mut self, cutoff: F, skip: F) {
+        self.inner.reset_with_limits(cutoff, skip);
     }
 
-    fn set_query<'b, DD: crate::DistanceData<F> + ?Sized>(&mut self, data: &'b DD, query: &[F]) {
-        let _ = data;
-        self.query.clear();
-        self.query.extend_from_slice(query);
-        self.reset();
-    }
+    fn next(&mut self, query: &Q) -> Option<DistPair<F>> { self.inner.next(query) }
 
-    fn next(&mut self) -> Option<crate::DistPair<F>> {
-        self.inner.next(&self.data.search_by_point(&self.query))
-    }
-
-    fn all_lower_bound(&self) -> F {
-        self.inner.all_lower_bound()
-    }
-
-    fn decrease_cutoff(&mut self, threshold: F) {
-        self.inner.decrease_cutoff(threshold);
-    }
-}
-
-impl<F: Float, D: crate::PointSearchData<F> + crate::VectorData<F> + ?Sized>
-    crate::PrioritySearch<F, D> for VPTree<F>
-{
-    type Searcher<'a> = VPTreePrioritySearcher<'a, F, D>
+    fn next_with_filter<S>(&mut self, query: &Q, filter: &mut S) -> Option<DistPair<F>>
     where
-        F: 'a,
-        D: 'a;
+        S: SearchFilter,
+    {
+        self.inner.next_with_filter(query, filter)
+    }
 
-    fn priority_searcher<'a>(&'a self, data: &'a D, query: &'a [F]) -> Self::Searcher<'a> {
-        VPTreePrioritySearcher::new(self, data, query)
+    fn all_lower_bound(&self) -> F { self.inner.all_lower_bound() }
+
+    fn decrease_cutoff(&mut self, threshold: F) { self.inner.decrease_cutoff(threshold); }
+}
+
+impl<F: Float, Q> PrioritySearcherFactory<F, Q> for VPTree<F>
+where
+    Q: DistanceSearch<F> + ?Sized,
+{
+    type Searcher<'a>
+        = VPTreePrioritySearcher<'a, F>
+    where
+        Q: 'a,
+        F: 'a;
+
+    fn priority_searcher<'a>(&'a self) -> Self::Searcher<'a>
+    where
+        Q: 'a,
+    {
+        VPTreePrioritySearcher::new(self)
     }
 }
 
@@ -107,11 +93,7 @@ pub struct SearchCandidate<F> {
 
 impl<F> SearchCandidate<F> {
     pub(crate) fn new(distance: F, lower_bound: F, index: usize) -> Self {
-        Self {
-            distance,
-            lower_bound,
-            index: index as vpsize,
-        }
+        Self { distance, lower_bound, index: index as vpsize }
     }
 
     /// Distance of this candidate to the query point.
@@ -134,11 +116,8 @@ impl<F> SearchCandidate<F> {
 
     /// Index of this candidate in the backing data set.
     #[must_use]
-    pub const fn index(&self) -> usize {
-        self.index as usize
-    }
+    pub const fn index(&self) -> usize { self.index as usize }
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(C)]
@@ -148,9 +127,7 @@ pub(crate) struct Bounds<F> {
 }
 
 impl<F> Bounds<F> {
-    pub(crate) const fn new(lower: F, upper: F) -> Self {
-        Self { lower, upper }
-    }
+    pub(crate) const fn new(lower: F, upper: F) -> Self { Self { lower, upper } }
 }
 
 pub struct VPTree<F> {

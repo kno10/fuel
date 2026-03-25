@@ -1,16 +1,12 @@
-use num_traits::{AsPrimitive, Float, ToPrimitive};
+use crate::Float;
+use crate::distance::{DistanceFunction, DistanceMetric};
 
-use super::{DistanceFunction, DistanceMetric};
-
-pub fn chebyshev_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F {
+pub fn chebyshev_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     a.iter()
         .zip(b.iter())
         .map(|(x, y)| {
-            let left: F = (*x).as_();
-            let right: F = (*y).as_();
+            let left: F = (*x).to_float::<F>();
+            let right: F = (*y).to_float::<F>();
             (left - right).abs()
         })
         .fold(F::zero(), F::max)
@@ -19,15 +15,8 @@ pub fn chebyshev_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 's
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ChebyshevDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceMetric<[N], F>
-    for ChebyshevDistance
-{
-}
+impl<N: Float, F: Float + 'static> DistanceMetric<[N], F> for ChebyshevDistance {}
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
-    for ChebyshevDistance
-{
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        chebyshev_distance(a, b)
-    }
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for ChebyshevDistance {
+    fn distance(&self, a: &[N], b: &[N]) -> F { chebyshev_distance(a, b) }
 }

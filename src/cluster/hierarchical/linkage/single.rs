@@ -3,9 +3,8 @@
 pub struct SingleLinkage;
 
 use super::Linkage;
-use crate::DistanceData;
 use crate::cluster::hierarchical::SetLinkage;
-use num_traits::Float;
+use crate::{DistanceData, Float};
 
 impl<F: Float> Linkage<F> for SingleLinkage {
     fn combine(&self, _sizex: usize, dx: F, _sizey: usize, dy: F, _sizej: usize, _dxy: F) -> F {
@@ -17,11 +16,7 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for SingleLinkage {
     fn summarize(_data: &D, _members: &[usize]) {}
 
     fn cluster_distance(
-        data: &D,
-        _summary_a: &(),
-        _summary_b: &(),
-        a: &[usize],
-        b: &[usize],
+        data: &D, _summary_a: &(), _summary_b: &(), a: &[usize], b: &[usize],
     ) -> (F, Option<usize>) {
         let mut best = F::infinity();
         for &i in a {

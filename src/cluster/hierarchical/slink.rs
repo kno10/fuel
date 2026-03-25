@@ -1,8 +1,6 @@
-use num_traits::Float;
-
 use super::common::MergeHistory;
 use super::pointer::{PointerRepresentation, pointer_to_merge_history};
-use crate::DistanceData;
+use crate::{DistanceData, Float};
 
 // Version using the original "pointer" representation
 pub fn slink_pointer<F: Float, D: DistanceData<F>>(data: &D) -> PointerRepresentation<F> {
@@ -56,11 +54,9 @@ pub fn slink<F: Float, D: DistanceData<F>>(data: &D) -> MergeHistory<F> {
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::hierarchical::SingleLinkage;
-    use crate::cluster::hierarchical::agnes;
-
     use super::super::pointer::pointer_to_merge_history;
     use super::slink_pointer;
+    use crate::cluster::hierarchical::{SingleLinkage, agnes};
     use crate::data::CondensedDistanceMatrix;
 
     #[test]

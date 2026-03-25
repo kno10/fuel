@@ -1,43 +1,34 @@
 use std::cmp::Ordering;
 
-use rand::Rng;
-use rand::SeedableRng;
 use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 
 use super::super::VPTree;
 use super::shared::brute_force_knn;
-use crate::DistanceData;
-use crate::DistanceSearch;
-use crate::TableWithDistance;
 use crate::api::Data;
 use crate::distance::EuclideanDistance;
+use crate::{CoordinateQuery, DistanceData, DistanceSearch, IndexQuery, TableWithDistance};
 
 #[test]
 fn test_search_knn_small_dataset() {
-    let points = vec![
-        vec![0.0, 0.0],
-        vec![1.0, 0.0],
-        vec![0.0, 1.0],
-        vec![1.0, 1.0],
-        vec![2.0, 2.0],
-    ];
+    let points =
+        vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 1.0], vec![1.0, 1.0], vec![2.0, 2.0]];
     let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
     let rng = &mut StdRng::seed_from_u64(42);
 
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
 
-    let result = tree.search_knn(&dataset.search_by_index(0), 3);
+    let query = dataset.query().with_index(0);
+    let result = tree.search_knn(&query, 3);
 
     assert_eq!(result.len(), 3);
     assert_eq!(result[0].index, 0);
 
-    let indices_1_2: Vec<usize> = result[1..3]
-        .iter()
-        .map(|dp| dp.index)
-        .collect();
+    let indices_1_2: Vec<usize> = result[1..3].iter().map(|dp| dp.index).collect();
     assert!(indices_1_2.contains(&1) && indices_1_2.contains(&2));
 
-    let result = tree.search_knn(&dataset.search_by_index(4), 2);
+    let query = dataset.query().with_index(4);
+    let result = tree.search_knn(&query, 2);
 
     assert_eq!(result.len(), 2);
     assert_eq!(result[0].index, 4);
@@ -53,11 +44,13 @@ fn test_edge_cases() {
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
     assert_eq!(tree.points.len(), 1);
 
-    let result = tree.search_knn(&dataset.search_by_index(0), 1);
+    let query = dataset.query().with_index(0);
+    let result = tree.search_knn(&query, 1);
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].index, 0);
 
-    let result = tree.search_knn(&dataset.search_by_index(0), 0);
+    let query = dataset.query().with_index(0);
+    let result = tree.search_knn(&query, 0);
     assert_eq!(result.len(), 0);
 }
 
@@ -74,7 +67,8 @@ fn test_grid_search() {
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
 
     let center_idx = 2 * 5 + 2;
-    let result = tree.search_knn(&dataset.search_by_index(center_idx), 5);
+    let query = dataset.query().with_index(center_idx);
+    let result = tree.search_knn(&query, 5);
 
     assert_eq!(result.len(), 5);
     assert_eq!(result[0].index, center_idx);
@@ -101,16 +95,16 @@ fn test_knn_against_brute_force() {
 
     let query_idx = 45;
     let k = 10;
-    let result = tree.search_knn(&dataset.search_by_index(query_idx), k);
+    let query = dataset.query().with_index(query_idx);
+    let result = tree.search_knn(&query, k);
 
     assert_eq!(result.len(), k);
     for i in 1..k {
         assert!(result[i - 1].distance <= result[i].distance);
     }
 
-    let mut distances: Vec<(f64, usize)> = (0..100)
-        .map(|i| (dataset.distance(query_idx, i), i))
-        .collect();
+    let mut distances: Vec<(f64, usize)> =
+        (0..100).map(|i| (dataset.distance(query_idx, i), i)).collect();
     distances.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal));
 
     let kth_distance = distances[k - 1].0;
@@ -148,16 +142,13 @@ fn test_knn_matches_bruteforce_multiple_queries() {
 
     for &query_idx in &query_indices {
         for &k in &k_values {
-            let knn = tree.search_knn(&dataset.search_by_index(query_idx), k);
+            let query = dataset.query().with_index(query_idx);
+            let knn = tree.search_knn(&query, k);
             let brute = brute_force_knn(&dataset, query_idx, k);
-            let mut all_distances: Vec<(f64, usize)> = dataset
-                .iter()
-                .map(|i| (dataset.distance(query_idx, i), i))
-                .collect();
+            let mut all_distances: Vec<(f64, usize)> =
+                dataset.iter().map(|i| (dataset.distance(query_idx, i), i)).collect();
             all_distances.sort_by(|a, b| {
-                a.0.partial_cmp(&b.0)
-                    .unwrap_or(Ordering::Equal)
-                    .then_with(|| a.1.cmp(&b.1))
+                a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal).then_with(|| a.1.cmp(&b.1))
             });
 
             assert_eq!(knn.len(), brute.len());
@@ -204,7 +195,8 @@ fn test_knn_with_k_larger_than_dataset() {
     let tree: VPTree<f64> = VPTree::new(&dataset, 2, rng);
 
     let query_idx = 3;
-    let result = tree.search_knn(&dataset.search_by_index(query_idx), 100);
+    let query = dataset.query().with_index(query_idx);
+    let result = tree.search_knn(&query, 100);
     let dataset_size = dataset.size();
     let brute = brute_force_knn(&dataset, query_idx, dataset_size);
 
@@ -237,7 +229,8 @@ fn test_knn_self_is_nearest_for_all_queries() {
     let tree: VPTree<f64> = VPTree::new(&dataset, 3, rng);
 
     for query_idx in 0..dataset.size() {
-        let result = tree.search_knn(&dataset.search_by_index(query_idx), 4);
+        let query = dataset.query().with_index(query_idx);
+        let result = tree.search_knn(&query, 4);
         assert!(!result.is_empty());
         assert_eq!(result[0].index, query_idx);
         assert!(result[0].distance.abs() < 1e-12);
@@ -250,10 +243,7 @@ fn test_knn_random_fixed_seed_top5_matches_bruteforce() {
 
     let mut points = Vec::with_capacity(200);
     for _ in 0..200 {
-        points.push(vec![
-            rng.gen_range(-500.0..500.0),
-            rng.gen_range(-500.0..500.0),
-        ]);
+        points.push(vec![rng.gen_range(-500.0..500.0), rng.gen_range(-500.0..500.0)]);
     }
 
     let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
@@ -262,21 +252,18 @@ fn test_knn_random_fixed_seed_top5_matches_bruteforce() {
 
     for _ in 0..20 {
         let query_idx = rng.gen_range(0..dataset.size());
-        let knn = tree.search_knn(&dataset.search_by_index(query_idx), 5);
+        let query = dataset.query().with_index(query_idx);
+        let knn = tree.search_knn(&query, 5);
 
         assert_eq!(knn.len(), 5);
         for i in 1..knn.len() {
             assert!(knn[i - 1].distance <= knn[i].distance);
         }
 
-        let mut distances: Vec<(f64, usize)> = dataset
-            .iter()
-            .map(|i| (dataset.distance(query_idx, i), i))
-            .collect();
+        let mut distances: Vec<(f64, usize)> =
+            dataset.iter().map(|i| (dataset.distance(query_idx, i), i)).collect();
         distances.sort_by(|a, b| {
-            a.0.partial_cmp(&b.0)
-                .unwrap_or(Ordering::Equal)
-                .then_with(|| a.1.cmp(&b.1))
+            a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal).then_with(|| a.1.cmp(&b.1))
         });
 
         let brute_top5 = &distances[..5];
@@ -319,7 +306,7 @@ fn test_knn_with_external_query_data_matches_bruteforce() {
     let tree: VPTree<f64> = VPTree::new(&dataset, 2, rng);
 
     let k = 4;
-    let query_view = dataset.search_by_value(&query);
+    let query_view = dataset.query().with_coordinates(&query);
     let knn = tree.search_knn(&query_view, k);
 
     assert_eq!(knn.len(), k);
@@ -327,14 +314,10 @@ fn test_knn_with_external_query_data_matches_bruteforce() {
         assert!(knn[i - 1].distance <= knn[i].distance);
     }
 
-    let mut brute: Vec<(f64, usize)> = dataset
-        .iter()
-        .map(|i| (query_view.query_distance(i), i))
-        .collect();
+    let mut brute: Vec<(f64, usize)> =
+        dataset.iter().map(|i| (query_view.query_distance(i), i)).collect();
     brute.sort_by(|a, b| {
-        a.0.partial_cmp(&b.0)
-            .unwrap_or(Ordering::Equal)
-            .then_with(|| a.1.cmp(&b.1))
+        a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal).then_with(|| a.1.cmp(&b.1))
     });
 
     let kth_distance = brute[k - 1].0;
@@ -342,11 +325,8 @@ fn test_knn_with_external_query_data_matches_bruteforce() {
         assert!((actual.distance - *expected_dist).abs() < 1e-10);
     }
 
-    let strict_closer: Vec<usize> = brute
-        .iter()
-        .take_while(|(d, _)| *d < kth_distance - 1e-10)
-        .map(|(_, idx)| *idx)
-        .collect();
+    let strict_closer: Vec<usize> =
+        brute.iter().take_while(|(d, _)| *d < kth_distance - 1e-10).map(|(_, idx)| *idx).collect();
 
     for idx in strict_closer {
         assert!(knn.iter().any(|dp| dp.index == idx));

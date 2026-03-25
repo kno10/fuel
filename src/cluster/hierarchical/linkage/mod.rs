@@ -28,8 +28,7 @@ pub use hausdorff::HausdorffLinkage;
 pub use medoid::MedoidLinkage;
 pub use minimax::MinimaxLinkage;
 
-use crate::DistanceData;
-use num_traits::Float;
+use crate::{DistanceData, Float};
 
 /// Linkage criterion expressed as a function of the *sets* underlying two
 /// clusters.  This trait previously lived in `set_agnes.rs` alongside the
@@ -52,27 +51,18 @@ pub trait SetLinkage<D: DistanceData<F>, F: Float, Summary = ()> {
     /// Distance between cluster `a` and cluster `b`, plus an optional
     /// prototype index for the merged cluster.
     fn cluster_distance(
-        data: &D,
-        summary_a: &Summary,
-        summary_b: &Summary,
-        a: &[usize],
-        b: &[usize],
+        data: &D, summary_a: &Summary, summary_b: &Summary, a: &[usize], b: &[usize],
     ) -> (F, Option<usize>);
 
     /// Optional adjustment applied to the stored raw distance before it is
     /// compared or emitted by the clustering routine. The default implementation
     /// leaves the distance untouched.
-    fn adjust_distance(d: F, _summary_a: &Summary, _summary_b: &Summary) -> F {
-        d
-    }
+    fn adjust_distance(d: F, _summary_a: &Summary, _summary_b: &Summary) -> F { d }
 
     /// Update the summary for the destination cluster when merging the source
     /// cluster into it. The default implementation is a no-op.
     fn merge_summary(
-        _dest: &mut Summary,
-        _source: Summary,
-        _prototype: Option<usize>,
-        _distance: F,
+        _dest: &mut Summary, _source: Summary, _prototype: Option<usize>, _distance: F,
     ) {
     }
 }
@@ -89,16 +79,12 @@ pub trait Linkage<F: Float>: Copy {
     /// distances; in those cases the `initial` step can transform the input
     /// once, avoiding repeated work during the merge updates.  The default
     /// implementation is the identity function.
-    fn initial(&self, d: F, _issquare: bool) -> F {
-        d
-    }
+    fn initial(&self, d: F, _issquare: bool) -> F { d }
 
     /// Restore a distance to the conventional scale when recording the result
     /// in the merge history.  This is the inverse of `initial` for methods
     /// that alter the distance scale.
-    fn restore(&self, d: F, _issquare: bool) -> F {
-        d
-    }
+    fn restore(&self, d: F, _issquare: bool) -> F { d }
 
     /// Combine two cluster distances according to the chosen method.
     ///
@@ -121,7 +107,5 @@ pub trait GeometricLinkage<F: Float>: Linkage<F> {
     /// Restore a linkage value to the original scale.  By default this is the
     /// identity function, but some methods (notably Ward) differ from the
     /// `restore` defined on `Linkage` by a constant factor.
-    fn restore_linkage(&self, d: F, _issquare: bool) -> F {
-        d
-    }
+    fn restore_linkage(&self, d: F, _issquare: bool) -> F { d }
 }

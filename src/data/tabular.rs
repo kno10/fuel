@@ -1,121 +1,169 @@
-use crate::api::{Data, DistanceData, DistanceSearch, PointSearchData, VectorData};
-use crate::distance::DistanceFunction;
-use num_traits::Float;
+use crate::api::{Data, DistanceData, DistanceSearch, VectorData};
+use crate::distance::{DistanceFunction, PartialDistance};
+use crate::{CoordinateQuery, CoordinateSearch, Float, IndexQuery};
 
 // List of points with a distance function.
-pub struct TableWithDistance<'a, T, DF: DistanceFunction<T, F>, F: Float> {
+pub struct TableWithDistance<'a, C: Float, T: AsRef<[C]>, DF: DistanceFunction<[C], F>, F: Float> {
     data: &'a [T],
     distance_fn: DF,
-    _phantom: std::marker::PhantomData<F>,
+    _coordinate_type: std::marker::PhantomData<C>,
+    _distance_type: std::marker::PhantomData<F>,
 }
 
-impl<'a, T, DF: DistanceFunction<T, F>, F: Float> Data for TableWithDistance<'a, T, DF, F> {
-    fn size(&self) -> usize {
-        self.data.len()
-    }
+impl<'a, C: Float, T: AsRef<[C]>, DF: DistanceFunction<[C], F>, F: Float> Data
+    for TableWithDistance<'a, C, T, DF, F>
+{
+    fn size(&self) -> usize { self.data.len() }
 }
 
-impl<'a, T, DF: DistanceFunction<T, F>, F> DistanceData<F> for TableWithDistance<'a, T, DF, F>
+impl<'a, C, T, DF, F> DistanceData<F> for TableWithDistance<'a, C, T, DF, F>
 where
-    DF: DistanceFunction<T, F>,
+    C: Float,
+    T: AsRef<[C]>,
+    DF: DistanceFunction<[C], F>,
     F: Float,
 {
+    type Query<'b>
+        = TableQuery<'b, 'a, C, T, DF, F>
+    where
+        Self: 'b;
+
     fn distance(&self, a: usize, b: usize) -> F {
-        self.distance_fn.distance(&self.data[a], &self.data[b])
+        self.distance_fn.distance(self.data[a].as_ref(), self.data[b].as_ref())
     }
 
-    fn search_by_index(&self, idx: usize) -> impl DistanceSearch<F> {
-        TableDistanceSearch {
-            data: self,
-            query: &self.data[idx],
-        }
-    }
-}
-
-impl<'a, T, DF, F> PointSearchData<F> for TableWithDistance<'a, T, DF, F>
-where
-    T: AsRef<[F]>,
-    DF: DistanceFunction<T, F> + DistanceFunction<[F], F>,
-    F: Float,
-    TableWithDistance<'a, T, DF, F>: DistanceData<F>,
-{
-    fn search_by_point<'b>(&'b self, query: &'b [F]) -> impl DistanceSearch<F> + 'b {
-        TablePointDistanceSearch { data: self, query }
-    }
+    fn query(&self) -> Self::Query<'_> { TableQuery::new(self) }
 }
 
 // TODO: Factor out a supertype with vector only, no distance.
-impl<'a, T, DF, S> VectorData<S> for TableWithDistance<'a, T, DF, S>
+impl<'a, C, T, DF, F> VectorData<C> for TableWithDistance<'a, C, T, DF, F>
 where
-    T: AsRef<[S]>,
-    S: Copy + Float,
-    DF: DistanceFunction<T, S>,
-    TableWithDistance<'a, T, DF, S>: DistanceData<S>,
+    C: Float,
+    T: AsRef<[C]>,
+    DF: DistanceFunction<[C], F>,
+    F: Float,
+    TableWithDistance<'a, C, T, DF, F>: DistanceData<F>,
 {
     fn dims(&self) -> usize {
         self.data
             .first()
             .map(|v| v.as_ref().len())
-            .expect("An empty data set has no dimensionality.")
+            .expect("an empty data set has no dimensionality")
     }
 
-    fn point(&self, idx: usize) -> &[S] {
-        self.data[idx].as_ref()
-    }
+    fn point(&self, idx: usize) -> &[C] { self.data[idx].as_ref() }
 }
 
-impl<'a, T, DF: DistanceFunction<T, F>, F: Float> TableWithDistance<'a, T, DF, F> {
-    // FIXME: rename new
+impl<'a, C: Float, T: AsRef<[C]>, DF: DistanceFunction<[C], F>, F: Float>
+    TableWithDistance<'a, C, T, DF, F>
+{
     pub const fn with_distance(data: &'a [T], distance_fn: DF) -> Self {
         Self {
             data,
             distance_fn,
-            _phantom: std::marker::PhantomData,
+            _coordinate_type: std::marker::PhantomData,
+            _distance_type: std::marker::PhantomData,
         }
     }
+}
 
-    // TODO: this should go into some interface.
-    pub const fn search_by_value(&'a self, query: &'a T) -> TableDistanceSearch<'a, T, DF, F> {
-        TableDistanceSearch { data: self, query }
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum TableQueryMode {
+    Index(usize),
+    Coordinates,
+}
+
+pub struct TableQuery<'q, 'd, C, T, DF, F>
+where
+    C: Float,
+    T: AsRef<[C]>,
+    DF: DistanceFunction<[C], F>,
+    F: Float,
+{
+    data: &'q TableWithDistance<'d, C, T, DF, F>,
+    mode: TableQueryMode,
+    coords: Vec<C>,
+}
+
+impl<'q, 'd, C, T, DF, F> TableQuery<'q, 'd, C, T, DF, F>
+where
+    C: Float,
+    T: AsRef<[C]>,
+    DF: DistanceFunction<[C], F>,
+    F: Float,
+{
+    fn new(data: &'q TableWithDistance<'d, C, T, DF, F>) -> Self {
+        Self { data, mode: TableQueryMode::Index(0), coords: Vec::new() }
+    }
+
+    fn query_coords(&self) -> &[C] {
+        match self.mode {
+            TableQueryMode::Index(idx) => self.data.point(idx),
+            TableQueryMode::Coordinates => &self.coords,
+        }
     }
 }
 
-///////////// Search wrapper
-pub struct TableDistanceSearch<'a, T, DF: DistanceFunction<T, F>, F: Float> {
-    data: &'a TableWithDistance<'a, T, DF, F>,
-    query: &'a T,
-}
-
-impl<'a, T, DF: DistanceFunction<T, F>, F> DistanceSearch<F> for TableDistanceSearch<'a, T, DF, F>
+impl<'q, 'd, C, T, DF, F> DistanceSearch<F> for TableQuery<'q, 'd, C, T, DF, F>
 where
-    DF: DistanceFunction<T, F>,
+    C: Float,
+    T: AsRef<[C]>,
+    DF: DistanceFunction<[C], F>,
     F: Float,
 {
     fn query_distance(&self, b: usize) -> F {
-        self.data
-            .distance_fn
-            .distance(self.query, &self.data.data[b])
+        debug_assert!(b < self.data.size());
+        match self.mode {
+            TableQueryMode::Index(idx) => self.data.distance(idx, b),
+            TableQueryMode::Coordinates => {
+                self.data.distance_fn.distance(self.coords.as_slice(), self.data.data[b].as_ref())
+            }
+        }
     }
 }
 
-pub struct TablePointDistanceSearch<'a, T, DF, F>
+impl<'q, 'd, C, T, DF, F> IndexQuery<F> for TableQuery<'q, 'd, C, T, DF, F>
 where
-    DF: DistanceFunction<T, F> + DistanceFunction<[F], F>,
+    C: Float,
+    T: AsRef<[C]>,
+    DF: DistanceFunction<[C], F>,
     F: Float,
 {
-    data: &'a TableWithDistance<'a, T, DF, F>,
-    query: &'a [F],
+    fn set_index(&mut self, idx: usize) {
+        debug_assert!(idx < self.data.size());
+        self.mode = TableQueryMode::Index(idx);
+    }
 }
 
-impl<'a, T, DF, F> DistanceSearch<F> for TablePointDistanceSearch<'a, T, DF, F>
+impl<'q, 'd, C, T, DF, F> CoordinateSearch<C, F> for TableQuery<'q, 'd, C, T, DF, F>
 where
-    T: AsRef<[F]>,
-    DF: DistanceFunction<T, F> + DistanceFunction<[F], F>,
+    C: Float,
+    T: AsRef<[C]>,
+    DF: DistanceFunction<[C], F> + PartialDistance<C, F>,
     F: Float,
 {
-    fn query_distance(&self, b: usize) -> F {
-        self.data
-            .distance_fn
-            .distance(self.query, self.data.data[b].as_ref())
+    fn query_coordinate(&self, axis: usize) -> C { self.query_coords()[axis] }
+
+    fn delta_to_distance(&self, delta: C) -> F { self.data.distance_fn.axis_distance(delta) }
+
+    fn combine_axis_distances(&self, a: F, b: F) -> F {
+        self.data.distance_fn.combine_axis_distances(a, b)
+    }
+}
+
+impl<'q, 'd, C, T, DF, F> CoordinateQuery<C, F> for TableQuery<'q, 'd, C, T, DF, F>
+where
+    C: Float,
+    T: AsRef<[C]>,
+    DF: DistanceFunction<[C], F> + PartialDistance<C, F>,
+    F: Float,
+{
+    fn set_coordinates(&mut self, coords: &[C]) {
+        if self.data.size() > 0 {
+            debug_assert_eq!(coords.len(), self.data.dims());
+        }
+        self.coords.clear();
+        self.coords.extend_from_slice(coords);
+        self.mode = TableQueryMode::Coordinates;
     }
 }

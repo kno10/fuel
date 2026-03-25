@@ -1,6 +1,5 @@
-use crate::DistanceData;
 use crate::cluster::hierarchical::SetLinkage;
-use num_traits::Float;
+use crate::{DistanceData, Float};
 
 pub(crate) struct MedoidSummary {
     medoid: usize,
@@ -17,11 +16,7 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, MedoidSummary> for MedoidLin
     }
 
     fn cluster_distance(
-        data: &D,
-        summary_a: &MedoidSummary,
-        summary_b: &MedoidSummary,
-        a: &[usize],
-        b: &[usize],
+        data: &D, summary_a: &MedoidSummary, summary_b: &MedoidSummary, a: &[usize], b: &[usize],
     ) -> (F, Option<usize>) {
         let dist = F::from(data.distance(summary_a.medoid, summary_b.medoid)).unwrap();
         let mut union = Vec::with_capacity(a.len() + b.len());
@@ -32,10 +27,7 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, MedoidSummary> for MedoidLin
     }
 
     fn merge_summary(
-        dest: &mut MedoidSummary,
-        _source: MedoidSummary,
-        prototype: Option<usize>,
-        _distance: F,
+        dest: &mut MedoidSummary, _source: MedoidSummary, prototype: Option<usize>, _distance: F,
     ) {
         if let Some(proto) = prototype {
             dest.medoid = proto;

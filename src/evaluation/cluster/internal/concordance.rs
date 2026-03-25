@@ -1,17 +1,15 @@
 #![allow(clippy::cast_precision_loss, clippy::match_same_arms)]
 
+use std::cmp::Ordering;
+
 use super::helpers::{
     ConcordanceStats, NoiseHandling, build_clusters, euc, lower_bound, upper_bound,
 };
-use std::cmp::Ordering;
 
 /// Compute gamma and tau concordance statistics for clustering.
 #[must_use]
 pub fn concordant_pairs_gamma_tau(
-    data: &[Vec<f64>],
-    labels: &[isize],
-    noise_label: Option<isize>,
-    nh: NoiseHandling,
+    data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>, nh: NoiseHandling,
 ) -> ConcordanceStats<f64> {
     assert_eq!(data.len(), labels.len());
     let (clusters, ignored) = build_clusters(labels, noise_label, nh);

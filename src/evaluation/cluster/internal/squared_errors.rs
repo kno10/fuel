@@ -3,18 +3,11 @@ use super::helpers::{BasicDistanceStats, NoiseHandling, build_clusters, centroid
 /// Compute sum-of-squared errors and related statistics for clustering.
 #[must_use]
 pub fn squared_errors(
-    data: &[Vec<f64>],
-    labels: &[isize],
-    noise_label: Option<isize>,
-    nh: NoiseHandling,
+    data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>, nh: NoiseHandling,
 ) -> BasicDistanceStats<f64> {
     assert_eq!(data.len(), labels.len());
     if data.is_empty() {
-        return BasicDistanceStats {
-            mean: 0.0,
-            sum_of_squares: 0.0,
-            rmsd: 0.0,
-        };
+        return BasicDistanceStats { mean: 0.0, sum_of_squares: 0.0, rmsd: 0.0 };
     }
 
     let (clusters, ignored) = build_clusters(labels, noise_label, nh);
@@ -38,9 +31,5 @@ pub fn squared_errors(
     }
 
     let div = (data.len() - ignored).max(1) as f64;
-    BasicDistanceStats {
-        mean: sum / div,
-        sum_of_squares: ssq,
-        rmsd: (ssq / div).sqrt(),
-    }
+    BasicDistanceStats { mean: sum / div, sum_of_squares: ssq, rmsd: (ssq / div).sqrt() }
 }

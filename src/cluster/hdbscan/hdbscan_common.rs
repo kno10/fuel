@@ -1,11 +1,8 @@
 use std::cmp::Ordering;
 
-use num_traits::Float;
-
-use crate::DistanceData;
-
+use crate::api::{NodePoints, SearchFilter};
 use crate::cluster::hierarchical::common::{Merge, MergeHistory, UnionFind};
-use crate::vptree::{NodePoints, SearchFilter, VPTree};
+use crate::{DistanceData, Float, IndexQuery, KnnSearch};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HdbscanHierarchy<F: Float> {
@@ -16,10 +13,7 @@ pub struct HdbscanHierarchy<F: Float> {
 impl<F: Float> HdbscanHierarchy<F> {
     #[must_use]
     pub const fn new(merges: MergeHistory<F>, core_distances: Vec<F>) -> Self {
-        Self {
-            merges,
-            core_distances,
-        }
+        Self { merges, core_distances }
     }
 }
 
@@ -32,14 +26,11 @@ pub(crate) struct WeightedEdge<F: Float> {
 
 impl<F: Float> WeightedEdge<F> {
     #[must_use]
-    pub(crate) const fn new(a: usize, b: usize, weight: F) -> Self {
-        Self { a, b, weight }
-    }
+    pub(crate) const fn new(a: usize, b: usize, weight: F) -> Self { Self { a, b, weight } }
 }
 
 pub(crate) fn compute_core_distances<D: DistanceData<F>, F: Float>(
-    data: &D,
-    min_points: usize,
+    data: &D, min_points: usize,
 ) -> Vec<F> {
     // fallback brute-force version used by non-tree algorithms (prim, slink)
     assert!(min_points > 0, "min_points must be greater than 0");
@@ -72,11 +63,12 @@ pub(crate) fn compute_core_distances<D: DistanceData<F>, F: Float>(
 /// tree for the `min_points` nearest neighbours of each point.  The tree
 /// must have been built on the same dataset as `data`.
 #[must_use]
-pub fn compute_core_distances_tree<D: DistanceData<F>, F: Float>(
-    tree: &VPTree<F>,
-    data: &D,
-    min_points: usize,
-) -> Vec<F> {
+pub fn compute_core_distances_tree<'a, S, D, F>(tree: &S, data: &'a D, min_points: usize) -> Vec<F>
+where
+    D: DistanceData<F> + ?Sized + 'a,
+    F: Float,
+    S: KnnSearch<F, D::Query<'a>>,
+{
     assert!(min_points > 0, "min_points must be greater than 0");
 
     let n = data.size();
@@ -88,8 +80,10 @@ pub fn compute_core_distances_tree<D: DistanceData<F>, F: Float>(
 
     let k = min_points; // search_knn returns self as first neighbour
     let mut core = vec![F::infinity(); n];
+    let mut query = data.query();
     for (i, slot) in core.iter_mut().enumerate().take(n) {
-        let neighbors = tree.search_knn(&data.search_by_index(i), k);
+        query.set_index(i);
+        let neighbors = tree.search_knn(&query, k);
         if neighbors.len() == k {
             *slot = neighbors[k - 1].distance;
         }
@@ -100,10 +94,7 @@ pub fn compute_core_distances_tree<D: DistanceData<F>, F: Float>(
 
 #[inline]
 pub(crate) fn mutual_reachability_distance<F: Float>(
-    core_distances: &[F],
-    a: usize,
-    b: usize,
-    distance: F,
+    core_distances: &[F], a: usize, b: usize, distance: F,
 ) -> F {
     core_distances[a].max(core_distances[b]).max(distance)
 }
@@ -116,7 +107,7 @@ pub(crate) struct SameComponentFilter<'a> {
 
 const WITNESS_BIT: u32 = 1 << 31;
 
-impl SearchFilter for SameComponentFilter<'_> {
+impl<'a> SearchFilter for SameComponentFilter<'a> {
     fn skip_node(&mut self, points: NodePoints<'_>) -> bool {
         let query_component = self.uf.find(self.query_index);
         let vp = points.first_index();
@@ -156,8 +147,7 @@ impl SearchFilter for SameComponentFilter<'_> {
 }
 
 pub(crate) fn edges_to_merge_history<F: Float>(
-    n: usize,
-    edges: &mut [WeightedEdge<F>],
+    n: usize, edges: &mut [WeightedEdge<F>],
 ) -> MergeHistory<F> {
     if n <= 1 {
         return Vec::new();
@@ -185,12 +175,7 @@ pub(crate) fn edges_to_merge_history<F: Float>(
         let ss = size[s];
         let st = size[t];
         let (idx1, idx2) = if s <= t { (s, t) } else { (t, s) };
-        merges.push(Merge {
-            idx1,
-            idx2,
-            distance: edge.weight,
-            size: ss + st,
-        });
+        merges.push(Merge { idx1, idx2, distance: edge.weight, size: ss + st });
 
         let new_id = n + merges.len() - 1;
         parent[s] = new_id;
@@ -224,20 +209,18 @@ fn uf_find(parent: &mut [usize], x: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
     use super::*;
     use crate::TableWithDistance;
     use crate::distance::EuclideanDistance;
-    use rand::{SeedableRng, rngs::StdRng};
+    use crate::vptree::VPTree;
 
     #[test]
     fn core_distances_tree_matches_bruteforce() {
-        let points: Vec<Vec<f64>> = vec![
-            vec![0.0, 0.0],
-            vec![1.0, 0.0],
-            vec![0.0, 1.0],
-            vec![1.0, 1.0],
-            vec![2.0, 2.0],
-        ];
+        let points: Vec<Vec<f64>> =
+            vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 1.0], vec![1.0, 1.0], vec![2.0, 2.0]];
         let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(123);
         let tree = VPTree::<f64>::new(&data, 2, &mut rng);

@@ -1,13 +1,12 @@
 use std::collections::BinaryHeap;
 
-use num_traits::Float;
-
-use crate::api::{DistanceData, DistanceSearch};
-use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
-use crate::DistPair;
-use crate::vptree::{PrioritySearcher, VPTree};
-
 use super::hdbscan_common::{HdbscanHierarchy, compute_core_distances_tree};
+use crate::api::DistanceData;
+use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
+use crate::{
+    DistPair, DistanceSearch, Float, IndexQuery, KnnSearch, PrioritySearcher,
+    PrioritySearcherFactory,
+};
 
 /// Buffered-search HDBSCAN MST with bounded per-point buffers.
 ///
@@ -18,12 +17,15 @@ use super::hdbscan_common::{HdbscanHierarchy, compute_core_distances_tree};
 /// memory per point and relies on `SameClusterFilter` with a witness cache
 /// for skip_node pruning.
 #[must_use]
-pub fn buffered_search_hdbscan<D: DistanceData<F>, F: Float>(
-    tree: &VPTree<F>,
-    data: &D,
-    min_points: usize,
-    slack: usize,
-) -> HdbscanHierarchy<F> {
+pub fn buffered_search_hdbscan<'a, S, D, F>(
+    tree: &'a S, data: &'a D, min_points: usize, slack: usize,
+) -> HdbscanHierarchy<F>
+where
+    F: Float + 'a,
+    D: DistanceData<F> + ?Sized + 'a,
+    S: PrioritySearcherFactory<F, D::Query<'a>>,
+    S: KnnSearch<F, D::Query<'a>>,
+{
     let n = data.size();
     assert!(n > 0, "number of points must be positive");
     assert!(min_points > 0, "min_points must be greater than 0");
@@ -38,17 +40,20 @@ pub fn buffered_search_hdbscan<D: DistanceData<F>, F: Float>(
     let mut primary = BinaryHeap::<DistPair<F>>::new();
     let mut buffers: Vec<Vec<DistPair<F>>> = (0..n).map(|_| Vec::with_capacity(slack)).collect();
     let mut node_cluster = vec![u32::MAX; n];
-    let mut searcher = tree.priority_searcher();
+    let mut searcher = S::priority_searcher(tree);
+
+    let mut query = data.query();
 
     // initial fill
     for (a, buf) in buffers.iter_mut().enumerate() {
         if builder.cluster_size_of_point(a) > 1 {
             continue;
         }
+        query.set_index(a);
         refill_buffer(
-            &data.search_by_index(a),
             &mut builder,
             a,
+            &query,
             slack,
             buf,
             &mut searcher,
@@ -70,10 +75,11 @@ pub fn buffered_search_hdbscan<D: DistanceData<F>, F: Float>(
         purge_same_cluster(buf, &mut builder, a);
 
         if buf.is_empty() {
+            query.set_index(a);
             refill_buffer(
-                &data.search_by_index(a),
                 &mut builder,
                 a,
+                &query,
                 slack,
                 buf,
                 &mut searcher,
@@ -94,17 +100,16 @@ pub fn buffered_search_hdbscan<D: DistanceData<F>, F: Float>(
 
         let best_dist = best.distance;
         let b = best.index;
-        if builder.merge_points(a, b, best_dist).is_some()
-            && builder.merge_count() == n - 1
-        {
+        if builder.merge_points(a, b, best_dist).is_some() && builder.merge_count() == n - 1 {
             break;
         }
 
         if buf.is_empty() {
+            query.set_index(a);
             refill_buffer(
-                &data.search_by_index(a),
                 &mut builder,
                 a,
+                &query,
                 slack,
                 buf,
                 &mut searcher,
@@ -127,16 +132,14 @@ pub fn buffered_search_hdbscan<D: DistanceData<F>, F: Float>(
 /// The buffer is stored in descending distance order so that `last()` gives
 /// the best (closest) and `first()` gives the worst (farthest).
 #[allow(clippy::too_many_arguments)]
-fn refill_buffer<D: DistanceSearch<F>, F: Float>(
-    data: &D,
-    builder: &mut ClusterBuilder<F>,
-    query_index: usize,
-    slack: usize,
-    buffer: &mut Vec<DistPair<F>>,
-    searcher: &mut PrioritySearcher<F>,
-    core_distances: &[F],
+fn refill_buffer<F: Float, Q, S>(
+    builder: &mut ClusterBuilder<F>, query_index: usize, query: &Q, slack: usize,
+    buffer: &mut Vec<DistPair<F>>, searcher: &mut S, core_distances: &[F],
     node_cluster: &mut [u32],
-) {
+) where
+    Q: DistanceSearch<F> + ?Sized,
+    S: PrioritySearcher<F, Q>,
+{
     buffer.clear();
     searcher.reset();
 
@@ -146,12 +149,8 @@ fn refill_buffer<D: DistanceSearch<F>, F: Float>(
 
     while searcher.all_lower_bound() < threshold {
         let Some(cand) = searcher.next_with_filter(
-            data,
-            &mut SameClusterFilter {
-                builder,
-                query_component,
-                node_cluster,
-            },
+            query,
+            &mut SameClusterFilter { builder, query_component, node_cluster },
         ) else {
             break;
         };
@@ -172,18 +171,11 @@ fn refill_buffer<D: DistanceSearch<F>, F: Float>(
     }
 
     // Sort descending so best (smallest distance) is at the end for pop().
-    buffer.sort_by(|a, b| {
-        b.distance
-            .partial_cmp(&a.distance)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    buffer.sort_by(|a, b| b.distance.partial_cmp(&a.distance).unwrap_or(std::cmp::Ordering::Equal));
 }
 
 fn worst_distance<F: Float>(buffer: &[DistPair<F>]) -> F {
-    buffer
-        .iter()
-        .map(|n| n.distance)
-        .fold(F::neg_infinity(), |a, b| if a > b { a } else { b })
+    buffer.iter().map(|n| n.distance).fold(F::neg_infinity(), |a, b| if a > b { a } else { b })
 }
 
 fn replace_worst<F: Float>(buffer: &mut [DistPair<F>], item: DistPair<F>) {
@@ -191,9 +183,7 @@ fn replace_worst<F: Float>(buffer: &mut [DistPair<F>], item: DistPair<F>) {
         .iter()
         .enumerate()
         .max_by(|(_, a), (_, b)| {
-            a.distance
-                .partial_cmp(&b.distance)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal)
         })
         .map(|(i, _)| i)
     {
@@ -202,9 +192,7 @@ fn replace_worst<F: Float>(buffer: &mut [DistPair<F>], item: DistPair<F>) {
 }
 
 fn purge_same_cluster<F: Float>(
-    buffer: &mut Vec<DistPair<F>>,
-    builder: &mut ClusterBuilder<F>,
-    a: usize,
+    buffer: &mut Vec<DistPair<F>>, builder: &mut ClusterBuilder<F>, a: usize,
 ) {
     let ca = builder.find(a);
     buffer.retain(|n| builder.find(n.index) != ca);
@@ -212,12 +200,14 @@ fn purge_same_cluster<F: Float>(
 
 #[cfg(test)]
 mod tests {
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
+    use super::super::hdbscan_prim;
+    use super::buffered_search_hdbscan;
     use crate::TableWithDistance;
     use crate::distance::EuclideanDistance;
     use crate::vptree::VPTree;
-    use rand::{SeedableRng, rngs::StdRng};
-
-    use super::{super::hdbscan_prim, buffered_search_hdbscan};
 
     #[test]
     fn buffered_search_matches_linear_mst() {

@@ -1,6 +1,5 @@
-use crate::DistanceData;
 use crate::cluster::hierarchical::SetLinkage;
-use num_traits::Float;
+use crate::{DistanceData, Float};
 
 pub(crate) struct MinimumSumIncreaseSummary<F: Float> {
     total_distance: F,
@@ -17,35 +16,26 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, MinimumSumIncreaseSummary<F>
     for MinimumSumIncreaseLinkage
 {
     fn summarize(_data: &D, _members: &[usize]) -> MinimumSumIncreaseSummary<F> {
-        MinimumSumIncreaseSummary {
-            total_distance: F::zero(),
-        }
+        MinimumSumIncreaseSummary { total_distance: F::zero() }
     }
 
     fn cluster_distance(
-        data: &D,
-        _summary_a: &MinimumSumIncreaseSummary<F>,
-        _summary_b: &MinimumSumIncreaseSummary<F>,
-        a: &[usize],
-        b: &[usize],
+        data: &D, _summary_a: &MinimumSumIncreaseSummary<F>,
+        _summary_b: &MinimumSumIncreaseSummary<F>, a: &[usize], b: &[usize],
     ) -> (F, Option<usize>) {
         let (d, proto) = minimum_sum_candidate::<D, F>(data, a, b);
         (F::from(d).unwrap(), Some(proto))
     }
 
     fn adjust_distance(
-        d: F,
-        summary_a: &MinimumSumIncreaseSummary<F>,
-        summary_b: &MinimumSumIncreaseSummary<F>,
+        d: F, summary_a: &MinimumSumIncreaseSummary<F>, summary_b: &MinimumSumIncreaseSummary<F>,
     ) -> F {
         d - summary_a.total_distance - summary_b.total_distance
     }
 
     fn merge_summary(
-        dest: &mut MinimumSumIncreaseSummary<F>,
-        source: MinimumSumIncreaseSummary<F>,
-        _prototype: Option<usize>,
-        distance: F,
+        dest: &mut MinimumSumIncreaseSummary<F>, source: MinimumSumIncreaseSummary<F>,
+        _prototype: Option<usize>, distance: F,
     ) {
         dest.total_distance = dest.total_distance + distance + source.total_distance;
     }
@@ -53,9 +43,7 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, MinimumSumIncreaseSummary<F>
 
 // reuse identical candidate logic
 fn minimum_sum_candidate<D: DistanceData<F>, F: Float>(
-    data: &D,
-    cx: &[usize],
-    cy: &[usize],
+    data: &D, cx: &[usize], cy: &[usize],
 ) -> (f64, usize) {
     let mut best_sum = f64::INFINITY;
     let mut best_proto = cx[0];

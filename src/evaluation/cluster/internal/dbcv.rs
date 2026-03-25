@@ -56,9 +56,7 @@ pub fn dbcv(data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>) -> 
 
         for i in 0..cl.members.len() {
             for j in (i + 1)..cl.members.len() {
-                let mr = core[i]
-                    .max(core[j])
-                    .max(euc(&data[cl.members[i]], &data[cl.members[j]]));
+                let mr = core[i].max(core[j]).max(euc(&data[cl.members[i]], &data[cl.members[j]]));
                 matrix[i][j] = mr;
                 matrix[j][i] = mr;
             }

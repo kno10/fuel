@@ -1,5 +1,3 @@
-use crate::DistanceData;
-use num_traits::Float;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -10,6 +8,7 @@ use super::common::{
 // SetLinkage trait now lives in `linkage/mod.rs`; import via the public
 // re-export on the parent hierarchical module.
 use crate::cluster::hierarchical::SetLinkage;
+use crate::{DistanceData, Float};
 
 /// Shared implementation of the Anderberg/HACAM set‑linkage heuristic.  This
 /// used to be duplicated in both `set_anderberg` and `hacam`, so the two
@@ -21,8 +20,7 @@ use crate::cluster::hierarchical::SetLinkage;
 /// changing results.
 #[must_use]
 pub(super) fn set_anderberg_common<D, L, F, S, C>(
-    data: &D,
-    mut recompute_y: C,
+    data: &D, mut recompute_y: C,
 ) -> PrototypeMergeHistory<F>
 where
     D: DistanceData<F>,
@@ -67,9 +65,7 @@ where
             members_ref[y].extend(cx);
 
             let summary_x = summaries_ref[x].take().expect("summary missing for x");
-            let summary_y = summaries_ref[y]
-                .as_mut()
-                .expect("summary missing for y while merging");
+            let summary_y = summaries_ref[y].as_mut().expect("summary missing for y while merging");
             L::merge_summary(summary_y, summary_x, proto, mindist);
 
             update_matrices::<D, L, F, S>(
@@ -113,17 +109,9 @@ where
 
 #[allow(clippy::too_many_arguments)]
 fn update_matrices<D, L, F, S>(
-    data: &D,
-    distances: &mut [F],
-    prototypes: &mut [Option<usize>],
-    clustermap: &[Option<usize>],
-    members: &[Vec<usize>],
-    summaries: &[Option<S>],
-    bestd: &mut [F],
-    besti: &mut [usize],
-    x: usize,
-    y: usize,
-    end: usize,
+    data: &D, distances: &mut [F], prototypes: &mut [Option<usize>], clustermap: &[Option<usize>],
+    members: &[Vec<usize>], summaries: &[Option<S>], bestd: &mut [F], besti: &mut [usize],
+    x: usize, y: usize, end: usize,
 ) where
     D: DistanceData<F>,
     F: Float,
@@ -165,16 +153,16 @@ fn update_matrices<D, L, F, S>(
 #[allow(clippy::too_many_arguments)]
 #[cfg(test)]
 mod tests {
-    use crate::TableWithDistance;
-    use crate::cluster::hierarchical::test_utils::ScalarDistance;
-
     use super::set_anderberg;
+    use crate::TableWithDistance;
     use crate::cluster::hierarchical::linkage::MinimaxLinkage;
     use crate::cluster::hierarchical::set_agnes::set_agnes;
+    use crate::cluster::hierarchical::test_utils::ScalarDistance;
 
     #[test]
     fn set_anderberg_matches_set_agnes() {
-        let data = TableWithDistance::with_distance(&[0.0, 0.8, 2.0, 5.0, 9.0], ScalarDistance);
+        let points = [vec![0.0], vec![0.8], vec![2.0], vec![5.0], vec![9.0]];
+        let data = TableWithDistance::with_distance(&points, ScalarDistance);
         let a = set_agnes(&data);
         let b = set_anderberg::<_, MinimaxLinkage, f64, ()>(&data);
         assert_eq!(a, b);

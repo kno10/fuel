@@ -7,18 +7,12 @@ use super::helpers::{NoiseHandling, RadiusStats, build_clusters, centroid, euc};
 /// generic parameter.
 #[must_use]
 pub fn cluster_radius(
-    data: &[Vec<f64>],
-    labels: &[isize],
-    noise_label: Option<isize>,
-    nh: NoiseHandling,
+    data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>, nh: NoiseHandling,
 ) -> RadiusStats<f64> {
     assert_eq!(data.len(), labels.len());
     let (clusters, _) = build_clusters(labels, noise_label, nh);
     if clusters.is_empty() {
-        return RadiusStats {
-            weighted: 0.0,
-            unweighted: 0.0,
-        };
+        return RadiusStats { weighted: 0.0, unweighted: 0.0 };
     }
 
     let mut weighted = 0.0;
@@ -45,10 +39,6 @@ pub fn cluster_radius(
     let n = data.len().max(1) as f64;
     RadiusStats {
         weighted: weighted / n,
-        unweighted: if cnum > 0 {
-            unweighted / (cnum as f64)
-        } else {
-            0.0
-        },
+        unweighted: if cnum > 0 { unweighted / (cnum as f64) } else { 0.0 },
     }
 }

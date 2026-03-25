@@ -5,11 +5,7 @@ use super::helpers::{NoiseHandling, build_clusters, cluster_centroids, euc};
 /// Davies–Bouldin index for clustering quality.
 #[must_use]
 pub fn davies_bouldin_index(
-    data: &[Vec<f64>],
-    labels: &[isize],
-    noise_label: Option<isize>,
-    nh: NoiseHandling,
-    p: f64,
+    data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>, nh: NoiseHandling, p: f64,
 ) -> f64 {
     assert_eq!(data.len(), labels.len());
     let (clusters, _) = build_clusters(labels, noise_label, nh);
@@ -69,9 +65,5 @@ pub fn davies_bouldin_index(
         vals.push(maxd);
     }
 
-    if vals.len() > 1 {
-        vals.iter().sum::<f64>() / vals.len() as f64
-    } else {
-        2.0
-    }
+    if vals.len() > 1 { vals.iter().sum::<f64>() / vals.len() as f64 } else { 2.0 }
 }

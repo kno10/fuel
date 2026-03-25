@@ -2,11 +2,9 @@
 #[derive(Clone, Copy, Default, Debug)]
 pub struct GroupAverageLinkage;
 
-use super::GeometricLinkage;
-use super::Linkage;
-use crate::DistanceData;
+use super::{GeometricLinkage, Linkage};
 use crate::cluster::hierarchical::SetLinkage;
-use num_traits::Float;
+use crate::{DistanceData, Float};
 
 impl<F: Float> Linkage<F> for GroupAverageLinkage {
     fn combine(&self, sizex: usize, dx: F, sizey: usize, dy: F, _sizej: usize, _dxy: F) -> F {
@@ -21,10 +19,7 @@ impl<F: Float> GeometricLinkage<F> for GroupAverageLinkage {
         let tot = F::from(sizex + sizey).unwrap();
         let sx = F::from(sizex).unwrap();
         let sy = F::from(sizey).unwrap();
-        x.iter()
-            .zip(y.iter())
-            .map(|(&xi, &yi)| (sx * xi + sy * yi) / tot)
-            .collect()
+        x.iter().zip(y.iter()).map(|(&xi, &yi)| (sx * xi + sy * yi) / tot).collect()
     }
 
     fn linkage(&self, x: &[F], _sizex: usize, y: &[F], _sizey: usize) -> F {
@@ -41,11 +36,7 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for GroupAverageLinkage 
     fn summarize(_data: &D, _members: &[usize]) {}
 
     fn cluster_distance(
-        data: &D,
-        _summary_a: &(),
-        _summary_b: &(),
-        a: &[usize],
-        b: &[usize],
+        data: &D, _summary_a: &(), _summary_b: &(), a: &[usize], b: &[usize],
     ) -> (F, Option<usize>) {
         let mut sum = F::zero();
         let mut count = 0usize;

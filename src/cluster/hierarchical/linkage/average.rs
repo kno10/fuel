@@ -3,7 +3,7 @@
 pub struct AverageLinkage;
 
 use super::Linkage;
-use num_traits::Float;
+use crate::Float;
 
 impl<F: Float> Linkage<F> for AverageLinkage {
     fn combine(&self, sizex: usize, dx: F, sizey: usize, dy: F, _sizej: usize, _dxy: F) -> F {

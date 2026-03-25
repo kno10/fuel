@@ -1,8 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-use num_traits::Float;
-
 use super::common::{
     Builder,
     MergeHistory,
@@ -13,6 +11,7 @@ use super::common::{
     update_matrix_and_cache_with_hook,
 };
 use super::linkage::Linkage;
+use crate::Float;
 
 #[derive(Clone, Copy, Debug)]
 struct HeapEntry<F: Float> {
@@ -30,18 +29,12 @@ impl<F: Float> PartialEq for HeapEntry<F> {
 impl<F: Float> Eq for HeapEntry<F> {}
 
 impl<F: Float> PartialOrd for HeapEntry<F> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
 impl<F: Float> Ord for HeapEntry<F> {
     fn cmp(&self, other: &Self) -> Ordering {
-        match self
-            .dist
-            .partial_cmp(&other.dist)
-            .unwrap_or(Ordering::Equal)
-        {
+        match self.dist.partial_cmp(&other.dist).unwrap_or(Ordering::Equal) {
             Ordering::Less => Ordering::Greater,
             Ordering::Greater => Ordering::Less,
             Ordering::Equal => self.x.cmp(&other.x).then_with(|| self.y.cmp(&other.y)),
@@ -53,23 +46,13 @@ impl<F: Float> Ord for HeapEntry<F> {
 /// with an Anderberg nearest-neighbor cache and a heap for candidate retrieval.
 #[must_use]
 pub fn muellner<F: Float, L: Linkage<F> + Copy>(
-    distances: &[F],
-    n: usize,
-    linkage: L,
-    is_squared: bool,
+    distances: &[F], n: usize, linkage: L, is_squared: bool,
 ) -> MergeHistory<F> {
     assert!(n > 0, "number of points must be positive");
-    assert_eq!(
-        distances.len(),
-        n * (n - 1) / 2,
-        "bad condensed matrix length"
-    );
+    assert_eq!(distances.len(), n * (n - 1) / 2, "bad condensed matrix length");
 
     let mut builder = Builder::<F>::new(n);
-    let mut mat: Vec<F> = distances
-        .iter()
-        .map(|&d| linkage.initial(d, is_squared))
-        .collect();
+    let mut mat: Vec<F> = distances.iter().map(|&d| linkage.initial(d, is_squared)).collect();
     let mut clustermap: Vec<Option<usize>> = (0..n).map(Some).collect();
     let mut end = n;
 
@@ -90,11 +73,7 @@ pub fn muellner<F: Float, L: Linkage<F> + Copy>(
         let size_x = builder.get_size(cid_x);
         let size_y = builder.get_size(cid_y);
 
-        let (h1, h2) = if cid_y <= cid_x {
-            (cid_y, cid_x)
-        } else {
-            (cid_x, cid_y)
-        };
+        let (h1, h2) = if cid_y <= cid_x { (cid_y, cid_x) } else { (cid_x, cid_y) };
         let new_id = builder.add(h1, linkage.restore(mindist, is_squared), h2);
         clustermap[y] = Some(new_id);
         clustermap[x] = None;
@@ -131,26 +110,16 @@ pub fn muellner<F: Float, L: Linkage<F> + Copy>(
 }
 
 fn push_candidate<F: Float>(
-    heap: &mut BinaryHeap<HeapEntry<F>>,
-    bestd: &[F],
-    besti: &[usize],
-    x: usize,
+    heap: &mut BinaryHeap<HeapEntry<F>>, bestd: &[F], besti: &[usize], x: usize,
 ) {
     let y = besti[x];
     if y != usize::MAX {
-        heap.push(HeapEntry {
-            dist: bestd[x],
-            x,
-            y,
-        });
+        heap.push(HeapEntry { dist: bestd[x], x, y });
     }
 }
 
 fn pop_valid_merge<F: Float>(
-    heap: &mut BinaryHeap<HeapEntry<F>>,
-    bestd: &[F],
-    besti: &[usize],
-    clustermap: &[Option<usize>],
+    heap: &mut BinaryHeap<HeapEntry<F>>, bestd: &[F], besti: &[usize], clustermap: &[Option<usize>],
 ) -> (F, usize, usize) {
     while let Some(entry) = heap.pop() {
         if clustermap[entry.x].is_none() {
@@ -165,11 +134,7 @@ fn pop_valid_merge<F: Float>(
         if bestd[entry.x] != entry.dist {
             continue;
         }
-        let (x, y) = if entry.y < entry.x {
-            (entry.x, entry.y)
-        } else {
-            (entry.y, entry.x)
-        };
+        let (x, y) = if entry.y < entry.x { (entry.x, entry.y) } else { (entry.y, entry.x) };
         return (entry.dist, x, y);
     }
 
@@ -179,13 +144,11 @@ fn pop_valid_merge<F: Float>(
 #[allow(clippy::too_many_arguments)]
 #[cfg(test)]
 mod tests {
-    use crate::cluster::hierarchical::agnes;
+    use super::muellner;
     use crate::cluster::hierarchical::regression_support::{
         DATASETS, cluster_and_cut, evaluate_clustering, load_dataset, optionally_report,
     };
-    use crate::cluster::hierarchical::{AverageLinkage, CompleteLinkage};
-
-    use super::muellner;
+    use crate::cluster::hierarchical::{AverageLinkage, CompleteLinkage, agnes};
 
     #[test]
     fn muellner_matches_agnes_complete_on_unique_distances() {

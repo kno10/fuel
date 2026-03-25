@@ -1,6 +1,5 @@
 use super::linkage::{MinimaxLinkage, SetLinkage};
-use crate::DistanceData;
-use num_traits::Float;
+use crate::{DistanceData, Float};
 
 /// General agglomerative clustering (AGNES) using MiniMax linkage.
 #[must_use]
@@ -60,9 +59,7 @@ where
         members[y].extend(cx);
 
         let summary_x = summaries[x].take().expect("summary missing for x");
-        let summary_y = summaries[y]
-            .as_mut()
-            .expect("summary missing for y while merging");
+        let summary_y = summaries[y].as_mut().expect("summary missing for y while merging");
         L::merge_summary(summary_y, summary_x, proto, distances[offset]);
 
         update_matrices::<D, L, F, S>(
@@ -84,14 +81,8 @@ where
 }
 
 fn update_matrices<D, L, F, S>(
-    data: &D,
-    distances: &mut [F],
-    prototypes: &mut [Option<usize>],
-    clustermap: &[Option<usize>],
-    members: &[Vec<usize>],
-    summaries: &[Option<S>],
-    c: usize,
-    end: usize,
+    data: &D, distances: &mut [F], prototypes: &mut [Option<usize>], clustermap: &[Option<usize>],
+    members: &[Vec<usize>], summaries: &[Option<S>], c: usize, end: usize,
 ) where
     D: DistanceData<F>,
     F: Float,
@@ -103,12 +94,7 @@ fn update_matrices<D, L, F, S>(
         }
         update_set_entry::<D, L, F, S>(data, distances, prototypes, members, summaries, c, j);
     }
-    for (x, opt) in clustermap
-        .iter()
-        .enumerate()
-        .skip(c + 1)
-        .take(end - (c + 1))
-    {
+    for (x, opt) in clustermap.iter().enumerate().skip(c + 1).take(end - (c + 1)) {
         if opt.is_none() {
             continue;
         }
@@ -124,7 +110,8 @@ mod tests {
 
     #[test]
     fn set_agnes_produces_valid_hierarchy() {
-        let data = TableWithDistance::with_distance(&[0.0, 1.0, 3.0, 10.0], ScalarDistance);
+        let points = [vec![0.0], vec![1.0], vec![3.0], vec![10.0]];
+        let data = TableWithDistance::with_distance(&points, ScalarDistance);
         let h = set_agnes(&data);
         assert_eq!(h.len(), 3);
         assert_eq!(h.last().expect("non-empty").size, 4);

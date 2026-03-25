@@ -1,8 +1,6 @@
-use num_traits::Float;
-
-use super::common::MergeHistory;
-use super::pointer::{PointerRepresentation, pointer_to_merge_history};
-use crate::DistanceData;
+use crate::cluster::hierarchical::common::MergeHistory;
+use crate::cluster::hierarchical::pointer::{PointerRepresentation, pointer_to_merge_history};
+use crate::{DistanceData, Float};
 
 // Original CLINK uses the same pointer format as SLINK.
 pub fn clink_pointer<F: Float, D: DistanceData<F>>(data: &D) -> PointerRepresentation<F> {
@@ -84,11 +82,9 @@ pub fn clink<F: Float, D: DistanceData<F>>(data: &D) -> MergeHistory<F> {
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::hierarchical::CompleteLinkage;
-    use crate::cluster::hierarchical::agnes;
-
     use super::clink_pointer;
     use crate::cluster::hierarchical::pointer::pointer_to_merge_history;
+    use crate::cluster::hierarchical::{CompleteLinkage, agnes};
     use crate::data::CondensedDistanceMatrix;
 
     #[test]

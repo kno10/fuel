@@ -3,10 +3,7 @@ use super::helpers::{NoiseHandling, build_clusters, cluster_centroids, sq_euc};
 /// Variance ratio criterion (Calinski-Harabasz index).
 #[must_use]
 pub fn variance_ratio_criterion(
-    data: &[Vec<f64>],
-    labels: &[isize],
-    noise_label: Option<isize>,
-    nh: NoiseHandling,
+    data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>, nh: NoiseHandling,
     penalize: bool,
 ) -> f64 {
     assert_eq!(data.len(), labels.len());

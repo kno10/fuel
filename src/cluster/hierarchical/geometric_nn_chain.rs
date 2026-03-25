@@ -1,7 +1,6 @@
-use num_traits::Float;
-
 use super::common::{Builder, MergeHistory, find_active, shrink_active_end};
 use super::linkage::GeometricLinkage;
+use crate::Float;
 
 /// Perform NN-Chain clustering on vector data with geometric linkage.
 ///
@@ -18,10 +17,7 @@ pub fn geometric_nn_chain<F: Float, L: GeometricLinkage<F> + Copy>(
     assert!(n > 0, "number of points must be positive");
 
     let dim = vectors[0].len();
-    assert!(
-        vectors.iter().all(|v| v.len() == dim),
-        "all vectors must have equal dimensionality"
-    );
+    assert!(vectors.iter().all(|v| v.len() == dim), "all vectors must have equal dimensionality");
 
     let mut builder = Builder::<F>::new(n);
     let mut clustermap: Vec<Option<usize>> = (0..n).map(Some).collect();
@@ -87,11 +83,7 @@ pub fn geometric_nn_chain<F: Float, L: GeometricLinkage<F> + Copy>(
         let size_x = builder.get_size(cid_x);
         let size_y = builder.get_size(cid_y);
 
-        let (h1, h2) = if cid_y <= cid_x {
-            (cid_y, cid_x)
-        } else {
-            (cid_x, cid_y)
-        };
+        let (h1, h2) = if cid_y <= cid_x { (cid_y, cid_x) } else { (cid_x, cid_y) };
         let new_id = builder.add(h1, linkage.restore_linkage(min_dist, is_squared), h2);
 
         let merged_center = {
@@ -124,10 +116,8 @@ pub fn geometric_nn_chain<F: Float, L: GeometricLinkage<F> + Copy>(
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::hierarchical::CentroidLinkage;
-    use crate::cluster::hierarchical::agnes;
-
     use super::geometric_nn_chain;
+    use crate::cluster::hierarchical::{CentroidLinkage, agnes};
 
     fn condensed_squared_euclidean(points: &[Vec<f64>]) -> Vec<f64> {
         let n = points.len();
@@ -147,13 +137,8 @@ mod tests {
 
     #[test]
     fn geometric_nn_chain_matches_agnes_for_centroid_linkage() {
-        let points = vec![
-            vec![0.0, 0.0],
-            vec![0.2, 0.1],
-            vec![3.0, 3.0],
-            vec![3.1, 3.2],
-            vec![10.0, 10.0],
-        ];
+        let points =
+            vec![vec![0.0, 0.0], vec![0.2, 0.1], vec![3.0, 3.0], vec![3.1, 3.2], vec![10.0, 10.0]];
 
         let condensed = condensed_squared_euclidean(&points);
         let a = agnes(&condensed, points.len(), CentroidLinkage, true);

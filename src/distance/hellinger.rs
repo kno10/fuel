@@ -1,19 +1,15 @@
-use num_traits::{AsPrimitive, Float, ToPrimitive};
-
 use super::DistanceFunction;
+use crate::Float;
 
-pub fn hellinger_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F {
+pub fn hellinger_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     let d = a.len().min(b.len());
     let mut sum = F::zero();
     let half = F::one() / (F::one() + F::one());
 
     for i in 0..d {
         unsafe {
-            let left: F = (*a.get_unchecked(i)).as_();
-            let right: F = (*b.get_unchecked(i)).as_();
+            let left: F = (*a.get_unchecked(i)).to_float::<F>();
+            let right: F = (*b.get_unchecked(i)).to_float::<F>();
             let left_sqrt = left.max(F::zero()).sqrt();
             let right_sqrt = right.max(F::zero()).sqrt();
             let diff = left_sqrt - right_sqrt;
@@ -27,12 +23,8 @@ pub fn hellinger_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 's
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HellingerDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
-    for HellingerDistance
-{
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        hellinger_distance(a, b)
-    }
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for HellingerDistance {
+    fn distance(&self, a: &[N], b: &[N]) -> F { hellinger_distance(a, b) }
 }
 
 #[cfg(test)]

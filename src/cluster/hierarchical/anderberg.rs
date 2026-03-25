@@ -1,31 +1,20 @@
-use num_traits::Float;
-
 use super::common::{
     Builder, MergeHistory, find_best, run_anderberg_nn_cache, update_matrix_and_cache_with_hook,
 };
 use super::linkage::Linkage;
+use crate::Float;
 
 /// Perform hierarchical clustering using Anderberg's NN-cache acceleration.
 ///
 /// Input and output conventions are the same as [`crate::cluster::hierarchical::agnes`].
 #[must_use]
 pub fn anderberg<F: Float, L: Linkage<F> + Copy>(
-    distances: &[F],
-    n: usize,
-    linkage: L,
-    is_squared: bool,
+    distances: &[F], n: usize, linkage: L, is_squared: bool,
 ) -> MergeHistory<F> {
     assert!(n > 0, "number of points must be positive");
-    assert_eq!(
-        distances.len(),
-        n * (n - 1) / 2,
-        "bad condensed matrix length"
-    );
+    assert_eq!(distances.len(), n * (n - 1) / 2, "bad condensed matrix length");
 
-    let mat: Vec<F> = distances
-        .iter()
-        .map(|&d| linkage.initial(d, is_squared))
-        .collect();
+    let mat: Vec<F> = distances.iter().map(|&d| linkage.initial(d, is_squared)).collect();
     let mut empty_prototypes = Vec::new();
 
     run_anderberg_nn_cache::<F, Builder<F>, _, _, _>(
@@ -76,12 +65,11 @@ pub fn anderberg<F: Float, L: Linkage<F> + Copy>(
 #[cfg(test)]
 mod tests {
     // imported via full path to avoid module/name conflict
+    use super::anderberg;
     use crate::cluster::hierarchical::regression_support::{
         DATASETS, cluster_and_cut, evaluate_clustering, load_dataset, optionally_report,
     };
     use crate::cluster::hierarchical::{AverageLinkage, CompleteLinkage};
-
-    use super::anderberg;
 
     #[test]
     fn anderberg_matches_agnes_complete_on_unique_distances() {

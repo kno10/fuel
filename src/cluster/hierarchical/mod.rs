@@ -27,9 +27,6 @@ pub mod set_agnes;
 pub mod set_anderberg;
 pub mod set_nn_chain;
 
-// public convenience wrapper exported at the same level as other utilities
-pub use set_agnes::set_linkage;
-
 // algorithm entrypoints
 pub use agnes::agnes;
 pub use anderberg::anderberg;
@@ -47,11 +44,10 @@ pub use nn_chain::nn_chain;
 pub use optics_to_hierarchical::optics_to_hierarchical;
 pub use pointer::{PointerRepresentation, pointer_to_merge_history};
 pub use restarting_search_single_link::restarting_search_single_link;
-pub use slink::{slink, slink_pointer};
-
-pub use set_agnes::set_agnes;
+pub use set_agnes::{set_agnes, set_linkage};
 pub use set_anderberg::set_anderberg;
 pub use set_nn_chain::set_nn_chain;
+pub use slink::{slink, slink_pointer};
 
 pub mod nn_chain;
 pub mod optics_to_hierarchical;
@@ -62,10 +58,6 @@ pub mod slink;
 
 // API level operations
 pub use common::{Merge, MergeHistory, PrototypeMergeHistory};
-
-// Primary types of linkages
-pub use linkage::{GeometricLinkage, Linkage, SetLinkage};
-
 // basic criterion implementations
 pub use linkage::average::AverageLinkage;
 pub use linkage::centroid::CentroidLinkage;
@@ -76,6 +68,8 @@ pub use linkage::minimum_variance::MinimumVarianceLinkage;
 pub use linkage::single::SingleLinkage;
 pub use linkage::ward::WardLinkage;
 pub use linkage::weighted_average::WeightedAverageLinkage;
+// Primary types of linkages
+pub use linkage::{GeometricLinkage, Linkage, SetLinkage};
 
 #[cfg(test)]
 #[allow(dead_code, unused)]
@@ -84,8 +78,5 @@ pub(crate) mod test_utils;
 #[cfg(test)]
 #[allow(dead_code, unused)]
 pub(crate) mod regression_support {
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/hierarchical/regression_support.rs"
-    ));
+    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/hierarchical/regression_support.rs"));
 }

@@ -1,15 +1,14 @@
 use std::any::TypeId;
 
-use num_traits::Float;
-use rand::{SeedableRng, rngs::StdRng};
-
-use crate::distance::DistanceFunction;
-use crate::vptree::VPTree;
-use crate::{PointSearchData, TableWithDistance};
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 
 use super::WardLinkage;
 use super::common::{Builder, MergeHistory};
 use super::linkage::GeometricLinkage;
+use crate::distance::{DistanceFunction, PartialDistance};
+use crate::vptree::VPTree;
+use crate::{CoordinateQuery, DistanceData, Float, TableWithDistance};
 
 #[derive(Clone, Copy, Default)]
 struct SquaredEuclidean;
@@ -32,6 +31,12 @@ impl<F: Float> DistanceFunction<[F], F> for SquaredEuclidean {
     }
 }
 
+impl<F: Float> PartialDistance<F, F> for SquaredEuclidean {
+    fn axis_distance(&self, delta: F) -> F { delta * delta }
+
+    fn combine_axis_distances(&self, a: F, b: F) -> F { a + b }
+}
+
 struct UnionFind {
     parent: Vec<usize>,
     size: Vec<usize>,
@@ -40,11 +45,7 @@ struct UnionFind {
 
 impl UnionFind {
     fn new(n: usize) -> Self {
-        Self {
-            parent: (0..n).collect(),
-            size: vec![1; n],
-            cluster_id: (0..n).collect(),
-        }
+        Self { parent: (0..n).collect(), size: vec![1; n], cluster_id: (0..n).collect() }
     }
 
     fn find(&mut self, x: usize) -> usize {
@@ -84,7 +85,7 @@ impl UnionFind {
     fn find_root_excluding(&mut self, exclude: Option<usize>) -> usize {
         for i in 0..self.parent.len() {
             let root = self.find(i);
-            if root == i && exclude.map_or(true, |x| x != root) {
+            if root == i && exclude != Some(root) {
                 return root;
             }
         }
@@ -103,23 +104,16 @@ fn ward_candidate_factor<F: Float>(size_a: usize, size_i: usize) -> F {
     F::from(4.0).unwrap() * (sa + si) / (sa * si)
 }
 
-fn center<'a, F: Float>(centers: &'a [Option<Vec<F>>], cid: usize) -> &'a [F] {
-    centers[cid]
-        .as_ref()
-        .expect("cluster center must be initialized")
+fn center<F: Float>(centers: &[Option<Vec<F>>], cid: usize) -> &[F] {
+    centers[cid].as_ref().expect("cluster center must be initialized")
 }
 
 fn grow_chain<F: Float, L: GeometricLinkage<F> + Copy>(
-    data: &TableWithDistance<'_, Vec<F>, SquaredEuclidean, F>,
-    linkage: L,
-    builder: &Builder<F>,
-    centers: &[Option<Vec<F>>],
-    uf: &mut UnionFind,
-    chain: &mut Vec<usize>,
-    visited: &mut [bool],
-    searcher: &mut crate::vptree::PrioritySearcher<F>,
-    is_ward: bool,
+    data: &TableWithDistance<'_, F, Vec<F>, SquaredEuclidean, F>, linkage: L, builder: &Builder<F>,
+    centers: &[Option<Vec<F>>], uf: &mut UnionFind, chain: &mut Vec<usize>, visited: &mut [bool],
+    searcher: &mut crate::vptree::PrioritySearcher<F>, is_ward: bool,
 ) -> bool {
+    let mut query = data.query();
     let mut a_root;
     let mut b_root;
 
@@ -143,12 +137,7 @@ fn grow_chain<F: Float, L: GeometricLinkage<F> + Copy>(
     let mut min_link = {
         let size_a = builder.get_size(a_cid);
         let size_b = builder.get_size(b_cid);
-        linkage.linkage(
-            center(centers, a_cid),
-            size_a,
-            center(centers, b_cid),
-            size_b,
-        )
+        linkage.linkage(center(centers, a_cid), size_a, center(centers, b_cid), size_b)
     };
 
     loop {
@@ -156,14 +145,10 @@ fn grow_chain<F: Float, L: GeometricLinkage<F> + Copy>(
 
         let size_a = builder.get_size(a_cid);
         let a_center = center(centers, a_cid);
-        let cutoff_factor = if is_ward {
-            ward_cutoff_factor(size_a)
-        } else {
-            F::one()
-        };
+        let cutoff_factor = if is_ward { ward_cutoff_factor(size_a) } else { F::one() };
 
         searcher.reset_with_limits(cutoff_factor * min_link, F::zero());
-        let query = data.search_by_point(a_center);
+        query.set_coordinates(a_center);
 
         let mut c_root = b_root;
         let mut c_cid = b_cid;
@@ -223,18 +208,13 @@ fn grow_chain<F: Float, L: GeometricLinkage<F> + Copy>(
 /// neighbour discovery for geometric linkage criteria.
 #[must_use]
 pub fn incremental_nn_chain<F: Float, L: GeometricLinkage<F> + Copy + 'static>(
-    vectors: &[Vec<F>],
-    linkage: L,
-    is_squared: bool,
+    vectors: &[Vec<F>], linkage: L, is_squared: bool,
 ) -> MergeHistory<F> {
     let n = vectors.len();
     assert!(n > 0, "number of points must be positive");
 
     let dim = vectors[0].len();
-    assert!(
-        vectors.iter().all(|v| v.len() == dim),
-        "all vectors must have equal dimensionality"
-    );
+    assert!(vectors.iter().all(|v| v.len() == dim), "all vectors must have equal dimensionality");
 
     let data = TableWithDistance::with_distance(vectors, SquaredEuclidean);
     let mut rng = StdRng::seed_from_u64(42);
@@ -284,11 +264,7 @@ pub fn incremental_nn_chain<F: Float, L: GeometricLinkage<F> + Copy + 'static>(
         let b_center = center(&centers, b_cid);
         let min_link = linkage.linkage(a_center, size_a, b_center, size_b);
 
-        let (h1, h2) = if a_cid <= b_cid {
-            (a_cid, b_cid)
-        } else {
-            (b_cid, a_cid)
-        };
+        let (h1, h2) = if a_cid <= b_cid { (a_cid, b_cid) } else { (b_cid, a_cid) };
         let new_id = builder.add(h1, linkage.restore_linkage(min_link, is_squared), h2);
 
         let merged_center = linkage.merge(a_center, size_a, b_center, size_b);
@@ -317,13 +293,8 @@ mod tests {
 
     #[test]
     fn incremental_nn_chain_matches_geometric_variant() {
-        let points = vec![
-            vec![0.0, 0.0],
-            vec![0.2, 0.1],
-            vec![3.0, 3.0],
-            vec![3.1, 3.2],
-            vec![10.0, 10.0],
-        ];
+        let points =
+            vec![vec![0.0, 0.0], vec![0.2, 0.1], vec![3.0, 3.0], vec![3.1, 3.2], vec![10.0, 10.0]];
 
         let a = incremental_nn_chain(&points, WardLinkage, false);
         let b = geometric_nn_chain(&points, WardLinkage, false);

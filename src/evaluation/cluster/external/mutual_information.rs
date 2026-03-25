@@ -1,4 +1,4 @@
-use super::contingency_table::ClusterContingencyTable;
+use crate::evaluation::cluster::external::contingency_table::ClusterContingencyTable;
 
 /// Entropy and mutual information measures derived from a contingency table.
 /// All results are stored as `f64`; this metric is not driven by any distance
@@ -78,74 +78,42 @@ impl Entropy {
         }
     }
 
-    pub fn conditional_entropy_first(&self) -> f64 {
-        self.entropy_joint - self.entropy_second
-    }
+    pub fn conditional_entropy_first(&self) -> f64 { self.entropy_joint - self.entropy_second }
 
-    pub fn conditional_entropy_second(&self) -> f64 {
-        self.entropy_joint - self.entropy_first
-    }
+    pub fn conditional_entropy_second(&self) -> f64 { self.entropy_joint - self.entropy_first }
 
     pub fn entropy_powers(&self) -> f64 {
         let denom = self.entropy_first + self.entropy_second;
-        if denom == 0.0 {
-            0.0
-        } else {
-            2.0 * self.entropy_joint / denom - 1.0
-        }
+        if denom == 0.0 { 0.0 } else { 2.0 * self.entropy_joint / denom - 1.0 }
     }
 
-    pub fn upper_bound_mi(&self) -> f64 {
-        self.entropy_first.min(self.entropy_second)
-    }
+    pub fn upper_bound_mi(&self) -> f64 { self.entropy_first.min(self.entropy_second) }
 
     pub fn joint_nmi(&self) -> f64 {
-        if self.entropy_joint == 0.0 {
-            0.0
-        } else {
-            self.mutual_information / self.entropy_joint
-        }
+        if self.entropy_joint == 0.0 { 0.0 } else { self.mutual_information / self.entropy_joint }
     }
 
     pub fn min_nmi(&self) -> f64 {
         let denom = self.entropy_first.min(self.entropy_second);
-        if denom == 0.0 {
-            0.0
-        } else {
-            self.mutual_information / denom
-        }
+        if denom == 0.0 { 0.0 } else { self.mutual_information / denom }
     }
 
     pub fn max_nmi(&self) -> f64 {
         let denom = self.entropy_first.max(self.entropy_second);
-        if denom == 0.0 {
-            0.0
-        } else {
-            self.mutual_information / denom
-        }
+        if denom == 0.0 { 0.0 } else { self.mutual_information / denom }
     }
 
     pub fn arithmetic_nmi(&self) -> f64 {
         let denom = self.entropy_first + self.entropy_second;
-        if denom == 0.0 {
-            0.0
-        } else {
-            2.0 * self.mutual_information / denom
-        }
+        if denom == 0.0 { 0.0 } else { 2.0 * self.mutual_information / denom }
     }
 
     pub fn geometric_nmi(&self) -> f64 {
         let denom = (self.entropy_first * self.entropy_second).sqrt();
-        if denom == 0.0 {
-            0.0
-        } else {
-            self.mutual_information / denom
-        }
+        if denom == 0.0 { 0.0 } else { self.mutual_information / denom }
     }
 
-    pub fn upper_bound_vi(&self) -> f64 {
-        self.vibound
-    }
+    pub fn upper_bound_vi(&self) -> f64 { self.vibound }
 
     pub fn normalized_variation_of_information(&self) -> f64 {
         if self.entropy_joint == 0.0 {
@@ -193,12 +161,7 @@ fn log_cached(i: usize, logs: &mut [f64]) -> f64 {
 }
 
 fn compute_entropy_first(
-    contingency: &[Vec<usize>],
-    r: usize,
-    c: usize,
-    byn: f64,
-    mlogn: f64,
-    logs: &mut [f64],
+    contingency: &[Vec<usize>], r: usize, c: usize, byn: f64, mlogn: f64, logs: &mut [f64],
 ) -> f64 {
     let mut e = 0.0;
     for row in contingency.iter().take(r) {
@@ -211,12 +174,7 @@ fn compute_entropy_first(
 }
 
 fn compute_entropy_second(
-    contingency: &[Vec<usize>],
-    r: usize,
-    c: usize,
-    byn: f64,
-    mlogn: f64,
-    logs: &mut [f64],
+    contingency: &[Vec<usize>], r: usize, c: usize, byn: f64, mlogn: f64, logs: &mut [f64],
 ) -> f64 {
     let mut e = 0.0;
     for v in contingency[r].iter().take(c).copied() {
@@ -229,11 +187,7 @@ fn compute_entropy_second(
 }
 
 fn compute_mi_large(
-    contingency: &[Vec<usize>],
-    r: usize,
-    c: usize,
-    byn: f64,
-    mlogn: f64,
+    contingency: &[Vec<usize>], r: usize, c: usize, byn: f64, mlogn: f64,
 ) -> (f64, f64, f64, f64, f64) {
     let mut logs = vec![0.0f64; 14];
     let mut mlogbn = vec![0.0f64; c];
@@ -273,17 +227,10 @@ fn compute_mi_large(
     (ent1, ent2, joint, mi, vi)
 }
 
-fn lfac(i: usize, lfacs: &[f64]) -> f64 {
-    if i <= 1 { 0.0 } else { lfacs[i] }
-}
+fn lfac(i: usize, lfacs: &[f64]) -> f64 { if i <= 1 { 0.0 } else { lfacs[i] } }
 
 fn compute_mi_full(
-    contingency: &[Vec<usize>],
-    r: usize,
-    c: usize,
-    n: usize,
-    byn: f64,
-    mlogn: f64,
+    contingency: &[Vec<usize>], r: usize, c: usize, n: usize, byn: f64, mlogn: f64,
     logs: &mut [f64],
 ) -> (f64, f64, f64, f64) {
     let mut lfacs = vec![0.0f64; n + 1];

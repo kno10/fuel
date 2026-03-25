@@ -1,20 +1,19 @@
-use num_traits::{AsPrimitive, Float, ToPrimitive};
+use num_traits::AsPrimitive;
 
-use super::{DistanceFunction, DistanceMetric};
+use crate::Float;
+use crate::distance::{DistanceFunction, DistanceMetric};
 
-pub fn bool_counts<N: Float + ToPrimitive>(a: &[N], b: &[N]) -> (u32, u32, u32, u32) {
-    a.iter()
-        .zip(b.iter())
-        .fold((0, 0, 0, 0), |(n00, n01, n10, n11), (x, y)| {
-            let xb = *x != N::zero();
-            let yb = *y != N::zero();
-            match (xb, yb) {
-                (false, false) => (n00 + 1, n01, n10, n11),
-                (false, true) => (n00, n01 + 1, n10, n11),
-                (true, false) => (n00, n01, n10 + 1, n11),
-                (true, true) => (n00, n01, n10, n11 + 1),
-            }
-        })
+pub fn bool_counts<N: Float>(a: &[N], b: &[N]) -> (u32, u32, u32, u32) {
+    a.iter().zip(b.iter()).fold((0, 0, 0, 0), |(n00, n01, n10, n11), (x, y)| {
+        let xb = *x != N::zero();
+        let yb = *y != N::zero();
+        match (xb, yb) {
+            (false, false) => (n00 + 1, n01, n10, n11),
+            (false, true) => (n00, n01 + 1, n10, n11),
+            (true, false) => (n00, n01, n10 + 1, n11),
+            (true, true) => (n00, n01, n10, n11 + 1),
+        }
+    })
 }
 
 fn cast_unchecked<F: Float + 'static>(value: u32) -> F
@@ -24,27 +23,23 @@ where
     value.as_()
 }
 
-pub fn hamming_distance<N: Float + ToPrimitive, F: Float + 'static>(a: &[N], b: &[N]) -> F
+pub fn hamming_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F
 where
     u32: AsPrimitive<F>,
 {
     let (n00, n01, n10, n11) = bool_counts(a, b);
     let n = n00 + n01 + n10 + n11;
-    if n == 0 {
-        F::zero()
-    } else {
-        cast_unchecked::<F>(n01 + n10) / cast_unchecked::<F>(n)
-    }
+    if n == 0 { F::zero() } else { cast_unchecked::<F>(n01 + n10) / cast_unchecked::<F>(n) }
 }
 
-pub fn matching_distance<N: Float + ToPrimitive, F: Float + 'static>(a: &[N], b: &[N]) -> F
+pub fn matching_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F
 where
     u32: AsPrimitive<F>,
 {
     hamming_distance(a, b)
 }
 
-pub fn jaccard_distance<N: Float + ToPrimitive, F: Float + 'static>(a: &[N], b: &[N]) -> F
+pub fn jaccard_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F
 where
     u32: AsPrimitive<F>,
 {
@@ -57,7 +52,7 @@ where
     }
 }
 
-pub fn dice_distance<N: Float + ToPrimitive, F: Float + 'static>(a: &[N], b: &[N]) -> F
+pub fn dice_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F
 where
     u32: AsPrimitive<F>,
 {
@@ -70,7 +65,7 @@ where
     }
 }
 
-pub fn kulsinski_distance<N: Float + ToPrimitive, F: Float + 'static>(a: &[N], b: &[N]) -> F
+pub fn kulsinski_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F
 where
     u32: AsPrimitive<F>,
 {
@@ -84,7 +79,7 @@ where
     }
 }
 
-pub fn roger_stanimoto_distance<N: Float + ToPrimitive, F: Float + 'static>(a: &[N], b: &[N]) -> F
+pub fn roger_stanimoto_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F
 where
     u32: AsPrimitive<F>,
 {
@@ -98,27 +93,23 @@ where
     }
 }
 
-pub fn russell_rao_distance<N: Float + ToPrimitive, F: Float + 'static>(a: &[N], b: &[N]) -> F
+pub fn russell_rao_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F
 where
     u32: AsPrimitive<F>,
 {
     let (n00, n01, n10, n11) = bool_counts(a, b);
     let n = n00 + n01 + n10 + n11;
-    if n == 0 {
-        F::zero()
-    } else {
-        cast_unchecked::<F>(n - n11) / cast_unchecked::<F>(n)
-    }
+    if n == 0 { F::zero() } else { cast_unchecked::<F>(n - n11) / cast_unchecked::<F>(n) }
 }
 
-pub fn sokal_michener_distance<N: Float + ToPrimitive, F: Float + 'static>(a: &[N], b: &[N]) -> F
+pub fn sokal_michener_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F
 where
     u32: AsPrimitive<F>,
 {
     roger_stanimoto_distance(a, b)
 }
 
-pub fn sokal_sneath_distance<N: Float + ToPrimitive, F: Float + 'static>(a: &[N], b: &[N]) -> F
+pub fn sokal_sneath_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F
 where
     u32: AsPrimitive<F>,
 {
@@ -135,113 +126,95 @@ where
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HammingDistance;
 
-impl<N: Float + ToPrimitive> DistanceMetric<[N], f32> for HammingDistance {}
+impl<N: Float> DistanceMetric<[N], f32> for HammingDistance {}
 
-impl<N: Float + ToPrimitive> DistanceFunction<[N], f32> for HammingDistance
+impl<N: Float> DistanceFunction<[N], f32> for HammingDistance
 where
     u32: AsPrimitive<f32>,
 {
-    fn distance(&self, a: &[N], b: &[N]) -> f32 {
-        hamming_distance(a, b)
-    }
+    fn distance(&self, a: &[N], b: &[N]) -> f32 { hamming_distance(a, b) }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MatchingDistance;
 
-impl<N: Float + ToPrimitive> DistanceMetric<[N], f32> for MatchingDistance {}
+impl<N: Float> DistanceMetric<[N], f32> for MatchingDistance {}
 
-impl<N: Float + ToPrimitive> DistanceFunction<[N], f32> for MatchingDistance
+impl<N: Float> DistanceFunction<[N], f32> for MatchingDistance
 where
     u32: AsPrimitive<f32>,
 {
-    fn distance(&self, a: &[N], b: &[N]) -> f32 {
-        matching_distance(a, b)
-    }
+    fn distance(&self, a: &[N], b: &[N]) -> f32 { matching_distance(a, b) }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct JaccardDistance;
 
-impl<N: Float + ToPrimitive> DistanceMetric<[N], f32> for JaccardDistance {}
+impl<N: Float> DistanceMetric<[N], f32> for JaccardDistance {}
 
-impl<N: Float + ToPrimitive> DistanceFunction<[N], f32> for JaccardDistance
+impl<N: Float> DistanceFunction<[N], f32> for JaccardDistance
 where
     u32: AsPrimitive<f32>,
 {
-    fn distance(&self, a: &[N], b: &[N]) -> f32 {
-        jaccard_distance(a, b)
-    }
+    fn distance(&self, a: &[N], b: &[N]) -> f32 { jaccard_distance(a, b) }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DiceDistance;
 
-impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F> for DiceDistance
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for DiceDistance
 where
     u32: AsPrimitive<F>,
 {
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        dice_distance(a, b)
-    }
+    fn distance(&self, a: &[N], b: &[N]) -> F { dice_distance(a, b) }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct KulsinskiDistance;
 
-impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F> for KulsinskiDistance
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for KulsinskiDistance
 where
     u32: AsPrimitive<F>,
 {
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        kulsinski_distance(a, b)
-    }
+    fn distance(&self, a: &[N], b: &[N]) -> F { kulsinski_distance(a, b) }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RogerStanimotoDistance;
 
-impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F> for RogerStanimotoDistance
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for RogerStanimotoDistance
 where
     u32: AsPrimitive<F>,
 {
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        roger_stanimoto_distance(a, b)
-    }
+    fn distance(&self, a: &[N], b: &[N]) -> F { roger_stanimoto_distance(a, b) }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RussellRaoDistance;
 
-impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F> for RussellRaoDistance
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for RussellRaoDistance
 where
     u32: AsPrimitive<F>,
 {
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        russell_rao_distance(a, b)
-    }
+    fn distance(&self, a: &[N], b: &[N]) -> F { russell_rao_distance(a, b) }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SokalMichenerDistance;
 
-impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F> for SokalMichenerDistance
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for SokalMichenerDistance
 where
     u32: AsPrimitive<F>,
 {
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        sokal_michener_distance(a, b)
-    }
+    fn distance(&self, a: &[N], b: &[N]) -> F { sokal_michener_distance(a, b) }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SokalSneathDistance;
 
-impl<N: Float + ToPrimitive, F: Float + 'static> DistanceFunction<[N], F> for SokalSneathDistance
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for SokalSneathDistance
 where
     u32: AsPrimitive<F>,
 {
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        sokal_sneath_distance(a, b)
-    }
+    fn distance(&self, a: &[N], b: &[N]) -> F { sokal_sneath_distance(a, b) }
 }

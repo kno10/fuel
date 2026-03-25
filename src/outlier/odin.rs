@@ -1,86 +1,62 @@
-use num_traits::{Float, FromPrimitive};
-
-use super::common::{OutlierScoreEntry, sort_outlier_scores_ascending};
-#[cfg(test)]
-use crate::distance::EuclideanDistance;
-use crate::{DistanceData, KnnSearch};
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct OdinOutlierScore<F: Float> {
-    pub index: usize,
-    pub score: F,
-}
-
-impl<F: Float> OutlierScoreEntry<F> for OdinOutlierScore<F> {
-    fn index(&self) -> usize {
-        self.index
-    }
-
-    fn score(&self) -> F {
-        self.score
-    }
-}
+use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::{DistanceData, Float, KnnSearch};
 
 /// Compute ODIN outlier scores based on in-degree of the k‑NN graph.
 ///
 /// For each point the `k` nearest neighbors are found (excluding the point
-/// itself).  We increment the in-degree counter of each neighbor.  Points
-/// with a small in-degree are considered outliers.  The returned score is
-/// simply `1/(in_degree+1)` so that smaller degrees map to larger scores; the
-/// vector is sorted with highest scores first.
+/// itself), and each neighbor's in-degree is incremented.  Points with a
+/// small in-degree are considered outliers (inverted scoring semantics).
+///
+/// The algorithm returns normalized in-degree: `in_degree / k_effective`.
+/// `OutlierMetadata.ascending` is set to `true` to indicate inverted order
+/// (low scores are more anomalous).
 ///
 /// # Panics
 ///
 /// Panics if `k == 0`.
-pub fn odin_outlier_scores<S, D, F>(
-    tree: &S,
-    data: D,
-    k: usize,
-) -> Vec<OdinOutlierScore<F>>
+pub fn outlier_detection_independence_neighbor<'a, S, D, F>(
+    tree: &S, data: &'a D, k: usize,
+) -> OutlierResult<F>
 where
-    F: Float + FromPrimitive,
-    D: DistanceData<F>,
-    S: KnnSearch<F, D>,
+    F: Float + Send + Sync,
+    D: DistanceData<F> + Sync + 'a,
+    S: KnnSearch<F, D::Query<'a>> + Sync,
 {
     assert!(k > 0, "k must be greater than 0");
 
     let size = data.size();
     let k_effective = k.min(size.saturating_sub(1));
 
-    // if there are no neighbors we just return equal scores
     if k_effective == 0 {
-        return (0..size)
-            .map(|idx| OdinOutlierScore {
-                index: idx,
-                score: F::one(),
-            })
-            .collect();
+        return make_outlier_result(
+            vec![F::zero(); size],
+            "ODIN",
+            true,
+            F::zero(),
+            F::zero(),
+            F::infinity(),
+        );
     }
 
-    let mut indegree = vec![0u32; size];
+    let neighborhoods: Vec<Vec<(usize, F)>> =
+        crate::outlier::common::for_each_knn(tree, data, k_effective, false, |_idx, neighbors| {
+            neighbors
+        });
 
-    for idx in data.iter() {
-        let neighbors = tree
-            .search_knn_by_index(&data, idx, (k_effective + 1).min(size))
-            .into_iter()
-            .filter(|neighbor| neighbor.index != idx)
-            .take(k_effective);
-
-        for neigh in neighbors {
-            indegree[neigh.index] += 1;
+    let mut indegree = vec![0usize; size];
+    for neighbors in neighborhoods {
+        for (neighbor_idx, _) in neighbors {
+            if let Some(d) = indegree.get_mut(neighbor_idx) {
+                *d += 1;
+            }
         }
     }
 
-    let mut scores: Vec<OdinOutlierScore<F>> = Vec::with_capacity(size);
+    let inc = 1.0 / (k_effective as f64);
+    let scores: Vec<F> =
+        indegree.into_iter().map(|d| F::from_f64((d as f64) * inc).unwrap_or(F::zero())).collect();
 
-    for (idx, &deg_i) in indegree.iter().enumerate().take(size) {
-        let score = F::from_f64(1.0 / (deg_i as f64 + 1.0)).unwrap_or(F::zero());
-        scores.push(OdinOutlierScore { index: idx, score });
-    }
-
-    sort_outlier_scores_ascending(&mut scores);
-
-    scores
+    make_outlier_result(scores, "ODIN", true, F::zero(), F::zero(), F::infinity())
 }
 
 #[cfg(test)]
@@ -88,30 +64,25 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
-    use crate::TableWithDistance;
-    use crate::vptree::VPTree;
-
     use super::*;
+    use crate::TableWithDistance;
+    use crate::distance::EuclideanDistance;
+    use crate::evaluation::outlier::receiver_operating_curve::auc;
+    use crate::outlier::common::*;
+    use crate::vptree::VPTree;
 
     #[test]
     fn odin_ranks_remote_point_highest() {
-        let points = vec![
-            vec![0.0, 0.0],
-            vec![0.1, 0.0],
-            vec![0.0, 0.1],
-            vec![0.1, 0.1],
-            vec![6.0, 6.0],
-        ];
+        let points =
+            vec![vec![0.0, 0.0], vec![0.1, 0.0], vec![0.0, 0.1], vec![0.1, 0.1], vec![6.0, 6.0]];
 
         let data = TableWithDistance::with_distance(&points, EuclideanDistance);
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let scores = odin_outlier_scores(&tree, &data, 2);
-        assert_eq!(scores.len(), points.len());
-        let last_index = scores.len() - 1;
-        assert_eq!(scores[last_index].index, 4);
-        assert!(scores[last_index].score > scores[last_index - 1].score);
+        let results = outlier_detection_independence_neighbor(&tree, &data, 2);
+        assert_eq!(results.scores.len(), points.len());
+        assert!(results.scores[4] < results.scores[0]);
     }
 
     #[test]
@@ -121,13 +92,30 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(11);
         let tree: VPTree<f64> = VPTree::new(&data, 1, &mut rng);
 
-        let scores = odin_outlier_scores(&tree, &data, 1);
-        assert_eq!(
-            scores,
-            vec![OdinOutlierScore {
-                index: 0,
-                score: 1.0
-            }]
+        let results = outlier_detection_independence_neighbor(&tree, &data, 1);
+        assert_eq!(results.scores.len(), 1);
+        assert_eq!(results.scores[0], 0.0);
+        assert_eq!(results.metadata.label, "ODIN");
+    }
+
+    #[test]
+    fn odin_matches_reference_outlier_score() {
+        let points = load_gaussian4d_points();
+        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let mut rng = StdRng::seed_from_u64(42);
+        let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
+
+        let result = outlier_detection_independence_neighbor(&tree, &data, 10);
+        let reference = load_reference_scores();
+        let expected = reference.get("ODIN-10").expect("No reference for ODIN-10");
+        let labels: Vec<u8> = label_from_reference(&reference);
+
+        assert_outlier_auc_approx(
+            "ODIN-10",
+            auc(&result.scores, &labels),
+            auc(expected, &labels),
+            1e-12,
         );
+        assert_outlier_scores_approx("ODIN-10", &result.scores, expected, 1e-6);
     }
 }

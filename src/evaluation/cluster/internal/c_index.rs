@@ -1,13 +1,11 @@
-use super::helpers::{NoiseHandling, build_clusters, euc};
 use std::cmp::Ordering;
+
+use super::helpers::{NoiseHandling, build_clusters, euc};
 
 /// C-index measure for clustering compactness.
 #[must_use]
 pub fn c_index(
-    data: &[Vec<f64>],
-    labels: &[isize],
-    noise_label: Option<isize>,
-    nh: NoiseHandling,
+    data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>, nh: NoiseHandling,
 ) -> f64 {
     assert_eq!(data.len(), labels.len());
     let (clusters, _) = build_clusters(labels, noise_label, nh);
@@ -52,9 +50,5 @@ pub fn c_index(
 
     let min = dists.iter().take(w).sum::<f64>();
     let max = dists.iter().rev().take(w).sum::<f64>();
-    if max > min {
-        (theta - min) / (max - min)
-    } else {
-        1.0
-    }
+    if max > min { (theta - min) / (max - min) } else { 1.0 }
 }

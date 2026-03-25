@@ -1,15 +1,12 @@
 use std::collections::BinaryHeap;
 
-use num_traits::Float;
-
-use crate::api::{DistanceData, DistanceSearch};
-use crate::cluster::hierarchical::common::BufferedNeighbors;
-use crate::DistPair;
-use crate::vptree::{PrioritySearcher, VPTree};
-
 use super::hdbscan_common::{HdbscanHierarchy, compute_core_distances_tree};
-use crate::cluster::hierarchical::search_single_link_common::{
-    ClusterBuilder, SameClusterFilter,
+use crate::api::DistanceData;
+use crate::cluster::hierarchical::common::BufferedNeighbors;
+use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
+use crate::{
+    DistPair, DistanceSearch, Float, IndexQuery, KnnSearch, PrioritySearcher,
+    PrioritySearcherFactory,
 };
 /// Lazy buffered-search HDBSCAN MST.
 ///
@@ -18,12 +15,15 @@ use crate::cluster::hierarchical::search_single_link_common::{
 /// many extra priority-search expansions are allowed beyond the current
 /// lower-bound threshold.
 #[must_use]
-pub fn lazy_buffered_search_hdbscan<D: DistanceData<F>, F: Float>(
-    tree: &VPTree<F>,
-    data: &D,
-    min_points: usize,
-    slack: usize,
-) -> HdbscanHierarchy<F> {
+pub fn lazy_buffered_search_hdbscan<'a, S, D, F>(
+    tree: &'a S, data: &'a D, min_points: usize, slack: usize,
+) -> HdbscanHierarchy<F>
+where
+    F: Float + 'a,
+    D: DistanceData<F> + ?Sized + 'a,
+    S: PrioritySearcherFactory<F, D::Query<'a>>,
+    S: KnnSearch<F, D::Query<'a>>,
+{
     let n = data.size();
     assert!(n > 0, "number of points must be positive");
     assert!(min_points > 0, "min_points must be greater than 0");
@@ -39,17 +39,20 @@ pub fn lazy_buffered_search_hdbscan<D: DistanceData<F>, F: Float>(
         (0..n).map(|_| BufferedNeighbors::new()).collect();
     let mut thresholds = vec![F::infinity(); n];
     let mut node_cluster = vec![u32::MAX; n];
-    let mut searcher = tree.priority_searcher();
+    let mut searcher = S::priority_searcher(tree);
+
+    let mut query = data.query();
 
     // Fill initial heaps
     for a in 0..n {
         if builder.cluster_size_of_point(a) > 1 {
             continue;
         }
+        query.set_index(a);
         thresholds[a] = refill_neighbors(
-            &data.search_by_index(a),
             &mut builder,
             a,
+            &query,
             F::zero(),
             slack,
             &mut neighbor_buffers[a],
@@ -84,9 +87,7 @@ pub fn lazy_buffered_search_hdbscan<D: DistanceData<F>, F: Float>(
             buffer.pop();
             let b = best.index;
             let best_dist = best.distance;
-            if builder.merge_points(a, b, best_dist).is_some()
-                && builder.merge_count() == n - 1
-            {
+            if builder.merge_points(a, b, best_dist).is_some() && builder.merge_count() == n - 1 {
                 break;
             }
             // Purge items that became same-cluster due to the merge so that
@@ -103,10 +104,11 @@ pub fn lazy_buffered_search_hdbscan<D: DistanceData<F>, F: Float>(
         let needs_refill = buffer.peek().is_none()
             || buffer.peek().map(|n| n.distance).unwrap_or(F::infinity()) > thresholds[a];
         if needs_refill {
+            query.set_index(a);
             thresholds[a] = refill_neighbors(
-                &data.search_by_index(a),
                 &mut builder,
                 a,
+                &query,
                 thresholds[a],
                 slack,
                 buffer,
@@ -125,17 +127,15 @@ pub fn lazy_buffered_search_hdbscan<D: DistanceData<F>, F: Float>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
-    data: &D,
-    builder: &mut ClusterBuilder<F>,
-    query_index: usize,
-    skip: F,
-    slack: usize,
-    buffer: &mut BufferedNeighbors<F>,
-    searcher: &mut PrioritySearcher<F>,
-    core_distances: &[F],
+pub(crate) fn refill_neighbors<F: Float, Q, S>(
+    builder: &mut ClusterBuilder<F>, query_index: usize, query: &Q, skip: F, slack: usize,
+    buffer: &mut BufferedNeighbors<F>, searcher: &mut S, core_distances: &[F],
     node_cluster: &mut [u32],
-) -> F {
+) -> F
+where
+    Q: DistanceSearch<F> + ?Sized,
+    S: PrioritySearcher<F, Q>,
+{
     searcher.reset_with_limits(F::infinity(), skip.max(F::zero()));
 
     let cd = core_distances[query_index];
@@ -147,12 +147,10 @@ pub(crate) fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
         if lower_bound >= threshold && remaining <= 0 {
             break;
         }
-        let mut filter = SameClusterFilter {
-            builder,
-            query_component,
-            node_cluster,
-        };
-        let Some(cand) = searcher.next_with_filter(data, &mut filter) else {
+        let Some(cand) = searcher.next_with_filter(
+            query,
+            &mut SameClusterFilter { builder, query_component, node_cluster },
+        ) else {
             break;
         };
         let b = cand.index;
@@ -169,18 +167,19 @@ pub(crate) fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
     }
 
     buffer.threshold = searcher.all_lower_bound();
-    // return the threshold so callers can keep a local copy if they prefer
     buffer.threshold
 }
 
 #[cfg(test)]
 mod tests {
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
+    use super::super::hdbscan_prim;
+    use super::lazy_buffered_search_hdbscan;
     use crate::TableWithDistance;
     use crate::distance::EuclideanDistance;
     use crate::vptree::VPTree;
-    use rand::{SeedableRng, rngs::StdRng};
-
-    use super::{super::hdbscan_prim, lazy_buffered_search_hdbscan};
 
     #[test]
     fn buffered_search_matches_linear_mst() {

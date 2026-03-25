@@ -1,9 +1,7 @@
-use num_traits::Float;
-
-use crate::cluster::optics::OpticsResult;
-
 use super::common::MergeHistory;
+use crate::Float;
 use crate::cluster::hdbscan::hdbscan_common::{WeightedEdge, edges_to_merge_history};
+use crate::cluster::optics::OpticsResult;
 
 /// Convert an OPTICS cluster order into a hierarchical merge history.
 ///
@@ -17,11 +15,7 @@ pub fn optics_to_hierarchical<F: Float>(result: &OpticsResult<F>) -> MergeHistor
         return Vec::new();
     }
 
-    assert_eq!(
-        result.reachability.len(),
-        n,
-        "reachability length must match ordering length"
-    );
+    assert_eq!(result.reachability.len(), n, "reachability length must match ordering length");
 
     let mut seen = vec![false; n];
     for &idx in &result.ordering {
@@ -42,9 +36,8 @@ pub fn optics_to_hierarchical<F: Float>(result: &OpticsResult<F>) -> MergeHistor
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::optics::OpticsResult;
-
     use super::optics_to_hierarchical;
+    use crate::cluster::optics::OpticsResult;
 
     #[test]
     fn optics_order_converts_to_full_hierarchy() {

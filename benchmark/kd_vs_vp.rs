@@ -1,27 +1,27 @@
-use std::{
-    collections::BinaryHeap,
-    env,
-    error::Error,
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
-    time::Instant,
-};
+use std::collections::BinaryHeap;
+use std::env;
+use std::error::Error;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Instant;
 
 use csv::ReaderBuilder;
-use rand::{Rng, SeedableRng, distributions::Standard, rngs::StdRng};
-
-use fuel::api::{Data, DistanceData, DistanceSearch};
-use fuel::distance::{DistanceFunction, EuclideanDistance, PartialDistance};
-use fuel::vptree::{PrioritySearcher, VPTree};
-// TableWithDistance is available at the crate root for convenience
-use fuel::TableWithDistance;
-
 // additional imports from submodules
+use fuel::Float;
 use fuel::VectorData;
+use fuel::api::{Data, DistanceData, DistanceSearch};
+use fuel::data::TableQuery;
+use fuel::distance::{DistanceFunction, EuclideanDistance, PartialDistance};
 use fuel::kd::{KdTree, MaxVarianceSplit};
-use num_traits::Float;
+use fuel::vptree::VPTree;
+// TableWithDistance is available at the crate root for convenience
+use fuel::{
+    CoordinateQuery, IndexQuery, KnnSearch, PrioritySearcher, PrioritySearcherFactory, RangeSearch,
+    TableWithDistance,
+};
+use rand::distributions::Standard;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut dims = 2_usize;
@@ -34,28 +34,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--dims" => {
-                dims = args
-                    .next()
-                    .ok_or("missing value for --dims")?
-                    .parse()?;
+                dims = args.next().ok_or("missing value for --dims")?.parse()?;
             }
             "--npoints" => {
-                n_points = args
-                    .next()
-                    .ok_or("missing value for --npoints")?
-                    .parse()?;
+                n_points = args.next().ok_or("missing value for --npoints")?.parse()?;
             }
             "--queries" => {
-                num_queries = args
-                    .next()
-                    .ok_or("missing value for --queries")?
-                    .parse()?;
+                num_queries = args.next().ok_or("missing value for --queries")?.parse()?;
             }
             "--seed" => {
-                seed = args
-                    .next()
-                    .ok_or("missing value for --seed")?
-                    .parse()?;
+                seed = args.next().ok_or("missing value for --seed")?.parse()?;
             }
             "--csv" => {
                 csv_path = Some(args.next().ok_or("missing value for --csv")?);
@@ -83,9 +71,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let mut rng = StdRng::seed_from_u64(42);
-    let queries = (0..num_queries)
-        .map(|_| rng.gen_range(0..points.len()))
-        .collect::<Vec<_>>();
+    let queries = (0..num_queries).map(|_| rng.gen_range(0..points.len())).collect::<Vec<_>>();
 
     let explore_count = ((points.len() as f64) * 0.01).ceil() as usize;
     let explore_count = explore_count.max(1).min(points.len());
@@ -93,11 +79,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Use the same query set for all methods (kd-tree, vp-tree, linear) for consistency.
     let explore_queries = queries.clone();
 
-    let kd_data = TableWithDistance::with_distance(&points, EuclideanDistance);
     let kd_metric = CountingPartialDistance::new(EuclideanDistance);
+    let kd_data = TableWithDistance::with_distance(&points, kd_metric.clone());
     kd_metric.reset();
     let kd_build_start = Instant::now();
-    let kd_tree = KdTree::new(&kd_data, MaxVarianceSplit, kd_metric.clone());
+    let kd_tree = KdTree::new(&kd_data, MaxVarianceSplit);
     let kd_build_time = kd_build_start.elapsed();
     let kd_build_distances = kd_metric.count();
 
@@ -110,12 +96,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let vp_build_time = vp_build_start.elapsed();
     let vp_build_distances = vp_distance.count();
 
-    println!(
-        "Dataset: {} points × {} dims (source: {})",
-        points.len(),
-        point_dims,
-        source
-    );
+    println!("Dataset: {} points × {} dims (source: {})", points.len(), point_dims, source);
     println!(
         "Benchmark k={} (~10% of {} points), queries={}",
         neighbor_rank,
@@ -133,13 +114,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         vp_build_distances
     );
 
-    let (kd_knn_time, kd_knn_dist, kd_knn_avg) = measure_kd_kth_neighbor(
-        &kd_tree,
-        &kd_data,
-        &explore_queries,
-        neighbor_rank,
-        &kd_metric,
-    );
+    let (kd_knn_time, kd_knn_dist, kd_knn_avg) =
+        measure_kd_kth_neighbor(&kd_tree, &kd_data, &explore_queries, neighbor_rank, &kd_metric);
     println!(
         "kNN kd-tree (queries={}, k={}) : query={:.3}s distances={} avg-dist={:.6}",
         explore_queries.len(),
@@ -168,13 +144,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
 
     let kd_range_radius = kd_knn_avg.max(0.0);
-    let (kd_range_time, kd_range_dist, kd_range_avg) = measure_kd_range(
-        &kd_tree,
-        &kd_data,
-        &explore_queries,
-        kd_range_radius,
-        &kd_metric,
-    );
+    let (kd_range_time, kd_range_dist, kd_range_avg) =
+        measure_kd_range(&kd_tree, &kd_data, &explore_queries, kd_range_radius, &kd_metric);
     println!(
         "range kd-tree (radius={:.6}, queries={}, k={}) : query={:.3}s distances={} avg-results={:.3}",
         kd_range_radius,
@@ -267,18 +238,17 @@ fn generate_points(n: usize, dims: usize, rng: &mut StdRng) -> Vec<Vec<f64>> {
 }
 
 fn measure_kd_kth_neighbor(
-    tree: &KdTree<f64, CountingPartialDistance<EuclideanDistance>>,
-    data: &TableWithDistance<'_, Vec<f64>, EuclideanDistance, f64>,
-    queries: &[usize],
-    rank: usize,
-    metric: &CountingPartialDistance<EuclideanDistance>,
+    tree: &KdTree<f64>,
+    data: &TableWithDistance<'_, f64, Vec<f64>, CountingPartialDistance<EuclideanDistance>, f64>,
+    queries: &[usize], rank: usize, metric: &CountingPartialDistance<EuclideanDistance>,
 ) -> (std::time::Duration, usize, f64) {
     metric.reset();
     let start = Instant::now();
     let mut sum = 0.0;
     let mut found = 0;
+    let mut query = data.query();
     for &query_idx in queries {
-        if let Some(dist) = kth_neighbor_distance_kd(tree, data, query_idx, rank) {
+        if let Some(dist) = kth_neighbor_distance_kd(tree, data, &mut query, query_idx, rank) {
             sum += dist;
             found += 1;
         }
@@ -288,15 +258,15 @@ fn measure_kd_kth_neighbor(
 }
 
 fn kth_neighbor_distance_kd(
-    tree: &KdTree<f64, CountingPartialDistance<EuclideanDistance>>,
-    data: &TableWithDistance<'_, Vec<f64>, EuclideanDistance, f64>,
-    query_idx: usize,
-    rank: usize,
+    tree: &KdTree<f64>,
+    data: &TableWithDistance<'_, f64, Vec<f64>, CountingPartialDistance<EuclideanDistance>, f64>,
+    query: &mut impl CoordinateQuery<f64, f64>, query_idx: usize, rank: usize,
 ) -> Option<f64> {
     if rank == 0 {
         return None;
     }
-    let neighbors = tree.search_knn(data, data.point(query_idx), rank + 1);
+    query.set_coordinates(data.point(query_idx));
+    let neighbors = tree.search_knn(query, rank + 1);
     neighbors
         .into_iter()
         .filter(|neighbor| neighbor.index != query_idx)
@@ -306,10 +276,8 @@ fn kth_neighbor_distance_kd(
 
 fn measure_vp_kth_neighbor(
     tree: &VPTree<f64>,
-    data: &TableWithDistance<'_, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
-    queries: &[usize],
-    rank: usize,
-    counter: &CountingDistance<EuclideanDistance>,
+    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
+    queries: &[usize], rank: usize, counter: &CountingDistance<EuclideanDistance>,
 ) -> (std::time::Duration, usize, f64) {
     counter.reset();
     let start = Instant::now();
@@ -327,14 +295,14 @@ fn measure_vp_kth_neighbor(
 
 fn kth_neighbor_distance_vp(
     tree: &VPTree<f64>,
-    data: &TableWithDistance<'_, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
-    query_idx: usize,
-    rank: usize,
+    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
+    query_idx: usize, rank: usize,
 ) -> Option<f64> {
     if rank == 0 {
         return None;
     }
-    tree.search_knn(&data.search_by_index(query_idx), rank + 1)
+    let query = data.query().with_index(query_idx);
+    tree.search_knn(&query, rank + 1)
         .into_iter()
         .filter(|neighbor| neighbor.index != query_idx)
         .nth(rank - 1)
@@ -342,10 +310,8 @@ fn kth_neighbor_distance_vp(
 }
 
 fn measure_linear(
-    data: &TableWithDistance<'_, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
-    counter: &CountingDistance<EuclideanDistance>,
-    queries: &[usize],
-    rank: usize,
+    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
+    counter: &CountingDistance<EuclideanDistance>, queries: &[usize], rank: usize,
 ) -> (std::time::Duration, usize, f64) {
     counter.reset();
     let start = Instant::now();
@@ -362,97 +328,82 @@ fn measure_linear(
 }
 
 fn measure_kd_range(
-    tree: &KdTree<f64, CountingPartialDistance<EuclideanDistance>>,
-    data: &TableWithDistance<'_, Vec<f64>, EuclideanDistance, f64>,
-    queries: &[usize],
-    radius: f64,
-    metric: &CountingPartialDistance<EuclideanDistance>,
+    tree: &KdTree<f64>,
+    data: &TableWithDistance<'_, f64, Vec<f64>, CountingPartialDistance<EuclideanDistance>, f64>,
+    queries: &[usize], radius: f64, metric: &CountingPartialDistance<EuclideanDistance>,
 ) -> (std::time::Duration, usize, f64) {
     metric.reset();
     let start = Instant::now();
     let mut total_found = 0usize;
+    let mut query = data.query();
     for &query_idx in queries {
-        let neighbors = tree.search_range(data, data.point(query_idx), radius);
-        total_found += neighbors
-            .into_iter()
-            .filter(|neighbor| neighbor.index != query_idx)
-            .count();
+        query.set_coordinates(data.point(query_idx));
+        let neighbors = tree.search_range(&query, radius);
+        total_found += neighbors.into_iter().filter(|neighbor| neighbor.index != query_idx).count();
     }
-    let avg = if queries.is_empty() {
-        0.0
-    } else {
-        total_found as f64 / queries.len() as f64
-    };
+    let avg = if queries.is_empty() { 0.0 } else { total_found as f64 / queries.len() as f64 };
     (start.elapsed(), metric.count(), avg)
 }
 
 fn measure_vp_range(
     tree: &VPTree<f64>,
-    data: &TableWithDistance<'_, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
-    queries: &[usize],
-    radius: f64,
-    counter: &CountingDistance<EuclideanDistance>,
+    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
+    queries: &[usize], radius: f64, counter: &CountingDistance<EuclideanDistance>,
 ) -> (std::time::Duration, usize, f64) {
     counter.reset();
     let start = Instant::now();
     let mut total_found = 0usize;
+    let mut query = data.query();
     for &query_idx in queries {
         let mut count = 0usize;
-        tree.search_range(&data.search_by_index(query_idx), radius, |pair| {
+        query.set_index(query_idx);
+        tree.search_range(&query, radius, |pair| {
             if pair.index != query_idx {
                 count += 1;
             }
         });
         total_found += count;
     }
-    let avg = if queries.is_empty() {
-        0.0
-    } else {
-        total_found as f64 / queries.len() as f64
-    };
+    let avg = if queries.is_empty() { 0.0 } else { total_found as f64 / queries.len() as f64 };
     (start.elapsed(), counter.count(), avg)
 }
 
 fn linear_kth_neighbor_distance(
-    data: &TableWithDistance<'_, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
-    query_idx: usize,
-    rank: usize,
+    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
+    query_idx: usize, rank: usize,
 ) -> Option<f64> {
     if rank == 0 {
         return None;
     }
-    let mut distances: Vec<(f64, usize)> = data
-        .iter()
-        .map(|idx| (data.distance(query_idx, idx), idx))
-        .collect();
+    let mut distances: Vec<(f64, usize)> =
+        data.iter().map(|idx| (data.distance(query_idx, idx), idx)).collect();
     distances.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-    distances
-        .iter()
-        .filter(|(_, idx)| *idx != query_idx)
-        .nth(rank - 1)
-        .map(|(dist, _)| *dist)
+    distances.iter().filter(|(_, idx)| *idx != query_idx).nth(rank - 1).map(|(dist, _)| *dist)
 }
 
 fn measure_kd_priority(
-    tree: &KdTree<f64, CountingPartialDistance<EuclideanDistance>>,
-    data: &TableWithDistance<'_, Vec<f64>, EuclideanDistance, f64>,
-    explore_queries: &[usize],
-    metric: &CountingPartialDistance<EuclideanDistance>,
-    kth: usize,
+    tree: &KdTree<f64>,
+    data: &TableWithDistance<'_, f64, Vec<f64>, CountingPartialDistance<EuclideanDistance>, f64>,
+    explore_queries: &[usize], metric: &CountingPartialDistance<EuclideanDistance>, kth: usize,
 ) -> (std::time::Duration, usize, f64) {
     metric.reset();
     let start = Instant::now();
     let mut sum = 0.0;
+    let mut query = data.query();
     for &query_idx in explore_queries {
         let query_point = data.point(query_idx);
+        query.set_coordinates(query_point);
         let mut rank = 0;
         let mut distance = None;
-        let mut searcher = tree.priority_searcher_with_metric(data, query_point, metric.clone());
+        let mut searcher = <KdTree<f64> as PrioritySearcherFactory<
+            f64,
+            TableQuery<'_, '_, f64, Vec<f64>, CountingPartialDistance<EuclideanDistance>, f64>,
+        >>::priority_searcher(tree);
         loop {
             if rank >= kth {
                 break;
             }
-            let Some(neighbor) = searcher.next() else {
+            let Some(neighbor) = searcher.next(&query) else {
                 break;
             };
             if neighbor.index == query_idx {
@@ -468,30 +419,28 @@ fn measure_kd_priority(
             sum += dist;
         }
     }
-    let avg = if explore_queries.is_empty() {
-        0.0
-    } else {
-        sum / explore_queries.len() as f64
-    };
+    let avg = if explore_queries.is_empty() { 0.0 } else { sum / explore_queries.len() as f64 };
     (start.elapsed(), metric.count(), avg)
 }
 
 fn measure_vp_priority(
     tree: &VPTree<f64>,
-    data: &TableWithDistance<'_, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
-    explore_queries: &[usize],
-    counter: &CountingDistance<EuclideanDistance>,
-    kth: usize,
+    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
+    explore_queries: &[usize], counter: &CountingDistance<EuclideanDistance>, kth: usize,
 ) -> (std::time::Duration, usize, f64) {
     counter.reset();
     let start = Instant::now();
     let mut sum = 0.0;
     let mut found = 0;
+    let mut query = data.query();
     for &query_idx in explore_queries {
-        let query_data = data.search_by_index(query_idx);
-        let mut searcher = tree.priority_searcher();
+        query.set_index(query_idx);
+        let mut searcher = <VPTree<f64> as PrioritySearcherFactory<
+            f64,
+            TableQuery<'_, '_, f64, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
+        >>::priority_searcher(tree);
         if let Some(dist) =
-            kth_neighbor_distance_from_vp_searcher(&mut searcher, &query_data, kth, query_idx)
+            kth_neighbor_distance_from_vp_searcher(&mut searcher, &query, kth, query_idx)
         {
             sum += dist;
             found += 1;
@@ -501,14 +450,12 @@ fn measure_vp_priority(
     (start.elapsed(), counter.count(), avg)
 }
 
-fn kth_neighbor_distance_from_vp_searcher<D>(
-    searcher: &mut PrioritySearcher<'_, f64>,
-    data: &D,
-    rank: usize,
-    query_idx: usize,
+fn kth_neighbor_distance_from_vp_searcher<Q, S>(
+    searcher: &mut S, data: &Q, rank: usize, query_idx: usize,
 ) -> Option<f64>
 where
-    D: DistanceSearch<f64>,
+    Q: DistanceSearch<f64> + ?Sized,
+    S: PrioritySearcher<f64, Q>,
 {
     if rank == 0 {
         return None;
@@ -516,15 +463,16 @@ where
 
     let mut candidates: BinaryHeap<MaxDistance> = BinaryHeap::new();
     loop {
-        if candidates.len() == rank {
-            if let Some(worst) = candidates.peek() {
-                if searcher.all_lower_bound() >= worst.0 {
-                    return Some(worst.0);
-                }
-            }
+        if candidates.len() == rank
+            && candidates
+                .peek()
+                .map(|worst| searcher.all_lower_bound() >= worst.0)
+                .unwrap_or(false)
+        {
+            return candidates.peek().map(|worst| worst.0);
         }
 
-        match searcher.next_filtered(data, |_| false) {
+        match searcher.next(data) {
             Some(neighbor) => {
                 if neighbor.index == query_idx {
                     continue;
@@ -547,13 +495,13 @@ impl Eq for MaxDistance {}
 
 impl PartialOrd for MaxDistance {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for MaxDistance {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Equal)
+        self.0.partial_cmp(&other.0).unwrap_or(std::cmp::Ordering::Equal)
     }
 }
 
@@ -585,9 +533,7 @@ fn load_points_from_csv(path: &str) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
             if Some(idx) == label_column {
                 continue;
             }
-            let value = field
-                .parse::<f64>()
-                .map_err(|e| format!("{}: {}", field, e))?;
+            let value = field.parse::<f64>().map_err(|e| format!("{}: {}", field, e))?;
             row.push(value);
         }
 
@@ -621,7 +567,6 @@ fn load_points_from_csv(path: &str) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
 fn print_help() {
     eprintln!("kd_vs_vp benchmark usage:");
     eprintln!("  kd_vs_vp [--dims N] [--npoints N] [--queries N] [--seed N] [--csv PATH]");
-    eprintln!("");
     eprintln!("Options:");
     eprintln!("  --dims N       Number of dimensions (default: 2)");
     eprintln!("  --npoints N    Number of points to generate (default: 100000)");
@@ -638,35 +583,23 @@ struct CountingDistance<D> {
 }
 
 impl<D> CountingDistance<D> {
-    fn new(inner: D) -> Self {
-        Self {
-            inner,
-            counter: Arc::new(AtomicUsize::new(0)),
-        }
-    }
+    fn new(inner: D) -> Self { Self { inner, counter: Arc::new(AtomicUsize::new(0)) } }
 
-    fn count(&self) -> usize {
-        self.counter.load(Ordering::Relaxed)
-    }
+    fn count(&self) -> usize { self.counter.load(Ordering::Relaxed) }
 
-    fn reset(&self) {
-        self.counter.store(0, Ordering::Relaxed);
-    }
+    fn reset(&self) { self.counter.store(0, Ordering::Relaxed); }
 }
 
 impl<D: Clone> Clone for CountingDistance<D> {
     fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            counter: Arc::clone(&self.counter),
-        }
+        Self { inner: self.inner.clone(), counter: Arc::clone(&self.counter) }
     }
 }
 
-impl<D, T, F> DistanceFunction<T, F> for CountingDistance<D>
+impl<D, T: ?Sized, F> DistanceFunction<T, F> for CountingDistance<D>
 where
     D: DistanceFunction<T, F>,
-    F: Float + Copy,
+    F: Float,
 {
     fn distance(&self, a: &T, b: &T) -> F {
         self.counter.fetch_add(1, Ordering::Relaxed);
@@ -681,42 +614,50 @@ struct CountingPartialDistance<M> {
 }
 
 impl<M> CountingPartialDistance<M> {
-    fn new(inner: M) -> Self {
-        Self {
-            inner,
-            counter: Arc::new(AtomicUsize::new(0)),
-        }
-    }
+    fn new(inner: M) -> Self { Self { inner, counter: Arc::new(AtomicUsize::new(0)) } }
 
-    fn count(&self) -> usize {
-        self.counter.load(Ordering::Relaxed)
-    }
+    fn count(&self) -> usize { self.counter.load(Ordering::Relaxed) }
 
-    fn reset(&self) {
-        self.counter.store(0, Ordering::Relaxed);
-    }
+    fn reset(&self) { self.counter.store(0, Ordering::Relaxed); }
 }
 
 impl<M: Clone> Clone for CountingPartialDistance<M> {
     fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            counter: Arc::clone(&self.counter),
-        }
+        Self { inner: self.inner.clone(), counter: Arc::clone(&self.counter) }
     }
 }
 
-impl<M, F> PartialDistance<F> for CountingPartialDistance<M>
+impl<M, F> PartialDistance<F, F> for CountingPartialDistance<M>
 where
-    M: PartialDistance<F>,
-    F: Float + Copy,
+    M: PartialDistance<F, F>,
+    F: Float,
+{
+    fn axis_distance(&self, delta: F) -> F {
+        self.counter.fetch_add(1, Ordering::Relaxed);
+        self.inner.axis_distance(delta)
+    }
+
+    fn combine_axis_distances(&self, a: F, b: F) -> F { self.inner.combine_axis_distances(a, b) }
+}
+
+impl<M, F> DistanceFunction<[F], F> for CountingPartialDistance<M>
+where
+    M: DistanceFunction<[F], F>,
+    F: Float,
 {
     fn distance(&self, a: &[F], b: &[F]) -> F {
         self.counter.fetch_add(1, Ordering::Relaxed);
         self.inner.distance(a, b)
     }
+}
 
-    fn axis_distance(&self, delta: F) -> F {
-        self.inner.axis_distance(delta)
+impl<M, F> DistanceFunction<Vec<F>, F> for CountingPartialDistance<M>
+where
+    M: DistanceFunction<[F], F>,
+    F: Float,
+{
+    fn distance(&self, a: &Vec<F>, b: &Vec<F>) -> F {
+        self.counter.fetch_add(1, Ordering::Relaxed);
+        self.inner.distance(a.as_slice(), b.as_slice())
     }
 }

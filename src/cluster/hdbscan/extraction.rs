@@ -2,8 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::iter::Sum;
 use std::ops::{AddAssign, Div};
 
-use num_traits::{Float, FromPrimitive};
-
+use crate::Float;
 use crate::cluster::dbscan::NOISE;
 use crate::cluster::hdbscan::{HdbscanHierarchy, Merge};
 
@@ -27,28 +26,17 @@ pub struct ExtractedHierarchy<F: Float> {
 
 impl<F: Float> ExtractedHierarchy<F> {
     #[must_use]
-    pub fn new() -> Self {
-        Self {
-            nodes: Vec::new(),
-            roots: Vec::new(),
-        }
-    }
+    pub fn new() -> Self { Self { nodes: Vec::new(), roots: Vec::new() } }
 
     fn push_node(&mut self, distance: F, members: Vec<usize>, children: Vec<usize>) -> usize {
         let id = self.nodes.len();
-        self.nodes.push(HierarchyNode {
-            distance,
-            members,
-            children,
-        });
+        self.nodes.push(HierarchyNode { distance, members, children });
         id
     }
 }
 
 impl<F: Float> Default for ExtractedHierarchy<F> {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
 
 /// Result of the ELKI-style HDBSCAN hierarchy extraction.
@@ -66,9 +54,7 @@ pub struct HdbscanHierarchyExtractionResult<F: Float> {
 /// - `0..k-1` for extracted clusters
 #[must_use]
 pub fn extract_clusters_with_noise<F: Float>(
-    history: &[Merge<F>],
-    num_clusters: usize,
-    min_cluster_size: usize,
+    history: &[Merge<F>], num_clusters: usize, min_cluster_size: usize,
 ) -> Vec<isize> {
     assert!(num_clusters > 0, "num_clusters must be positive");
     assert!(min_cluster_size > 0, "min_cluster_size must be positive");
@@ -142,9 +128,7 @@ pub fn extract_clusters_with_noise<F: Float>(
 /// Port of ELKI's `SimplifiedHierarchyExtraction`.
 #[must_use]
 pub fn extract_simplified_hierarchy<F: Float>(
-    history: &[Merge<F>],
-    core_distances: Option<&[F]>,
-    min_cluster_size: usize,
+    history: &[Merge<F>], core_distances: Option<&[F]>, min_cluster_size: usize,
 ) -> ExtractedHierarchy<F> {
     assert!(min_cluster_size > 0, "min_cluster_size must be positive");
 
@@ -164,16 +148,12 @@ pub fn extract_simplified_hierarchy<F: Float>(
 
         let mut aclus = cluster_map.remove(&a);
         let a_is_core = core_distances.is_none_or(|core| a >= n || dist >= core[a]);
-        let a_not_spurious = aclus
-            .as_ref()
-            .is_some_and(|c| c.is_not_spurious(min_cluster_size))
+        let a_not_spurious = aclus.as_ref().is_some_and(|c| c.is_not_spurious(min_cluster_size))
             || (aclus.is_none() && min_cluster_size <= 1 && a_is_core);
 
         let mut bclus = cluster_map.remove(&b);
         let b_is_core = core_distances.is_none_or(|core| b >= n || dist <= core[b]);
-        let b_not_spurious = bclus
-            .as_ref()
-            .is_some_and(|c| c.is_not_spurious(min_cluster_size))
+        let b_not_spurious = bclus.as_ref().is_some_and(|c| c.is_not_spurious(min_cluster_size))
             || (bclus.is_none() && min_cluster_size <= 1 && b_is_core);
 
         let mut nclus =
@@ -266,8 +246,7 @@ pub fn extract_simplified_hierarchy<F: Float>(
 /// Convenience wrapper for simplified extraction on `HdbscanHierarchy`.
 #[must_use]
 pub fn extract_simplified_hierarchy_hdbscan<F: Float>(
-    hierarchy: &HdbscanHierarchy<F>,
-    min_cluster_size: usize,
+    hierarchy: &HdbscanHierarchy<F>, min_cluster_size: usize,
 ) -> ExtractedHierarchy<F> {
     extract_simplified_hierarchy(
         &hierarchy.merges,
@@ -278,11 +257,8 @@ pub fn extract_simplified_hierarchy_hdbscan<F: Float>(
 
 /// Port of ELKI's `HDBSCANHierarchyExtraction`, including GLOSH scores.
 #[must_use]
-pub fn extract_hdbscan_hierarchy<F: Float + FromPrimitive + Sum + AddAssign + Div<F>>(
-    history: &[Merge<F>],
-    core_distances: Option<&[F]>,
-    min_cluster_size: usize,
-    hierarchical: bool,
+pub fn extract_hdbscan_hierarchy<F: Float + Sum + AddAssign + Div<F>>(
+    history: &[Merge<F>], core_distances: Option<&[F]>, min_cluster_size: usize, hierarchical: bool,
 ) -> HdbscanHierarchyExtractionResult<F> {
     assert!(min_cluster_size > 0, "min_cluster_size must be positive");
 
@@ -334,15 +310,13 @@ pub fn extract_hdbscan_hierarchy<F: Float + FromPrimitive + Sum + AddAssign + Di
             if a < n {
                 oc.grow_point(dist, a).reset_aggregate()
             } else {
-                oc.grow_cluster(dist, cclus.expect("cluster must exist"))
-                    .reset_aggregate()
+                oc.grow_cluster(dist, cclus.expect("cluster must exist")).reset_aggregate()
             }
         } else if let Some(cc) = cclus {
             if b < n {
                 cc.grow_point(dist, b).reset_aggregate()
             } else {
-                cc.grow_cluster(dist, oclus.expect("cluster must exist"))
-                    .reset_aggregate()
+                cc.grow_cluster(dist, oclus.expect("cluster must exist")).reset_aggregate()
             }
         } else {
             let mut tmp = HdbscanTempCluster::new_leaf(dist, a);
@@ -367,10 +341,8 @@ pub fn extract_hdbscan_hierarchy<F: Float + FromPrimitive + Sum + AddAssign + Di
 
 /// Convenience wrapper for ELKI-style HDBSCAN extraction on `HdbscanHierarchy`.
 #[must_use]
-pub fn extract_hdbscan_hierarchy_hdbscan<F: Float + FromPrimitive + Sum + AddAssign + Div<F>>(
-    hierarchy: &HdbscanHierarchy<F>,
-    min_cluster_size: usize,
-    hierarchical: bool,
+pub fn extract_hdbscan_hierarchy_hdbscan<F: Float + Sum + AddAssign + Div<F>>(
+    hierarchy: &HdbscanHierarchy<F>, min_cluster_size: usize, hierarchical: bool,
 ) -> HdbscanHierarchyExtractionResult<F> {
     extract_hdbscan_hierarchy(
         &hierarchy.merges,
@@ -386,10 +358,7 @@ fn cluster_size<F: Float>(history: &[Merge<F>], n: usize, id: usize) -> usize {
 }
 
 fn collect_leaf_points<F: Float>(
-    history: &[Merge<F>],
-    n: usize,
-    id: usize,
-    cache: &mut [Option<Vec<usize>>],
+    history: &[Merge<F>], n: usize, id: usize, cache: &mut [Option<Vec<usize>>],
 ) -> Vec<usize> {
     if let Some(v) = &cache[id] {
         return v.clone();
@@ -416,13 +385,7 @@ struct SimplifiedTempCluster<F: Float> {
 }
 
 impl<F: Float> SimplifiedTempCluster<F> {
-    fn new(depth: F) -> Self {
-        Self {
-            newids: Vec::new(),
-            depth,
-            children: Vec::new(),
-        }
-    }
+    fn new(depth: F) -> Self { Self { newids: Vec::new(), depth, children: Vec::new() } }
 
     fn is_not_spurious(&self, min_cluster_size: usize) -> bool {
         !self.children.is_empty() || self.newids.len() >= min_cluster_size
@@ -431,13 +394,8 @@ impl<F: Float> SimplifiedTempCluster<F> {
 
 #[allow(clippy::too_many_arguments)]
 fn simplified_add_id<F: Float>(
-    clus: &mut SimplifiedTempCluster<F>,
-    id: usize,
-    dist: F,
-    as_cluster: bool,
-    hierarchy: &mut ExtractedHierarchy<F>,
-    history: &[Merge<F>],
-    n: usize,
+    clus: &mut SimplifiedTempCluster<F>, id: usize, dist: F, as_cluster: bool,
+    hierarchy: &mut ExtractedHierarchy<F>, history: &[Merge<F>], n: usize,
     leaves_cache: &mut [Option<Vec<usize>>],
 ) {
     let members = collect_leaf_points(history, n, id, leaves_cache);
@@ -451,8 +409,7 @@ fn simplified_add_id<F: Float>(
 }
 
 fn simplified_to_node<F: Float>(
-    temp: &mut SimplifiedTempCluster<F>,
-    hierarchy: &mut ExtractedHierarchy<F>,
+    temp: &mut SimplifiedTempCluster<F>, hierarchy: &mut ExtractedHierarchy<F>,
 ) -> usize {
     let members = std::mem::take(&mut temp.newids);
     let children = std::mem::take(&mut temp.children);
@@ -469,7 +426,7 @@ struct HdbscanTempCluster<F: Float> {
     children: Vec<HdbscanTempCluster<F>>,
 }
 
-impl<F: Float + FromPrimitive + Sum + AddAssign + Div<F>> HdbscanTempCluster<F> {
+impl<F: Float + Sum + AddAssign + Div<F>> HdbscanTempCluster<F> {
     fn new_leaf(dist: F, point: usize) -> Self {
         Self {
             members: vec![point],
@@ -516,9 +473,7 @@ impl<F: Float + FromPrimitive + Sum + AddAssign + Div<F>> HdbscanTempCluster<F> 
         self
     }
 
-    fn total_elements(&self) -> usize {
-        self.children_total + self.members.len()
-    }
+    fn total_elements(&self) -> usize { self.children_total + self.members.len() }
 
     fn excess_of_mass(&self) -> F {
         self.aggregate - F::from_usize(self.total_elements()).unwrap() / self.dist
@@ -526,12 +481,7 @@ impl<F: Float + FromPrimitive + Sum + AddAssign + Div<F>> HdbscanTempCluster<F> 
 
     fn total_stability(&self) -> F {
         let stability = self.excess_of_mass();
-        let cstab = self
-            .children
-            .iter()
-            .map(HdbscanTempCluster::total_stability)
-            .map(F::abs)
-            .sum();
+        let cstab = self.children.iter().map(HdbscanTempCluster::total_stability).map(F::abs).sum();
         if stability > cstab { stability } else { -cstab }
     }
 
@@ -541,10 +491,8 @@ impl<F: Float + FromPrimitive + Sum + AddAssign + Div<F>> HdbscanTempCluster<F> 
 }
 
 #[inline]
-fn hdbscan_is_spurious<F: Float + FromPrimitive + Sum + AddAssign + Div<F>>(
-    clus: Option<&HdbscanTempCluster<F>>,
-    min_cluster_size: usize,
-    is_core: bool,
+fn hdbscan_is_spurious<F: Float + Sum + AddAssign + Div<F>>(
+    clus: Option<&HdbscanTempCluster<F>>, min_cluster_size: usize, is_core: bool,
 ) -> bool {
     match clus {
         Some(c) => c.is_spurious(min_cluster_size),
@@ -552,17 +500,11 @@ fn hdbscan_is_spurious<F: Float + FromPrimitive + Sum + AddAssign + Div<F>>(
     }
 }
 
-fn finalize_hdbscan_cluster<F: Float + FromPrimitive + Sum + AddAssign + Div<F>>(
-    mut temp: HdbscanTempCluster<F>,
-    out: &mut HdbscanHierarchyExtractionResult<F>,
-    core_distances: Option<&[F]>,
-    parent: Option<usize>,
-    flatten: bool,
-    hierarchical: bool,
+fn finalize_hdbscan_cluster<F: Float + Sum + AddAssign + Div<F>>(
+    mut temp: HdbscanTempCluster<F>, out: &mut HdbscanHierarchyExtractionResult<F>,
+    core_distances: Option<&[F]>, parent: Option<usize>, flatten: bool, hierarchical: bool,
 ) -> F {
-    let node_id = out
-        .hierarchy
-        .push_node(temp.dist, std::mem::take(&mut temp.members), Vec::new());
+    let node_id = out.hierarchy.push_node(temp.dist, std::mem::take(&mut temp.members), Vec::new());
 
     if hierarchical {
         if let Some(parent_id) = parent {
@@ -579,14 +521,7 @@ fn finalize_hdbscan_cluster<F: Float + FromPrimitive + Sum + AddAssign + Div<F>>
         let cdmin = if flatten || child.total_stability() < F::zero() {
             collect_hdbscan_children(child, out, core_distances, node_id, flatten, hierarchical)
         } else {
-            finalize_hdbscan_cluster(
-                child,
-                out,
-                core_distances,
-                Some(node_id),
-                true,
-                hierarchical,
-            )
+            finalize_hdbscan_cluster(child, out, core_distances, Some(node_id), true, hierarchical)
         };
         dmin = dmin.min(cdmin);
     }
@@ -596,23 +531,15 @@ fn finalize_hdbscan_cluster<F: Float + FromPrimitive + Sum + AddAssign + Div<F>>
         if cdist < dmin {
             cdist = dmin;
         }
-        out.glosh[point] = if cdist > F::zero() {
-            F::one() - dmin / cdist
-        } else {
-            F::zero()
-        };
+        out.glosh[point] = if cdist > F::zero() { F::one() - dmin / cdist } else { F::zero() };
     }
 
     dmin
 }
 
-fn collect_hdbscan_children<F: Float + FromPrimitive + Sum + AddAssign + Div<F>>(
-    cur: HdbscanTempCluster<F>,
-    out: &mut HdbscanHierarchyExtractionResult<F>,
-    core_distances: Option<&[F]>,
-    parent: usize,
-    flatten: bool,
-    hierarchical: bool,
+fn collect_hdbscan_children<F: Float + Sum + AddAssign + Div<F>>(
+    cur: HdbscanTempCluster<F>, out: &mut HdbscanHierarchyExtractionResult<F>,
+    core_distances: Option<&[F]>, parent: usize, flatten: bool, hierarchical: bool,
 ) -> F {
     let mut dmin = cur.dmin;
     out.hierarchy.nodes[parent].members.extend(cur.members);
@@ -633,17 +560,15 @@ fn collect_hdbscan_children<F: Float + FromPrimitive + Sum + AddAssign + Div<F>>
 mod tests {
     use std::collections::BTreeSet;
 
-    use crate::cluster::dbscan::NOISE;
-    use crate::cluster::hdbscan::{HdbscanHierarchy, Merge};
-
     use super::{
         extract_clusters_with_noise, extract_hdbscan_hierarchy, extract_hdbscan_hierarchy_hdbscan,
         extract_simplified_hierarchy, extract_simplified_hierarchy_hdbscan,
     };
+    use crate::cluster::dbscan::NOISE;
+    use crate::cluster::hdbscan::{HdbscanHierarchy, Merge};
 
     fn all_members(
-        extracted_roots: &[usize],
-        nodes: &[super::HierarchyNode<f64>],
+        extracted_roots: &[usize], nodes: &[super::HierarchyNode<f64>],
     ) -> BTreeSet<usize> {
         fn visit(node: usize, nodes: &[super::HierarchyNode<f64>], out: &mut BTreeSet<usize>) {
             for &p in &nodes[node].members {
@@ -664,36 +589,11 @@ mod tests {
     #[test]
     fn clusters_with_noise_relaxes_k_and_emits_noise() {
         let history = vec![
-            Merge {
-                idx1: 0,
-                idx2: 1,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 2,
-                idx2: 3,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 6,
-                idx2: 4,
-                distance: 2.0,
-                size: 3,
-            },
-            Merge {
-                idx1: 7,
-                idx2: 5,
-                distance: 2.0,
-                size: 3,
-            },
-            Merge {
-                idx1: 8,
-                idx2: 9,
-                distance: 10.0,
-                size: 6,
-            },
+            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
+            Merge { idx1: 2, idx2: 3, distance: 1.0, size: 2 },
+            Merge { idx1: 6, idx2: 4, distance: 2.0, size: 3 },
+            Merge { idx1: 7, idx2: 5, distance: 2.0, size: 3 },
+            Merge { idx1: 8, idx2: 9, distance: 10.0, size: 6 },
         ];
 
         let labels = extract_clusters_with_noise(&history, 3, 2);
@@ -707,24 +607,9 @@ mod tests {
     #[test]
     fn clusters_with_noise_can_hit_exact_k_without_noise() {
         let history = vec![
-            Merge {
-                idx1: 0,
-                idx2: 1,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 2,
-                idx2: 3,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 4,
-                idx2: 5,
-                distance: 2.0,
-                size: 4,
-            },
+            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
+            Merge { idx1: 2, idx2: 3, distance: 1.0, size: 2 },
+            Merge { idx1: 4, idx2: 5, distance: 2.0, size: 4 },
         ];
 
         let labels = extract_clusters_with_noise(&history, 2, 2);
@@ -737,24 +622,9 @@ mod tests {
     #[test]
     fn simplified_extraction_keeps_non_spurious_children() {
         let history = vec![
-            Merge {
-                idx1: 0,
-                idx2: 1,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 2,
-                idx2: 3,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 4,
-                idx2: 5,
-                distance: 2.0,
-                size: 4,
-            },
+            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
+            Merge { idx1: 2, idx2: 3, distance: 1.0, size: 2 },
+            Merge { idx1: 4, idx2: 5, distance: 2.0, size: 4 },
         ];
         let core = vec![0.5, 0.5, 0.5, 0.5];
 
@@ -773,30 +643,12 @@ mod tests {
     #[test]
     fn simplified_hierarchy_wrapper_matches_direct_call() {
         let history = vec![
-            Merge {
-                idx1: 0,
-                idx2: 1,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 2,
-                idx2: 3,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 4,
-                idx2: 5,
-                distance: 2.0,
-                size: 4,
-            },
+            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
+            Merge { idx1: 2, idx2: 3, distance: 1.0, size: 2 },
+            Merge { idx1: 4, idx2: 5, distance: 2.0, size: 4 },
         ];
         let core = vec![1.0, 1.0, 1.0, 1.0];
-        let hdb = HdbscanHierarchy {
-            merges: history.clone(),
-            core_distances: core.clone(),
-        };
+        let hdb = HdbscanHierarchy { merges: history.clone(), core_distances: core.clone() };
 
         let direct = extract_simplified_hierarchy(&history, Some(&core), 2);
         let wrapped = extract_simplified_hierarchy_hdbscan(&hdb, 2);
@@ -806,24 +658,9 @@ mod tests {
     #[test]
     fn hdbscan_extraction_returns_glosh_for_all_points() {
         let history = vec![
-            Merge {
-                idx1: 0,
-                idx2: 1,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 2,
-                idx2: 3,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 4,
-                idx2: 5,
-                distance: 2.0,
-                size: 4,
-            },
+            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
+            Merge { idx1: 2, idx2: 3, distance: 1.0, size: 2 },
+            Merge { idx1: 4, idx2: 5, distance: 2.0, size: 4 },
         ];
         let core = vec![1.0, 1.0, 1.0, 1.0];
 
@@ -836,30 +673,12 @@ mod tests {
     #[test]
     fn hdbscan_hierarchical_mode_changes_tree_shape_not_membership() {
         let history = vec![
-            Merge {
-                idx1: 0,
-                idx2: 1,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 2,
-                idx2: 3,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 4,
-                idx2: 5,
-                distance: 2.0,
-                size: 4,
-            },
+            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
+            Merge { idx1: 2, idx2: 3, distance: 1.0, size: 2 },
+            Merge { idx1: 4, idx2: 5, distance: 2.0, size: 4 },
         ];
         let core = vec![1.0, 1.0, 1.0, 1.0];
-        let hdb = HdbscanHierarchy {
-            merges: history.clone(),
-            core_distances: core.clone(),
-        };
+        let hdb = HdbscanHierarchy { merges: history.clone(), core_distances: core.clone() };
 
         let hierarchical = extract_hdbscan_hierarchy_hdbscan(&hdb, 2, true);
         let flat = extract_hdbscan_hierarchy(&history, Some(&core), 2, false);

@@ -1,5 +1,5 @@
 /// Flexible-beta linkage with parameter β.
-use num_traits::Float;
+use crate::Float;
 
 #[derive(Clone, Copy, Debug)]
 pub struct FlexibleBetaLinkage<F: Float> {
@@ -9,12 +9,7 @@ pub struct FlexibleBetaLinkage<F: Float> {
 
 impl<F: Float> FlexibleBetaLinkage<F> {
     /// Create a new instance for given β.  α = (1-β)/2 as per definition.
-    pub fn new(beta: F) -> Self {
-        Self {
-            beta,
-            alpha: (F::one() - beta) / (F::one() + F::one()),
-        }
-    }
+    pub fn new(beta: F) -> Self { Self { beta, alpha: (F::one() - beta) / (F::one() + F::one()) } }
 }
 
 use super::Linkage;

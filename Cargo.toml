@@ -67,9 +67,11 @@ parallel = []
 [dependencies]
 num-traits = "0.2"
 ndarray = "0.15"
+ndarray-linalg = { version = "0.16", features = ["openblas-system"] }
 rand  = "0.8"
 rand_distr = "0.4"
 rayon = "1.5"
+rs-stats = "2.0.3"
 csv = { version = "1.3", optional = true }
 
 [profile.dev]

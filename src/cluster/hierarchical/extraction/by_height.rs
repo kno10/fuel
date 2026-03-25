@@ -1,8 +1,6 @@
-use num_traits::Float;
-
-use crate::cluster::hierarchical::Merge;
-
 use super::by_number_of_clusters::cut_by_split;
+use crate::Float;
+use crate::cluster::hierarchical::Merge;
 
 /// Extract flat cluster labels by cutting the dendrogram at `threshold`.
 ///
@@ -25,10 +23,8 @@ fn find_split<F: Float>(history: &[Merge<F>], threshold: F) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::hierarchical::SingleLinkage;
-    use crate::cluster::hierarchical::agnes;
-
     use super::cut_dendrogram_by_height;
+    use crate::cluster::hierarchical::{SingleLinkage, agnes};
 
     #[test]
     fn cut_by_height_matches_expected_partition() {

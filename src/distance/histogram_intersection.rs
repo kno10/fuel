@@ -1,43 +1,28 @@
-use num_traits::{AsPrimitive, Float, ToPrimitive};
+use crate::Float;
+use crate::distance::DistanceFunction;
 
-use super::DistanceFunction;
-
-pub fn histogram_intersection_distance<
-    N: Float + ToPrimitive + AsPrimitive<F>,
-    F: Float + 'static,
->(
-    a: &[N],
-    b: &[N],
-) -> F {
+pub fn histogram_intersection_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     let d = a.len().min(b.len());
     let mut intersection = F::zero();
     let mut union = F::zero();
 
     for i in 0..d {
         unsafe {
-            let left: F = (*a.get_unchecked(i)).as_();
-            let right: F = (*b.get_unchecked(i)).as_();
+            let left: F = (*a.get_unchecked(i)).to_float::<F>();
+            let right: F = (*b.get_unchecked(i)).to_float::<F>();
             intersection = intersection + left.min(right);
             union = union + left.max(right);
         }
     }
 
-    if union == F::zero() {
-        F::zero()
-    } else {
-        F::one() - intersection / union
-    }
+    if union == F::zero() { F::zero() } else { F::one() - intersection / union }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HistogramIntersectionDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
-    for HistogramIntersectionDistance
-{
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        histogram_intersection_distance(a, b)
-    }
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for HistogramIntersectionDistance {
+    fn distance(&self, a: &[N], b: &[N]) -> F { histogram_intersection_distance(a, b) }
 }
 
 #[cfg(test)]

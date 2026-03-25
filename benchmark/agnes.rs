@@ -1,4 +1,4 @@
-mod counting_distance;
+mod counting_euclidean_distance;
 mod data_loading;
 
 use std::collections::BTreeMap;
@@ -6,17 +6,14 @@ use std::error::Error;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use counting_distance::CountingEuclideanDistance;
+use counting_euclidean_distance::CountingEuclideanDistance;
 use data_loading::read_numeric_data;
-use fuel::DistanceData;
-use fuel::TableWithDistance;
-use fuel::cluster::hdbscan::extraction::ExtractedHierarchy;
-use fuel::cluster::hdbscan::extraction::extract_simplified_hierarchy;
-use fuel::cluster::hierarchical::Merge;
+use fuel::cluster::hdbscan::extraction::{ExtractedHierarchy, extract_simplified_hierarchy};
 use fuel::cluster::hierarchical::{
-    AverageLinkage, CentroidLinkage, CompleteLinkage, GroupAverageLinkage, MedianLinkage,
+    AverageLinkage, CentroidLinkage, CompleteLinkage, GroupAverageLinkage, MedianLinkage, Merge,
     MinimumVarianceLinkage, SingleLinkage, WardLinkage, WeightedAverageLinkage, agnes,
 };
+use fuel::{DistanceData, TableWithDistance};
 
 fn main() {
     if let Err(err) = run() {
@@ -30,13 +27,11 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let csv_path = args
         .next()
-        .ok_or_else(|| {
-            "usage: cargo run --features benchmark --bin agnes_benchmark -- <csv_path> <k> <linkage>"
-        })?;
+        .ok_or("usage: cargo run --features benchmark --bin agnes_benchmark -- <csv_path> <k> <linkage>")?;
 
     let k: usize = args
         .next()
-        .ok_or_else(|| "missing k")?
+        .ok_or("missing k")?
         .parse()
         .map_err(|_| "k must be a positive integer")?;
 
@@ -44,7 +39,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         return Err("k must be greater than 0".into());
     }
 
-    let linkage_name = args.next().ok_or_else(|| "missing linkage type")?;
+    let linkage_name = args.next().ok_or("missing linkage type")?;
 
     // perform agnes using the selected linkage criterion; each variant has a
     // distinct type so we call the generic function inside the match to keep
@@ -61,9 +56,8 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     // build condensed lower-triangular distance matrix
     let data_ref = &data;
-    let condensed: Vec<_> = (1..n)
-        .flat_map(|p| (0..p).map(move |q| data_ref.distance(p, q)))
-        .collect();
+    let condensed: Vec<_> =
+        (1..n).flat_map(|p| (0..p).map(move |q| data_ref.distance(p, q))).collect();
     let distance_count_after_index = distance_count.load(Ordering::Relaxed);
 
     let start = Instant::now();
@@ -126,9 +120,7 @@ fn collect_subtree_members(node: usize, extracted: &ExtractedHierarchy<f64>, out
 }
 
 fn labels_from_frontier(
-    extracted: &ExtractedHierarchy<f64>,
-    frontier: &[usize],
-    n: usize,
+    extracted: &ExtractedHierarchy<f64>, frontier: &[usize], n: usize,
 ) -> Vec<usize> {
     let mut labels = vec![0; n];
 
@@ -145,9 +137,7 @@ fn labels_from_frontier(
 }
 
 fn labels_from_simplified_hierarchy(
-    history: &[Merge<f64>],
-    n: usize,
-    min_clusters: usize,
+    history: &[Merge<f64>], n: usize, min_clusters: usize,
 ) -> Vec<usize> {
     let extracted = extract_simplified_hierarchy(history, None, 1);
     assert!(min_clusters > 0, "min_clusters must be positive");

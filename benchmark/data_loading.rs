@@ -11,18 +11,14 @@ pub fn read_numeric_data(path: &str) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
 }
 
 pub fn read_numeric_data_with_limit(
-    path: &str,
-    limit: Option<usize>,
+    path: &str, limit: Option<usize>,
 ) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
     if !Path::new(path).exists() {
         return Err(format!("CSV file not found: {path}").into());
     }
 
     let first_non_empty = first_non_empty_line(path)?;
-    if first_non_empty
-        .as_deref()
-        .is_some_and(|line| !line.contains(','))
-    {
+    if first_non_empty.as_deref().is_some_and(|line| !line.contains(',')) {
         return read_whitespace_separated(path, limit);
     }
 
@@ -51,10 +47,8 @@ fn read_comma_separated(path: &str, limit: Option<usize>) -> Result<Vec<Vec<f64>
     let mut expected_dims: Option<usize> = None;
 
     for (line_no, record_result) in reader.records().enumerate() {
-        if let Some(limit) = limit {
-            if rows.len() >= limit {
-                break;
-            }
+        if let Some(limit) = limit && rows.len() >= limit {
+            break;
         }
         let record = record_result?;
         if record.is_empty() {
@@ -66,11 +60,9 @@ fn read_comma_separated(path: &str, limit: Option<usize>) -> Result<Vec<Vec<f64>
         // character, so we can simply try parsing the first row and skip it if
         // any field fails to parse. This mirrors the logic used in
         // `benchmark/kd_vs_vp.rs`.
-        if rows.is_empty() {
-            if record.iter().any(|v| v.trim().parse::<f64>().is_err()) {
-                // skip header and continue to next record
-                continue;
-            }
+        if rows.is_empty() && record.iter().any(|v| v.trim().parse::<f64>().is_err()) {
+            // skip header and continue to next record
+            continue;
         }
 
         let dims = record.len();
@@ -104,8 +96,7 @@ fn read_comma_separated(path: &str, limit: Option<usize>) -> Result<Vec<Vec<f64>
 }
 
 fn read_whitespace_separated(
-    path: &str,
-    limit: Option<usize>,
+    path: &str, limit: Option<usize>,
 ) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
@@ -114,10 +105,8 @@ fn read_whitespace_separated(
     let mut expected_dims: Option<usize> = None;
 
     for (line_no, line_result) in reader.lines().enumerate() {
-        if let Some(limit) = limit {
-            if rows.len() >= limit {
-                break;
-            }
+        if let Some(limit) = limit && rows.len() >= limit {
+            break;
         }
         let line = line_result?;
         let trimmed = line.trim();
@@ -129,10 +118,8 @@ fn read_whitespace_separated(
         let dims = parts.len();
 
         // skip header row for whitespace-separated data as well
-        if rows.is_empty() {
-            if parts.iter().any(|v| v.trim().parse::<f64>().is_err()) {
-                continue;
-            }
+        if rows.is_empty() && parts.iter().any(|v| v.trim().parse::<f64>().is_err()) {
+            continue;
         }
 
         if let Some(expected) = expected_dims {
@@ -172,8 +159,9 @@ fn parse_value(value: &str, line_no: usize) -> Result<f64, Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::io::Write;
+
+    use super::*;
 
     // helper to get dataset path
     fn data_path(name: &str) -> String {

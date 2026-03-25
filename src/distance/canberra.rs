@@ -1,8 +1,4 @@
-use num_traits::{AsPrimitive, Float, ToPrimitive};
 use std::any::TypeId;
-
-use super::{DistanceFunction, DistanceMetric};
-
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{
     _CMP_EQ_OQ, _mm256_add_pd, _mm256_add_ps, _mm256_andnot_pd, _mm256_andnot_ps, _mm256_blendv_pd,
@@ -10,6 +6,9 @@ use std::arch::x86_64::{
     _mm256_loadu_ps, _mm256_set1_pd, _mm256_set1_ps, _mm256_setzero_pd, _mm256_setzero_ps,
     _mm256_storeu_pd, _mm256_storeu_ps, _mm256_sub_pd, _mm256_sub_ps,
 };
+
+use crate::Float;
+use crate::distance::{DistanceFunction, DistanceMetric};
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx")]
@@ -93,10 +92,7 @@ unsafe fn canberra_distance_f64_avx(a: &[f64], b: &[f64]) -> f64 {
     sum
 }
 
-pub fn canberra_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F {
+pub fn canberra_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     #[cfg(target_arch = "x86_64")]
     if is_x86_feature_detected!("avx") {
         if TypeId::of::<N>() == TypeId::of::<f32>() && TypeId::of::<F>() == TypeId::of::<f32>() {
@@ -119,10 +115,7 @@ pub fn canberra_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'st
     }
     canberra_distance_fallback(a, b)
 }
-fn canberra_distance_fallback<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F {
+fn canberra_distance_fallback<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     const LANES: usize = 8;
 
     let d = a.len().min(b.len());
@@ -132,29 +125,23 @@ fn canberra_distance_fallback<N: Float + ToPrimitive + AsPrimitive<F>, F: Float 
     for i in (0..sd).step_by(LANES) {
         for j in 0..LANES {
             unsafe {
-                let left: F = (*a.get_unchecked(i + j)).as_();
-                let right: F = (*b.get_unchecked(i + j)).as_();
+                let left: F = (*a.get_unchecked(i + j)).to_float::<F>();
+                let right: F = (*b.get_unchecked(i + j)).to_float::<F>();
                 let numerator = (left - right).abs();
                 let denominator = left.abs() + right.abs();
-                let term = if denominator == F::zero() {
-                    F::zero()
-                } else {
-                    numerator / denominator
-                };
+                let term =
+                    if denominator == F::zero() { F::zero() } else { numerator / denominator };
                 *vsum.get_unchecked_mut(j) = *vsum.get_unchecked(j) + term;
             }
         }
     }
 
-    let mut sum = vsum
-        .iter()
-        .copied()
-        .fold(F::zero(), |acc, value| acc + value);
+    let mut sum = vsum.iter().copied().fold(F::zero(), |acc, value| acc + value);
 
     for i in sd..d {
         unsafe {
-            let left: F = (*a.get_unchecked(i)).as_();
-            let right: F = (*b.get_unchecked(i)).as_();
+            let left: F = (*a.get_unchecked(i)).to_float::<F>();
+            let right: F = (*b.get_unchecked(i)).to_float::<F>();
             let numerator = (left - right).abs();
             let denominator = left.abs() + right.abs();
             if denominator != F::zero() {
@@ -169,15 +156,8 @@ fn canberra_distance_fallback<N: Float + ToPrimitive + AsPrimitive<F>, F: Float 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CanberraDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceMetric<[N], F>
-    for CanberraDistance
-{
-}
+impl<N: Float, F: Float + 'static> DistanceMetric<[N], F> for CanberraDistance {}
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
-    for CanberraDistance
-{
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        canberra_distance(a, b)
-    }
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for CanberraDistance {
+    fn distance(&self, a: &[N], b: &[N]) -> F { canberra_distance(a, b) }
 }

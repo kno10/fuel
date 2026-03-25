@@ -1,13 +1,12 @@
-use num_traits::{AsPrimitive, Float, ToPrimitive};
 use std::any::TypeId;
-
-use super::{DistanceFunction, DistanceMetric};
-
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{
     _mm256_fmadd_pd, _mm256_fmadd_ps, _mm256_loadu_pd, _mm256_loadu_ps, _mm256_setzero_pd,
     _mm256_setzero_ps, _mm256_storeu_pd, _mm256_storeu_ps,
 };
+
+use crate::Float;
+use crate::distance::{DistanceFunction, DistanceMetric};
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx,fma")]
@@ -52,11 +51,7 @@ unsafe fn cosine_similarity_f32_avx_fma(a: &[f32], b: &[f32]) -> f32 {
     }
 
     let denominator = norm_a.sqrt() * norm_b.sqrt();
-    if denominator == 0.0 {
-        1.0
-    } else {
-        dot / denominator
-    }
+    if denominator == 0.0 { 1.0 } else { dot / denominator }
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -102,17 +97,10 @@ unsafe fn cosine_similarity_f64_avx_fma(a: &[f64], b: &[f64]) -> f64 {
     }
 
     let denominator = norm_a.sqrt() * norm_b.sqrt();
-    if denominator == 0.0 {
-        1.0
-    } else {
-        dot / denominator
-    }
+    if denominator == 0.0 { 1.0 } else { dot / denominator }
 }
 
-fn cosine_similarity<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F {
+fn cosine_similarity<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     #[cfg(target_arch = "x86_64")]
     if is_x86_feature_detected!("avx") && is_x86_feature_detected!("fma") {
         if TypeId::of::<N>() == TypeId::of::<f32>() && TypeId::of::<F>() == TypeId::of::<f32>() {
@@ -137,10 +125,7 @@ fn cosine_similarity<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static
     cosine_similarity_fallback(a, b)
 }
 
-fn cosine_similarity_fallback<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F {
+fn cosine_similarity_fallback<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     let d = a.len().min(b.len());
     let mut dot = F::zero();
     let mut norm_a = F::zero();
@@ -148,8 +133,8 @@ fn cosine_similarity_fallback<N: Float + ToPrimitive + AsPrimitive<F>, F: Float 
 
     for i in 0..d {
         unsafe {
-            let left: F = (*a.get_unchecked(i)).as_();
-            let right: F = (*b.get_unchecked(i)).as_();
+            let left: F = (*a.get_unchecked(i)).to_float::<F>();
+            let right: F = (*b.get_unchecked(i)).to_float::<F>();
             dot = dot + left * right;
             norm_a = norm_a + left * left;
             norm_b = norm_b + right * right;
@@ -157,52 +142,31 @@ fn cosine_similarity_fallback<N: Float + ToPrimitive + AsPrimitive<F>, F: Float 
     }
 
     let denominator = norm_a.sqrt() * norm_b.sqrt();
-    if denominator == F::zero() {
-        F::one()
-    } else {
-        dot / denominator
-    }
+    if denominator == F::zero() { F::one() } else { dot / denominator }
 }
 
-pub fn cosine_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F {
+pub fn cosine_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     F::one() - cosine_similarity(a, b)
 }
 
-pub fn arccosine_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F {
-    cosine_similarity(a, b).max(-F::one()).min(F::one()).acos()
+pub fn arccosine_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
+    cosine_similarity::<N, F>(a, b).max(-F::one()).min(F::one()).acos()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CosineDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
-    for CosineDistance
-{
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        cosine_distance(a, b)
-    }
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for CosineDistance {
+    fn distance(&self, a: &[N], b: &[N]) -> F { cosine_distance(a, b) }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ArccosineDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceMetric<[N], F>
-    for ArccosineDistance
-{
-}
+impl<N: Float, F: Float + 'static> DistanceMetric<[N], F> for ArccosineDistance {}
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
-    for ArccosineDistance
-{
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        arccosine_distance(a, b)
-    }
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for ArccosineDistance {
+    fn distance(&self, a: &[N], b: &[N]) -> F { arccosine_distance(a, b) }
 }
 
 #[cfg(test)]
@@ -225,10 +189,7 @@ mod tests {
         let a = [1.0, 0.0];
         let b = [0.0, 1.0];
         approx_eq(cosine_distance::<f64, f64>(&a, &b), 1.0);
-        approx_eq(
-            arccosine_distance::<f64, f64>(&a, &b),
-            std::f64::consts::FRAC_PI_2,
-        );
+        approx_eq(arccosine_distance::<f64, f64>(&a, &b), std::f64::consts::FRAC_PI_2);
     }
 
     #[test]

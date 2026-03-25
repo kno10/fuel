@@ -1,18 +1,14 @@
-use num_traits::{AsPrimitive, Float, ToPrimitive};
+use crate::Float;
+use crate::distance::DistanceFunction;
 
-use super::DistanceFunction;
-
-pub fn jeffrey_divergence<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F {
+pub fn jeffrey_divergence<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     let d = a.len().min(b.len());
     let mut sum = F::zero();
 
     for i in 0..d {
         unsafe {
-            let left: F = (*a.get_unchecked(i)).as_();
-            let right: F = (*b.get_unchecked(i)).as_();
+            let left: F = (*a.get_unchecked(i)).to_float::<F>();
+            let right: F = (*b.get_unchecked(i)).to_float::<F>();
 
             if left > F::zero() && right > F::zero() {
                 sum = sum + left * (left / right).ln() + right * (right / left).ln();
@@ -26,12 +22,8 @@ pub fn jeffrey_divergence<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 's
 #[derive(Debug, Clone, Copy, Default)]
 pub struct JeffreyDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
-    for JeffreyDistance
-{
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        jeffrey_divergence(a, b)
-    }
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for JeffreyDistance {
+    fn distance(&self, a: &[N], b: &[N]) -> F { jeffrey_divergence(a, b) }
 }
 
 #[cfg(test)]

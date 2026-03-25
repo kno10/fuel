@@ -1,8 +1,6 @@
-use num_traits::Float;
-
-use crate::cluster::hierarchical::Merge;
-
 use super::common::{UnionFind, compress_labels};
+use crate::Float;
+use crate::cluster::hierarchical::Merge;
 
 /// Extract flat cluster labels by cutting a merge history to at least
 /// `min_clusters` clusters.
@@ -14,8 +12,7 @@ use super::common::{UnionFind, compress_labels};
 /// Labels are contiguous `0..k-1` in first-occurrence order.
 #[must_use]
 pub fn cut_dendrogram_by_number_of_clusters<F: Float>(
-    history: &[Merge<F>],
-    min_clusters: usize,
+    history: &[Merge<F>], min_clusters: usize,
 ) -> Vec<usize> {
     assert!(min_clusters > 0, "min_clusters must be positive");
 
@@ -73,11 +70,8 @@ pub(crate) fn cut_by_split<F: Float>(history: &[Merge<F>], n: usize, split: usiz
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::hierarchical::Merge;
-    use crate::cluster::hierarchical::SingleLinkage;
-    use crate::cluster::hierarchical::agnes;
-
     use super::cut_dendrogram_by_number_of_clusters;
+    use crate::cluster::hierarchical::{Merge, SingleLinkage, agnes};
 
     #[test]
     fn cut_by_cluster_count_produces_expected_groups() {
@@ -100,24 +94,9 @@ mod tests {
     #[test]
     fn tie_handling_may_return_more_clusters() {
         let history = vec![
-            Merge {
-                idx1: 0,
-                idx2: 1,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 2,
-                idx2: 3,
-                distance: 1.0,
-                size: 2,
-            },
-            Merge {
-                idx1: 4,
-                idx2: 5,
-                distance: 2.0,
-                size: 4,
-            },
+            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
+            Merge { idx1: 2, idx2: 3, distance: 1.0, size: 2 },
+            Merge { idx1: 4, idx2: 5, distance: 2.0, size: 4 },
         ];
 
         let labels = cut_dendrogram_by_number_of_clusters(&history, 3);

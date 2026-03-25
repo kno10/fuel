@@ -1,4 +1,5 @@
-mod counting_distance;
+mod counting_euclidean_distance;
+mod counting_partial_distance;
 mod data_loading;
 
 use std::collections::BTreeMap;
@@ -6,18 +7,20 @@ use std::error::Error;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use counting_distance::CountingEuclideanDistance;
+use counting_euclidean_distance::CountingEuclideanDistance;
+use counting_partial_distance::CountingPartialDistance;
 use data_loading::read_numeric_data;
 use fuel::TableWithDistance;
-use fuel::cluster::dbscan::NOISE;
-use fuel::cluster::dbscan::dbscan;
+use fuel::cluster::dbscan::{NOISE, dbscan};
 use fuel::cluster::parallel_dbscan::parallel_dbscan;
+use fuel::distance::EuclideanDistance;
+use fuel::kd::{KdTree, MaxVarianceSplit};
 use fuel::vptree::VPTree;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
 const RNG_SEED: u64 = 42;
-const USAGE: &str = "usage: cargo run --features benchmark --bin dbscan -- <csv_path> <eps> <min_points> [--mode=<sequential|parallel|both>]";
+const USAGE: &str = "usage: cargo run --features benchmark --bin dbscan -- <csv_path> <eps> <min_points> [--mode=<sequential|parallel|both>] [--tree=<vp|kd>]";
 
 fn main() {
     if let Err(err) = run() {
@@ -26,8 +29,24 @@ fn main() {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TreeKind {
+    Vp,
+    Kd,
+}
+
+impl TreeKind {
+    fn parse(value: &str) -> Result<Self, Box<dyn Error>> {
+        match value {
+            "vp" | "vptree" => Ok(TreeKind::Vp),
+            "kd" | "kdtree" => Ok(TreeKind::Kd),
+            _ => Err("unknown tree kind, expected vp or kd".into()),
+        }
+    }
+}
+
 fn run() -> Result<(), Box<dyn Error>> {
-    let (csv_path, eps, min_points, mode) = parse_cli_args(std::env::args().skip(1))?;
+    let (csv_path, eps, min_points, mode, tree_kind) = parse_cli_args(std::env::args().skip(1))?;
 
     let rows = read_numeric_data(&csv_path)?;
     if rows.len() < 2 {
@@ -36,15 +55,10 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let mut results = Vec::new();
     if mode.should_run(Variant::Sequential) {
-        results.push(benchmark_variant(
-            &rows,
-            eps,
-            min_points,
-            Variant::Sequential,
-        ));
+        results.push(benchmark_variant(&rows, eps, min_points, Variant::Sequential, tree_kind));
     }
     if mode.should_run(Variant::Parallel) {
-        results.push(benchmark_variant(&rows, eps, min_points, Variant::Parallel));
+        results.push(benchmark_variant(&rows, eps, min_points, Variant::Parallel, tree_kind));
     }
 
     for result in results {
@@ -54,21 +68,26 @@ fn run() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn parse_cli_args<I>(args: I) -> Result<(String, f64, usize, Mode), Box<dyn Error>>
+#[allow(clippy::type_complexity)]
+fn parse_cli_args<I>(args: I) -> Result<(String, f64, usize, Mode, TreeKind), Box<dyn Error>>
 where
     I: IntoIterator<Item = String>,
 {
     let mut mode = Mode::Both;
+    let mut tree_kind = TreeKind::Vp;
     let mut positional = Vec::new();
     let mut iter = args.into_iter();
     while let Some(arg) = iter.next() {
         if let Some(value) = arg.strip_prefix("--mode=") {
             mode = Mode::parse(value)?;
         } else if arg == "--mode" {
-            let value = iter
-                .next()
-                .ok_or_else(|| "--mode requires a value".to_string())?;
+            let value = iter.next().ok_or_else(|| "--mode requires a value".to_string())?;
             mode = Mode::parse(&value)?;
+        } else if let Some(value) = arg.strip_prefix("--tree=") {
+            tree_kind = TreeKind::parse(value)?;
+        } else if arg == "--tree" {
+            let value = iter.next().ok_or_else(|| "--tree requires a value".to_string())?;
+            tree_kind = TreeKind::parse(&value)?;
         } else {
             positional.push(arg);
         }
@@ -83,12 +102,9 @@ where
     let eps_str = pos_iter.next().unwrap();
     let min_points_str = pos_iter.next().unwrap();
 
-    let eps: f64 = eps_str
-        .parse()
-        .map_err(|_| "eps must be a non-negative number".to_string())?;
-    let min_points: usize = min_points_str
-        .parse()
-        .map_err(|_| "min_points must be a positive integer".to_string())?;
+    let eps: f64 = eps_str.parse().map_err(|_| "eps must be a non-negative number".to_string())?;
+    let min_points: usize =
+        min_points_str.parse().map_err(|_| "min_points must be a positive integer".to_string())?;
 
     if eps < 0.0 {
         return Err("eps must be non-negative".into());
@@ -98,33 +114,51 @@ where
         return Err("min_points must be greater than 0".into());
     }
 
-    Ok((csv_path, eps, min_points, mode))
+    Ok((csv_path, eps, min_points, mode, tree_kind))
 }
 
 fn benchmark_variant(
-    rows: &[Vec<f64>],
-    eps: f64,
-    min_points: usize,
-    variant: Variant,
+    rows: &[Vec<f64>], eps: f64, min_points: usize, variant: Variant, tree_kind: TreeKind,
 ) -> BenchmarkResult {
-    let distance = CountingEuclideanDistance::new();
-    let distance_counter = distance.counter();
-    let data = TableWithDistance::with_distance(rows, distance);
-    let mut rng = StdRng::seed_from_u64(RNG_SEED);
+    let (tree_label, distance_after_index, labels, distance_after_algorithm, elapsed) =
+        match tree_kind {
+            TreeKind::Vp => {
+                let distance = CountingEuclideanDistance::new();
+                let distance_counter = distance.counter();
+                let data = TableWithDistance::with_distance(rows, distance);
+                let mut rng = StdRng::seed_from_u64(RNG_SEED);
 
-    let start = Instant::now();
-    let tree = VPTree::new(&data, rows.len(), &mut rng);
-    let distance_after_index = distance_counter.load(Ordering::Relaxed);
-    let labels = match variant {
-        Variant::Sequential => dbscan(&tree, &data, eps, min_points),
-        Variant::Parallel => parallel_dbscan(&tree, &data, eps, min_points),
-    };
-    let distance_after_algorithm = distance_counter.load(Ordering::Relaxed);
-    let elapsed = start.elapsed();
+                let start = Instant::now();
+                let tree = VPTree::new(&data, rows.len(), &mut rng);
+                let distance_after_index = distance_counter.load(Ordering::Relaxed);
+                let labels = match variant {
+                    Variant::Sequential => dbscan(&tree, &data, eps, min_points),
+                    Variant::Parallel => parallel_dbscan(&tree, &data, eps, min_points),
+                };
+                let distance_after_algorithm = distance_counter.load(Ordering::Relaxed);
+                let elapsed = start.elapsed();
+                ("vp".to_string(), distance_after_index, labels, distance_after_algorithm, elapsed)
+            }
+            TreeKind::Kd => {
+                let kd_metric = CountingPartialDistance::new(EuclideanDistance);
+                let data = TableWithDistance::with_distance(rows, kd_metric.clone());
+                let start = Instant::now();
+                let tree = KdTree::new(&data, MaxVarianceSplit);
+                let distance_after_index = kd_metric.count();
+                let labels = match variant {
+                    Variant::Sequential => dbscan(&tree, &data, eps, min_points),
+                    Variant::Parallel => parallel_dbscan(&tree, &data, eps, min_points),
+                };
+                let distance_after_algorithm = kd_metric.count();
+                let elapsed = start.elapsed();
+                ("kd".to_string(), distance_after_index, labels, distance_after_algorithm, elapsed)
+            }
+        };
 
     let (cluster_sizes, noise_count) = summarize_cluster_sizes(&labels);
     BenchmarkResult {
         variant,
+        tree_label,
         time_ms: elapsed.as_secs_f64() * 1_000.0,
         cluster_count: cluster_sizes.len(),
         noise_count,
@@ -136,8 +170,9 @@ fn benchmark_variant(
 
 fn print_result(result: &BenchmarkResult) {
     println!(
-        "variant={} time_ms={:.3} cluster_count={} noise_count={} cluster_sizes={} distance_count_after_index={} dist_count={}",
+        "variant={} tree={} time_ms={:.3} cluster_count={} noise_count={} cluster_sizes={} distance_count_after_index={} dist_count= {}",
         result.variant.label(),
+        result.tree_label,
         result.time_ms,
         result.cluster_count,
         result.noise_count,
@@ -188,6 +223,7 @@ impl Mode {
 
 struct BenchmarkResult {
     variant: Variant,
+    tree_label: String,
     time_ms: f64,
     cluster_count: usize,
     noise_count: usize,

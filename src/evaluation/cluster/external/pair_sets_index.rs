@@ -1,7 +1,7 @@
 #![allow(clippy::cast_precision_loss)]
 
-use super::assignment::hungarian_min_cost_assignment;
-use super::contingency_table::ClusterContingencyTable;
+use crate::evaluation::cluster::external::assignment::hungarian_min_cost_assignment;
+use crate::evaluation::cluster::external::contingency_table::ClusterContingencyTable;
 
 /// Pair‑sets index metric from cluster contingency tables.
 #[derive(Debug, Clone, Copy)]
@@ -16,18 +16,12 @@ impl PairSetsIndex {
         let collen = table.size2;
 
         if rowlen == 1 && collen == 1 {
-            return PairSetsIndex {
-                simplified_psi: 1.0,
-                psi: 1.0,
-            };
+            return PairSetsIndex { simplified_psi: 1.0, psi: 1.0 };
         }
 
         let maxlen = rowlen.max(collen);
         if maxlen == 0 {
-            return PairSetsIndex {
-                simplified_psi: 0.0,
-                psi: 0.0,
-            };
+            return PairSetsIndex { simplified_psi: 0.0, psi: 0.0 };
         }
 
         // note: internal computations still use f64 because distance metric
@@ -73,22 +67,12 @@ impl PairSetsIndex {
         }
 
         let denom_simple = maxlen as f64 - 1.0;
-        let simplified_psi = if s < 1.0 || denom_simple <= 0.0 {
-            0.0
-        } else {
-            (s - 1.0) / denom_simple
-        };
+        let simplified_psi =
+            if s < 1.0 || denom_simple <= 0.0 { 0.0 } else { (s - 1.0) / denom_simple };
 
         let denom = maxlen as f64 - e;
-        let psi = if s < e || denom <= 0.0 {
-            0.0
-        } else {
-            (s - e) / denom
-        };
+        let psi = if s < e || denom <= 0.0 { 0.0 } else { (s - e) / denom };
 
-        PairSetsIndex {
-            simplified_psi,
-            psi,
-        }
+        PairSetsIndex { simplified_psi, psi }
     }
 }

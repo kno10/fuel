@@ -1,24 +1,17 @@
-use num_traits::{AsPrimitive, Float, ToPrimitive};
-
-use super::{DistanceFunction, DistanceMetric};
+use crate::Float;
+use crate::distance::{DistanceFunction, DistanceMetric};
 
 /// # Panics
 ///
 /// Panics if either input slice does not contain exactly two values
 /// (`[latitude, longitude]`).
-pub fn haversine_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static>(
-    a: &[N],
-    b: &[N],
-) -> F {
-    assert!(
-        a.len() == 2 && b.len() == 2,
-        "Haversine distance expects [latitude, longitude] pairs"
-    );
+pub fn haversine_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
+    assert!(a.len() == 2 && b.len() == 2, "Haversine distance expects [latitude, longitude] pairs");
 
-    let lat1: F = a[0].as_();
-    let lon1: F = a[1].as_();
-    let lat2: F = b[0].as_();
-    let lon2: F = b[1].as_();
+    let lat1: F = a[0].to_float::<F>();
+    let lon1: F = a[1].to_float::<F>();
+    let lat2: F = b[0].to_float::<F>();
+    let lon2: F = b[1].to_float::<F>();
 
     let half = F::one() / (F::one() + F::one());
     let dlat = (lat2 - lat1) * half;
@@ -33,15 +26,8 @@ pub fn haversine_distance<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 's
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HaversineDistance;
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceMetric<[N], F>
-    for HaversineDistance
-{
-}
+impl<N: Float, F: Float + 'static> DistanceMetric<[N], F> for HaversineDistance {}
 
-impl<N: Float + ToPrimitive + AsPrimitive<F>, F: Float + 'static> DistanceFunction<[N], F>
-    for HaversineDistance
-{
-    fn distance(&self, a: &[N], b: &[N]) -> F {
-        haversine_distance(a, b)
-    }
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for HaversineDistance {
+    fn distance(&self, a: &[N], b: &[N]) -> F { haversine_distance(a, b) }
 }

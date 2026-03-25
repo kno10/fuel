@@ -1,4 +1,4 @@
-use super::contingency_table::ClusterContingencyTable;
+use crate::evaluation::cluster::external::contingency_table::ClusterContingencyTable;
 use crate::evaluation::cluster::f1_measure;
 
 /// BCubed precision/recall metrics derived from the contingency table.
@@ -33,7 +33,5 @@ impl BCubed {
         Self { precision, recall }
     }
 
-    pub fn f1_measure(&self) -> f64 {
-        f1_measure(self.precision, self.recall)
-    }
+    pub fn f1_measure(&self) -> f64 { f1_measure(self.precision, self.recall) }
 }

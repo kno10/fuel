@@ -3,7 +3,7 @@
 pub struct WeightedAverageLinkage;
 
 use super::Linkage;
-use num_traits::Float;
+use crate::Float;
 
 impl<F: Float> Linkage<F> for WeightedAverageLinkage {
     fn combine(&self, _sizex: usize, dx: F, _sizey: usize, dy: F, _sizej: usize, _dxy: F) -> F {

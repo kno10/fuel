@@ -1,13 +1,9 @@
 use std::collections::BinaryHeap;
 
-use crate::api::{DistanceData, DistanceSearch};
+use crate::api::{DistanceData, DistanceSearch, PrioritySearcher, PrioritySearcherFactory};
 use crate::cluster::hierarchical::common::{BufferedNeighbors, MergeHistory};
-use crate::cluster::hierarchical::search_single_link_common::{
-    ClusterBuilder, SameClusterFilter,
-};
-use crate::DistPair;
-use crate::vptree::VPTree;
-use num_traits::Float;
+use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
+use crate::{DistPair, Float, IndexQuery};
 
 /// Lazy Buffered-Search Single-Link with VP-tree priority search.
 ///
@@ -16,11 +12,14 @@ use num_traits::Float;
 /// candidates are explored beyond the current lower-bound threshold before
 /// stopping each refill phase.
 #[must_use]
-pub fn lazy_buffered_search_single_link<D: DistanceData<F>, F: Float>(
-    tree: &VPTree<F>,
-    data: &D,
-    slack: usize,
-) -> MergeHistory<F> {
+pub fn lazy_buffered_search_single_link<'a, S, D, F>(
+    tree: &'a S, data: &'a D, slack: usize,
+) -> MergeHistory<F>
+where
+    F: Float + 'a,
+    D: DistanceData<F> + ?Sized + 'a,
+    S: PrioritySearcherFactory<F, D::Query<'a>>,
+{
     let n = data.size();
     assert!(n > 0, "number of points must be positive");
 
@@ -33,13 +32,16 @@ pub fn lazy_buffered_search_single_link<D: DistanceData<F>, F: Float>(
     // create one searcher and reuse it for all refill operations
     let mut searcher = tree.priority_searcher();
 
+    let mut query = data.query();
+
     // initial fill for each point
     for (a, buf) in buffers.iter_mut().enumerate().take(n) {
         if builder.cluster_size_of_point(a) > 1 {
             continue; // duplicate, merged already
         }
+        query.set_index(a);
         refill_neighbors(
-            &data.search_by_index(a),
+            &query,
             &mut builder,
             a,
             F::zero(),
@@ -71,8 +73,7 @@ pub fn lazy_buffered_search_single_link<D: DistanceData<F>, F: Float>(
         if let Some(best) = buf.peek().filter(|b| b.distance <= top.distance) {
             buf.pop();
             let b = best.index;
-            if builder.merge_points(a, b, best.distance).is_some()
-                && builder.merge_count() == n - 1
+            if builder.merge_points(a, b, best.distance).is_some() && builder.merge_count() == n - 1
             {
                 break;
             }
@@ -84,8 +85,9 @@ pub fn lazy_buffered_search_single_link<D: DistanceData<F>, F: Float>(
         let needs_refill = buf.peek().is_none()
             || buf.peek().map_or(F::infinity(), |n| n.distance) > buf.threshold;
         if needs_refill {
+            query.set_index(a);
             refill_neighbors(
-                &data.search_by_index(a),
+                &query,
                 &mut builder,
                 a,
                 buf.threshold,
@@ -105,29 +107,23 @@ pub fn lazy_buffered_search_single_link<D: DistanceData<F>, F: Float>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
-    data: &D,
-    builder: &mut ClusterBuilder<F>,
-    query_index: usize,
-    skip: F,
-    slack: usize,
-    buffer: &mut BufferedNeighbors<F>,
-    searcher: &mut crate::vptree::PrioritySearcher<F>,
-    node_cluster: &mut [u32],
-) {
+pub(crate) fn refill_neighbors<F: Float, Q, S>(
+    query: &Q, builder: &mut ClusterBuilder<F>, query_index: usize, skip: F, slack: usize,
+    buffer: &mut BufferedNeighbors<F>, searcher: &mut S, node_cluster: &mut [u32],
+) where
+    Q: DistanceSearch<F> + ?Sized,
+    S: PrioritySearcher<F, Q>,
+{
     let mut threshold = buffer.peek().map_or(F::infinity(), |n| n.distance);
     let mut remaining = slack as isize;
     let query_component = builder.find(query_index);
     searcher.reset_with_limits(F::infinity(), skip.max(F::zero()));
+
+    let mut filter: SameClusterFilter<'_, F> =
+        SameClusterFilter { builder, query_component, node_cluster };
+
     while searcher.all_lower_bound() < threshold && remaining > 0 {
-        let Some(cand) = searcher.next_with_filter(
-            data,
-            &mut SameClusterFilter {
-                builder,
-                query_component,
-                node_cluster,
-            },
-        ) else {
+        let Some(cand) = searcher.next_with_filter(query, &mut filter) else {
             break;
         };
         let b = cand.index;
@@ -146,9 +142,7 @@ pub(crate) fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
 }
 
 pub(crate) fn purge_same_cluster<F: Float>(
-    buf: &mut BufferedNeighbors<F>,
-    builder: &mut ClusterBuilder<F>,
-    a: usize,
+    buf: &mut BufferedNeighbors<F>, builder: &mut ClusterBuilder<F>, a: usize,
 ) {
     if !buf.is_empty() {
         let ca = builder.find(a);
@@ -165,11 +159,11 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
+    use super::*;
     use crate::TableWithDistance;
     use crate::data::CondensedDistanceMatrix;
     use crate::distance::EuclideanDistance;
-
-    use super::*;
+    use crate::vptree::VPTree;
 
     fn condensed_abs_1d(points: &[Vec<f64>]) -> Vec<f64> {
         let mut out = Vec::new();

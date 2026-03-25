@@ -1,21 +1,11 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-use num_traits::Float;
-#[cfg(test)]
-use rand::SeedableRng;
-#[cfg(test)]
-use rand::rngs::StdRng;
-
-use crate::api::{DistanceData, DistanceSearch};
+use crate::api::{DistanceData, PrioritySearcher, PrioritySearcherFactory, SearchFilter};
 use crate::cluster::hdbscan::hdbscan_common::SameComponentFilter;
-#[cfg(test)]
-use crate::distance::EuclideanDistance;
-use crate::DistPair;
-use crate::vptree::{PrioritySearcher, VPTree};
-
-use super::common::{MergeHistory, UnionFind};
-use super::search_single_link_common::ClusterBuilder;
+use crate::cluster::hierarchical::common::{MergeHistory, UnionFind};
+use crate::cluster::hierarchical::search_single_link_common::ClusterBuilder;
+use crate::{DistPair, DistanceSearch, Float, IndexQuery};
 
 #[derive(Debug, Clone, Copy)]
 struct Edge<F: Float> {
@@ -33,9 +23,7 @@ impl<F: Float> PartialEq for Edge<F> {
 impl<F: Float> Eq for Edge<F> {}
 
 impl<F: Float> PartialOrd for Edge<F> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
 impl<F: Float> Ord for Edge<F> {
@@ -48,12 +36,14 @@ impl<F: Float> Ord for Edge<F> {
     }
 }
 
-/// Boruvka-style heap-of-searchers single-link with VP-tree priority search.
+/// Boruvka-style heap-of-searchers single-link with priority-search acceleration.
 #[must_use]
-pub fn boruvka_searchers_single_link<D: DistanceData<F>, F: Float>(
-    tree: &VPTree<F>,
-    data: &D,
-) -> MergeHistory<F> {
+pub fn boruvka_searchers_single_link<'a, S, D, F>(tree: &'a S, data: &'a D) -> MergeHistory<F>
+where
+    F: Float + 'a,
+    D: DistanceData<F> + ?Sized + 'a,
+    S: PrioritySearcherFactory<F, D::Query<'a>>,
+{
     let n = data.size();
     assert!(n > 0, "number of points must be positive");
 
@@ -61,17 +51,19 @@ pub fn boruvka_searchers_single_link<D: DistanceData<F>, F: Float>(
     let mut uf = UnionFind::new(n);
     let mut neighbor_heaps: Vec<Option<BinaryHeap<DistPair<F>>>> =
         (0..n).map(|_| Some(BinaryHeap::new())).collect();
-    let mut searchers: Vec<Option<PrioritySearcher<F>>> = (0..n).map(|_| None).collect();
+    let mut searchers: Vec<Option<S::Searcher<'a>>> = (0..n).map(|_| None).collect();
     let mut node_cluster = vec![u32::MAX; n];
 
+    let mut query = data.query();
     for a in 0..n {
         if builder.cluster_size_of_point(a) > 1 {
             neighbor_heaps[a] = None;
             continue;
         }
         let mut searcher = tree.priority_searcher();
+        query.set_index(a);
         initialize_neighbors(
-            &data.search_by_index(a),
+            &query,
             &mut searcher,
             &mut builder,
             &mut uf,
@@ -79,10 +71,7 @@ pub fn boruvka_searchers_single_link<D: DistanceData<F>, F: Float>(
             &mut neighbor_heaps[a],
             &mut node_cluster,
         );
-        if neighbor_heaps[a]
-            .as_ref()
-            .is_some_and(|heap| !heap.is_empty())
-        {
+        if neighbor_heaps[a].as_ref().is_some_and(|heap| !heap.is_empty()) {
             searchers[a] = Some(searcher);
         } else {
             neighbor_heaps[a] = None;
@@ -115,14 +104,8 @@ pub fn boruvka_searchers_single_link<D: DistanceData<F>, F: Float>(
                         .all_lower_bound()
             });
             if needs_refill && let Some(searcher) = searchers[a].as_mut() {
-                refill_neighbors(
-                    &data.search_by_index(a),
-                    searcher,
-                    &mut uf,
-                    a,
-                    heap,
-                    &mut node_cluster,
-                );
+                query.set_index(a);
+                refill_neighbors(&query, searcher, &mut uf, a, heap, &mut node_cluster);
             }
             let Some(top) = heap.peek().copied() else {
                 neighbor_heaps[a] = None;
@@ -144,7 +127,7 @@ pub fn boruvka_searchers_single_link<D: DistanceData<F>, F: Float>(
         if candidates.is_empty() {
             break;
         }
-        candidates.sort_by(|x, y| x.partial_cmp(&y).unwrap_or(Ordering::Equal));
+        candidates.sort_by(|x, y| x.partial_cmp(y).unwrap_or(Ordering::Equal));
 
         for (dist, a) in candidates {
             if edges.len() == max_edges {
@@ -177,42 +160,41 @@ pub fn boruvka_searchers_single_link<D: DistanceData<F>, F: Float>(
 
     edges.sort();
     for edge in edges {
-        if builder.merge_points(edge.a, edge.b, edge.dist).is_some() {
-            if builder.merge_count() == n - 1 {
-                break;
-            }
+        if builder.merge_points(edge.a, edge.b, edge.dist).is_some()
+            && builder.merge_count() == n - 1
+        {
+            break;
         }
     }
 
     builder.into_history()
 }
 
-fn initialize_neighbors<D: DistanceSearch<F>, F: Float>(
-    data: &D,
-    searcher: &mut PrioritySearcher<F>,
-    builder: &mut ClusterBuilder<F>,
-    uf: &mut UnionFind,
-    a: usize,
-    heap: &mut Option<BinaryHeap<DistPair<F>>>,
-    node_cluster: &mut [u32],
-) {
+fn initialize_neighbors<F, Q, S>(
+    query: &Q, searcher: &mut S, builder: &mut ClusterBuilder<F>, uf: &mut UnionFind, a: usize,
+    heap: &mut Option<BinaryHeap<DistPair<F>>>, node_cluster: &mut [u32],
+) where
+    F: Float,
+    Q: DistanceSearch<F> + ?Sized,
+    S: PrioritySearcher<F, Q>,
+{
     let Some(heap) = heap.as_mut() else {
         return;
     };
     let mut threshold = F::infinity();
     while searcher.all_lower_bound() < threshold {
-        let Some(cand) = searcher.next_with_filter(
-            data,
-            &mut SameComponentFilter {
-                uf,
-                query_index: a,
-                node_cluster,
-            },
-        ) else {
-            break;
+        let (b, d) = {
+            let mut filter: SameComponentFilter<'_> =
+                SameComponentFilter { uf, query_index: a, node_cluster };
+            let Some(cand) = searcher.next(query) else {
+                break;
+            };
+            if filter.skip_point(cand.index) {
+                continue;
+            }
+            (cand.index, cand.distance)
         };
-        let b = cand.index;
-        let d = cand.distance;
+
         if d == F::zero() {
             let _ = uf.union(a, b);
             let _ = builder.merge_points(a, b, F::zero());
@@ -223,24 +205,19 @@ fn initialize_neighbors<D: DistanceSearch<F>, F: Float>(
     }
 }
 
-fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
-    data: &D,
-    searcher: &mut PrioritySearcher<F>,
-    uf: &mut UnionFind,
-    a: usize,
-    heap: &mut BinaryHeap<DistPair<F>>,
+fn refill_neighbors<F, Q, S>(
+    query: &Q, searcher: &mut S, uf: &mut UnionFind, a: usize, heap: &mut BinaryHeap<DistPair<F>>,
     node_cluster: &mut [u32],
-) {
+) where
+    F: Float,
+    Q: DistanceSearch<F> + ?Sized,
+    S: PrioritySearcher<F, Q>,
+{
     let mut threshold = heap.peek().map_or(F::infinity(), |n| n.distance);
     while searcher.all_lower_bound() < threshold {
-        let Some(cand) = searcher.next_with_filter(
-            data,
-            &mut SameComponentFilter {
-                uf,
-                query_index: a,
-                node_cluster,
-            },
-        ) else {
+        let mut filter: SameComponentFilter<'_> =
+            SameComponentFilter { uf, query_index: a, node_cluster };
+        let Some(cand) = searcher.next_with_filter(query, &mut filter) else {
             break;
         };
         let b = cand.index;
@@ -251,10 +228,14 @@ fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
 
 #[cfg(test)]
 mod tests {
-    use crate::TableWithDistance;
-    use crate::data::CondensedDistanceMatrix;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
 
     use super::*;
+    use crate::TableWithDistance;
+    use crate::data::CondensedDistanceMatrix;
+    use crate::distance::EuclideanDistance;
+    use crate::vptree::VPTree;
 
     fn condensed_abs_1d(points: &[Vec<f64>]) -> Vec<f64> {
         let mut out = Vec::new();

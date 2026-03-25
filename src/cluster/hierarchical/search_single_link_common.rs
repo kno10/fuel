@@ -1,8 +1,6 @@
-use num_traits::Float;
-
-use crate::vptree::{NodePoints, SearchFilter};
-
-use super::common::{Merge, MergeHistory};
+use crate::Float;
+use crate::api::{NodePoints, SearchFilter};
+use crate::cluster::hierarchical::common::{Merge, MergeHistory};
 
 /// Edge collected during search-based single-linkage construction.
 struct Edge<F> {
@@ -31,9 +29,7 @@ impl<F: Float> ClusterBuilder<F> {
         }
     }
 
-    pub(crate) fn merge_count(&self) -> usize {
-        self.merge_count
-    }
+    pub(crate) fn merge_count(&self) -> usize { self.merge_count }
 
     pub(crate) fn find(&mut self, x: usize) -> usize {
         let mut root = x;
@@ -49,9 +45,7 @@ impl<F: Float> ClusterBuilder<F> {
         root
     }
 
-    pub(crate) fn same_set(&mut self, a: usize, b: usize) -> bool {
-        self.find(a) == self.find(b)
-    }
+    pub(crate) fn same_set(&mut self, a: usize, b: usize) -> bool { self.find(a) == self.find(b) }
 
     pub(crate) fn cluster_size_of_point(&mut self, a: usize) -> usize {
         let cida = self.find(a);
@@ -64,11 +58,7 @@ impl<F: Float> ClusterBuilder<F> {
             return None;
         }
 
-        self.edges.push(Edge {
-            a,
-            b,
-            weight: distance,
-        });
+        self.edges.push(Edge { a, b, weight: distance });
         self.merge_count += 1;
 
         if self.uf_size[ra] < self.uf_size[rb] {
@@ -111,12 +101,7 @@ impl<F: Float> ClusterBuilder<F> {
             let ss = size[s];
             let st = size[t];
             let (idx1, idx2) = if s <= t { (s, t) } else { (t, s) };
-            merges.push(Merge {
-                idx1,
-                idx2,
-                distance: edge.weight,
-                size: ss + st,
-            });
+            merges.push(Merge { idx1, idx2, distance: edge.weight, size: ss + st });
 
             let new_id = n + merges.len() - 1;
             parent[s] = new_id;
@@ -162,7 +147,7 @@ pub(crate) struct SameClusterFilter<'a, F: Float> {
 
 const WITNESS_BIT: u32 = 1 << 31;
 
-impl<F: Float> SearchFilter for SameClusterFilter<'_, F> {
+impl<'a, F: Float> SearchFilter for SameClusterFilter<'a, F> {
     fn skip_node(&mut self, points: NodePoints<'_>) -> bool {
         let vp = points.first_index();
         let cached = self.node_cluster[vp];
@@ -203,4 +188,3 @@ impl<F: Float> SearchFilter for SameClusterFilter<'_, F> {
         self.builder.find(index) == self.query_component
     }
 }
-

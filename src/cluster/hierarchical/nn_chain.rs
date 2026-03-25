@@ -1,9 +1,8 @@
-use num_traits::Float;
-
 use super::common::{
     Builder, MergeHistory, condensed_get, condensed_set, find_active, shrink_active_end,
 };
 use super::linkage::Linkage;
+use crate::Float;
 
 /// Perform hierarchical clustering using the NN-Chain algorithm.
 ///
@@ -17,17 +16,10 @@ pub fn nn_chain<F: Float, L: Linkage<F> + Copy>(
     is_squared: bool,
 ) -> MergeHistory<F> {
     assert!(n > 0, "number of points must be positive");
-    assert_eq!(
-        distances.len(),
-        n * (n - 1) / 2,
-        "bad condensed matrix length"
-    );
+    assert_eq!(distances.len(), n * (n - 1) / 2, "bad condensed matrix length");
 
     let mut builder = Builder::<F>::new(n);
-    let mut mat: Vec<F> = distances
-        .iter()
-        .map(|&d| linkage.initial(d, is_squared))
-        .collect();
+    let mut mat: Vec<F> = distances.iter().map(|&d| linkage.initial(d, is_squared)).collect();
     let mut clustermap: Vec<Option<usize>> = (0..n).map(Some).collect();
     let mut end = n;
     let mut chain: Vec<usize> = Vec::with_capacity((n / 4).max(2));
@@ -80,11 +72,7 @@ pub fn nn_chain<F: Float, L: Linkage<F> + Copy>(
         let size_x = builder.get_size(cid_x);
         let size_y = builder.get_size(cid_y);
 
-        let (h1, h2) = if cid_y <= cid_x {
-            (cid_y, cid_x)
-        } else {
-            (cid_x, cid_y)
-        };
+        let (h1, h2) = if cid_y <= cid_x { (cid_y, cid_x) } else { (cid_x, cid_y) };
         let new_id = builder.add(h1, linkage.restore(min_dist, is_squared), h2);
         clustermap[y] = Some(new_id);
         clustermap[x] = None;
@@ -119,13 +107,11 @@ pub fn nn_chain<F: Float, L: Linkage<F> + Copy>(
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::hierarchical::agnes;
+    use super::nn_chain;
     use crate::cluster::hierarchical::regression_support::{
         DATASETS, cluster_and_cut, evaluate_clustering, load_dataset, optionally_report,
     };
-    use crate::cluster::hierarchical::{AverageLinkage, CompleteLinkage};
-
-    use super::nn_chain;
+    use crate::cluster::hierarchical::{AverageLinkage, CompleteLinkage, agnes};
 
     #[test]
     fn nn_chain_matches_agnes_complete_on_unique_distances() {

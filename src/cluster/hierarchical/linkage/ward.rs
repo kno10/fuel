@@ -6,11 +6,9 @@
 #[derive(Clone, Copy, Default, Debug)]
 pub struct WardLinkage;
 
-use super::GeometricLinkage;
-use super::Linkage;
-use crate::DistanceData;
+use super::{GeometricLinkage, Linkage};
 use crate::cluster::hierarchical::SetLinkage;
-use num_traits::Float;
+use crate::{DistanceData, Float};
 
 impl<F: Float> Linkage<F> for WardLinkage {
     fn initial(&self, d: F, issquare: bool) -> F {
@@ -18,11 +16,7 @@ impl<F: Float> Linkage<F> for WardLinkage {
     }
 
     fn restore(&self, d: F, issquare: bool) -> F {
-        if issquare {
-            F::from(2.0).unwrap() * d
-        } else {
-            (F::from(2.0).unwrap() * d).sqrt()
-        }
+        if issquare { F::from(2.0).unwrap() * d } else { (F::from(2.0).unwrap() * d).sqrt() }
     }
 
     fn combine(&self, sizex: usize, dx: F, sizey: usize, dy: F, sizej: usize, dxy: F) -> F {
@@ -38,10 +32,7 @@ impl<F: Float> GeometricLinkage<F> for WardLinkage {
         let sx = F::from(sizex).unwrap();
         let sy = F::from(sizey).unwrap();
         // weighted mean of vectors
-        x.iter()
-            .zip(y.iter())
-            .map(|(&xi, &yi)| (sx * xi + sy * yi) / (sx + sy))
-            .collect()
+        x.iter().zip(y.iter()).map(|(&xi, &yi)| (sx * xi + sy * yi) / (sx + sy)).collect()
     }
 
     fn linkage(&self, x: &[F], sizex: usize, y: &[F], sizey: usize) -> F {
@@ -58,11 +49,7 @@ impl<F: Float> GeometricLinkage<F> for WardLinkage {
     }
 
     fn restore_linkage(&self, d: F, issquare: bool) -> F {
-        if issquare {
-            F::from(4.0).unwrap() * d
-        } else {
-            F::from(2.0).unwrap() * d.sqrt()
-        }
+        if issquare { F::from(4.0).unwrap() * d } else { F::from(2.0).unwrap() * d.sqrt() }
     }
 }
 
@@ -70,11 +57,7 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for WardLinkage {
     fn summarize(_data: &D, _members: &[usize]) {}
 
     fn cluster_distance(
-        data: &D,
-        _summary_a: &(),
-        _summary_b: &(),
-        a: &[usize],
-        b: &[usize],
+        data: &D, _summary_a: &(), _summary_b: &(), a: &[usize], b: &[usize],
     ) -> (F, Option<usize>) {
         let mut sum = F::zero();
         let mut count = 0usize;

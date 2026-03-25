@@ -1,28 +1,28 @@
 use std::collections::BinaryHeap;
 
-use num_traits::Float;
-
-use crate::api::{DistanceData, DistanceSearch};
-use crate::DistPair;
-use crate::vptree::{PrioritySearcher, VPTree};
-
+use crate::api::{DistanceData, DistanceSearch, PrioritySearcher, PrioritySearcherFactory};
 use crate::cluster::hierarchical::common::MergeHistory;
 use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
+use crate::{DistPair, Float, IndexQuery};
 
-/// Heap-of-Searchers Single-Link (HSSL) with VP-tree priority search.
+/// Heap-of-Searchers Single-Link (HSSL) with priority-search acceleration.
 #[must_use]
-pub fn heap_of_searchers_single_link<D: DistanceData<F>, F: Float>(
-    tree: &VPTree<F>,
-    data: &D,
-) -> MergeHistory<F> {
+pub fn heap_of_searchers_single_link<'a, S, D, F>(tree: &'a S, data: &'a D) -> MergeHistory<F>
+where
+    F: Float + 'a,
+    D: DistanceData<F> + ?Sized + 'a,
+    S: PrioritySearcherFactory<F, D::Query<'a>>,
+{
     let n = data.size();
     assert!(n > 0, "number of points must be positive");
 
     let mut builder = ClusterBuilder::new(n);
     let mut primary = BinaryHeap::<DistPair<F>>::new();
     let mut neighbor_heaps: Vec<BinaryHeap<DistPair<F>>> = vec![BinaryHeap::new(); n];
-    let mut searchers: Vec<Option<PrioritySearcher<F>>> = (0..n).map(|_| None).collect();
+    let mut searchers: Vec<Option<S::Searcher<'a>>> = (0..n).map(|_| None).collect();
     let mut node_cluster = vec![u32::MAX; n];
+
+    let mut query = data.query();
 
     // initial pass: find the 1-nearest neighbor for each point
     for a in 0..n {
@@ -30,12 +30,14 @@ pub fn heap_of_searchers_single_link<D: DistanceData<F>, F: Float>(
             continue; // duplicate, merged already
         }
         let mut searcher = tree.priority_searcher();
+        query.set_index(a);
         initialize_neighbors(
-            &data.search_by_index(a),
+            &query,
             &mut searcher,
             &mut builder,
             a,
             &mut neighbor_heaps[a],
+            &mut node_cluster,
         );
         if let Some(top) = neighbor_heaps[a].peek().copied() {
             primary.push(DistPair::new(top.distance, a));
@@ -60,8 +62,7 @@ pub fn heap_of_searchers_single_link<D: DistanceData<F>, F: Float>(
         if let Some(best) = nn.peek().copied().filter(|b| b.distance <= top.distance) {
             nn.pop();
             let b = best.index;
-            if builder.merge_points(a, b, best.distance).is_some()
-                && builder.merge_count() == n - 1
+            if builder.merge_points(a, b, best.distance).is_some() && builder.merge_count() == n - 1
             {
                 break;
             }
@@ -74,14 +75,8 @@ pub fn heap_of_searchers_single_link<D: DistanceData<F>, F: Float>(
         if let Some(searcher) = searchers[a].as_mut() {
             let lb = searcher.all_lower_bound();
             if nn.peek().is_none_or(|next| next.distance > lb) {
-                refill_neighbors(
-                    &data.search_by_index(a),
-                    searcher,
-                    &mut builder,
-                    a,
-                    nn,
-                    &mut node_cluster,
-                );
+                query.set_index(a);
+                refill_neighbors(&query, searcher, &mut builder, a, nn, &mut node_cluster);
             }
         }
 
@@ -99,20 +94,24 @@ pub fn heap_of_searchers_single_link<D: DistanceData<F>, F: Float>(
 // the nearest neighbors into `heap`.  Exact duplicates are merged eagerly
 // since they represent zero-distance points and are handled specially by
 // the algorithm.
-fn initialize_neighbors<D: DistanceSearch<F>, F: Float>(
-    data: &D,
-    searcher: &mut PrioritySearcher<F>,
-    builder: &mut ClusterBuilder<F>,
-    a: usize,
-    heap: &mut BinaryHeap<DistPair<F>>,
-) {
+fn initialize_neighbors<F: Float, Q, S>(
+    query: &Q, searcher: &mut S, builder: &mut ClusterBuilder<F>, a: usize,
+    heap: &mut BinaryHeap<DistPair<F>>, node_cluster: &mut [u32],
+) where
+    Q: DistanceSearch<F> + ?Sized,
+    S: PrioritySearcher<F, Q>,
+{
     let mut threshold = F::infinity();
     while searcher.all_lower_bound() < threshold {
-        let Some(cand) = searcher.next(data) else {
-            break;
+        let (b, d) = {
+            let query_component = builder.find(a);
+            let mut filter: SameClusterFilter<'_, F> =
+                SameClusterFilter { builder, query_component, node_cluster };
+            let Some(cand) = searcher.next_with_filter(query, &mut filter) else {
+                break;
+            };
+            (cand.index, cand.distance)
         };
-        let b = cand.index;
-        let d = cand.distance;
         if d == F::zero() {
             // merge any exact duplicates immediately
             let _ = builder.merge_points(a, b, F::zero());
@@ -123,29 +122,25 @@ fn initialize_neighbors<D: DistanceSearch<F>, F: Float>(
     }
 }
 
-fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
-    data: &D,
-    searcher: &mut PrioritySearcher<F>,
-    builder: &mut ClusterBuilder<F>,
-    query_index: usize,
-    heap: &mut BinaryHeap<DistPair<F>>,
-    node_cluster: &mut [u32],
-) {
+fn refill_neighbors<F: Float, Q, S>(
+    query: &Q, searcher: &mut S, builder: &mut ClusterBuilder<F>, query_index: usize,
+    heap: &mut BinaryHeap<DistPair<F>>, node_cluster: &mut [u32],
+) where
+    Q: DistanceSearch<F> + ?Sized,
+    S: PrioritySearcher<F, Q>,
+{
     // Purge stale same-cluster entries so the threshold is not artificially
     // capped by a neighbour that merged into the query's cluster since it
     // was first discovered.
     purge_same_cluster(heap, builder, query_index);
     let query_component = builder.find(query_index);
     let mut threshold = heap.peek().map_or(F::infinity(), |n| n.distance);
+
+    let mut filter: SameClusterFilter<'_, F> =
+        SameClusterFilter { builder, query_component, node_cluster };
+
     while searcher.all_lower_bound() < threshold {
-        let Some(cand) = searcher.next_with_filter(
-            data,
-            &mut SameClusterFilter {
-                builder,
-                query_component,
-                node_cluster,
-            },
-        ) else {
+        let Some(cand) = searcher.next_with_filter(query, &mut filter) else {
             break;
         };
         let b = cand.index;
@@ -155,16 +150,10 @@ fn refill_neighbors<D: DistanceSearch<F>, F: Float>(
 }
 
 pub(crate) fn purge_same_cluster<F: Float>(
-    heap: &mut BinaryHeap<DistPair<F>>,
-    builder: &mut ClusterBuilder<F>,
-    a: usize,
+    heap: &mut BinaryHeap<DistPair<F>>, builder: &mut ClusterBuilder<F>, a: usize,
 ) {
     let ca = builder.find(a);
-    while heap
-        .peek()
-        .copied()
-        .is_some_and(|n| builder.find(n.index) == ca)
-    {
+    while heap.peek().copied().is_some_and(|n| builder.find(n.index) == ca) {
         heap.pop();
     }
 }
@@ -174,13 +163,12 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
+    use super::*;
     use crate::TableWithDistance;
-    use crate::distance::{DistanceFunction, EuclideanDistance};
-
     use crate::cluster::hierarchical::restarting_search_single_link;
     use crate::data::CondensedDistanceMatrix;
-
-    use super::*;
+    use crate::distance::{DistanceFunction, EuclideanDistance};
+    use crate::vptree::VPTree;
 
     fn condensed_abs_1d(points: &[Vec<f64>]) -> Vec<f64> {
         let mut out = Vec::new();
@@ -208,8 +196,9 @@ mod tests {
 
     #[test]
     fn hssl_distance_count_not_worse_than_rssl() {
-        use rand::Rng;
         use std::cell::Cell;
+
+        use rand::Rng;
 
         struct CountingDist<'a> {
             counter: &'a Cell<usize>,
@@ -222,12 +211,18 @@ mod tests {
             }
         }
 
+        impl<'a> DistanceFunction<[f64], f64> for CountingDist<'a> {
+            fn distance(&self, a: &[f64], b: &[f64]) -> f64 {
+                self.counter.set(self.counter.get() + 1);
+                EuclideanDistance.distance(a, b)
+            }
+        }
+
         let mut rng = StdRng::seed_from_u64(42);
-        let points: Vec<Vec<f64>> = (0..30)
-            .map(|_| vec![rng.r#gen::<f64>(), rng.r#gen::<f64>()])
-            .collect();
+        let points: Vec<Vec<f64>> =
+            (0..30).map(|_| vec![rng.r#gen::<f64>(), rng.r#gen::<f64>()]).collect();
         let counter1 = Cell::new(0);
-        let data1: TableWithDistance<Vec<f64>, CountingDist, f64> =
+        let data1: TableWithDistance<f64, Vec<f64>, CountingDist, f64> =
             TableWithDistance::with_distance(&points, CountingDist { counter: &counter1 });
         let mut rng = StdRng::seed_from_u64(42);
         let tree1: VPTree<f64> = VPTree::new(&data1, 3, &mut rng);
@@ -235,7 +230,7 @@ mod tests {
         let dist_hssl = counter1.get();
 
         let counter2 = Cell::new(0);
-        let data2: TableWithDistance<Vec<f64>, CountingDist, f64> =
+        let data2: TableWithDistance<f64, Vec<f64>, CountingDist, f64> =
             TableWithDistance::with_distance(&points, CountingDist { counter: &counter2 });
         let mut rng = StdRng::seed_from_u64(42);
         let tree2: VPTree<f64> = VPTree::new(&data2, 3, &mut rng);

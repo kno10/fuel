@@ -1,31 +1,12 @@
-use num_traits::Float;
-use num_traits::FromPrimitive;
-use rand::Rng;
-use rand::SeedableRng;
 use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 
-use crate::DistanceData;
 use crate::api::VectorData; // needed for MatrixDataAccess.point/dims in this file
-
-use super::common::{OutlierScoreEntry, sort_outlier_scores};
+use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::{DistanceData, Float};
 
 /// A very simple outlier score used for trivial baseline detectors.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BaselineOutlierScore<F: Float> {
-    pub index: usize,
-    pub score: F,
-}
-
-impl<F: Float> OutlierScoreEntry<F> for BaselineOutlierScore<F> {
-    fn index(&self) -> usize {
-        self.index
-    }
-
-    fn score(&self) -> F {
-        self.score
-    }
-}
-
+///
 /// Outlierness is the Euclidean distance of each point from the origin.
 ///
 /// This only makes sense for vector data where the feature values are
@@ -36,21 +17,30 @@ impl<F: Float> OutlierScoreEntry<F> for BaselineOutlierScore<F> {
 /// # Panics
 ///
 /// Panics if the data set is empty (division by zero when computing the mean).
-pub fn distance_from_origin_outlier_scores<D: VectorData<F>, F: Float + std::iter::Sum>(
+pub fn distance_from_origin<D: VectorData<F> + Sync, F: Float + Send + Sync + std::iter::Sum>(
     data: D,
-) -> Vec<BaselineOutlierScore<F>> {
-    let mut scores = Vec::with_capacity(data.size());
+) -> OutlierResult<F> {
+    let scores: Vec<F> = if cfg!(feature = "parallel") {
+        use rayon::prelude::*;
+        (0..data.size())
+            .into_par_iter()
+            .map(|idx| {
+                let coords = data.point(idx);
+                let sq = coords.iter().map(|&x| x * x).sum::<F>();
+                sq.sqrt()
+            })
+            .collect()
+    } else {
+        data.iter()
+            .map(|idx| {
+                let coords = data.point(idx);
+                let sq = coords.iter().map(|&x| x * x).sum::<F>();
+                sq.sqrt()
+            })
+            .collect()
+    };
 
-    for idx in data.iter() {
-        let coords = data.point(idx);
-        // Euclidean norm
-        let sq = coords.iter().map(|&x| x * x).sum::<F>();
-        let score = sq.sqrt();
-        scores.push(BaselineOutlierScore { index: idx, score });
-    }
-
-    sort_outlier_scores(&mut scores);
-    scores
+    make_outlier_result(scores, "Distance from origin", false, F::zero(), F::zero(), F::infinity())
 }
 
 /// Outlierness is the distance of each point from the mean of the
@@ -58,15 +48,22 @@ pub fn distance_from_origin_outlier_scores<D: VectorData<F>, F: Float + std::ite
 ///
 /// The centre is computed by averaging each coordinate.  For an empty
 /// dataset this function will panic when trying to divide by zero.
-pub fn distance_from_center_outlier_scores<
-    D: VectorData<F>,
-    F: Float + FromPrimitive + std::ops::AddAssign + std::ops::DivAssign + std::iter::Sum,
+pub fn distance_from_center<
+    D: VectorData<F> + Sync,
+    F: Float + Send + Sync + std::ops::AddAssign + std::ops::DivAssign + std::iter::Sum,
 >(
     data: D,
-) -> Vec<BaselineOutlierScore<F>> {
+) -> OutlierResult<F> {
     let size = data.size();
     if size == 0 {
-        return Vec::new();
+        return make_outlier_result(
+            Vec::new(),
+            "Distance from center",
+            false,
+            F::zero(),
+            F::zero(),
+            F::infinity(),
+        );
     }
 
     let dims = data.dims();
@@ -82,58 +79,48 @@ pub fn distance_from_center_outlier_scores<
         *x /= F::from_usize(size).unwrap_or(F::one());
     }
 
-    let mut scores = Vec::with_capacity(size);
-    for idx in data.iter() {
-        let coords = data.point(idx);
-        let sq: F = coords
-            .iter()
-            .enumerate()
-            .map(|(i, &x)| {
-                let d = x - centre[i];
-                d * d
-            })
-            .sum();
-        let score = sq.sqrt();
-        scores.push(BaselineOutlierScore { index: idx, score });
-    }
+    let scores: Vec<F> = data
+        .iter()
+        .map(|idx| {
+            let coords = data.point(idx);
+            let sq: F = coords
+                .iter()
+                .enumerate()
+                .map(|(i, &x)| {
+                    let d = x - centre[i];
+                    d * d
+                })
+                .sum();
+            sq.sqrt()
+        })
+        .collect();
 
-    sort_outlier_scores(&mut scores);
-    scores
+    make_outlier_result(scores, "Distance from center", false, F::zero(), F::zero(), F::infinity())
 }
 
 /// Produce random outlier scores in the interval `[0,1)`.  A seed is required
 /// to make the results reproducible for benchmarking and testing.
-pub fn random_outlier_scores<D: DistanceData<F>, F: Float + FromPrimitive>(
-    data: D,
-    seed: u64,
-) -> Vec<BaselineOutlierScore<F>> {
+pub fn random<D: DistanceData<F>, F: Float>(data: D, seed: u64) -> OutlierResult<F> {
     let mut rng = StdRng::seed_from_u64(seed);
-    let mut scores = Vec::with_capacity(data.size());
 
-    for idx in data.iter() {
-        scores.push(BaselineOutlierScore {
-            index: idx,
-            score: F::from_f64(rng.r#gen::<f64>()).unwrap_or(F::one()),
-        });
-    }
+    let scores: Vec<F> =
+        data.iter().map(|_idx| F::from_f64(rng.r#gen::<f64>()).unwrap_or(F::one())).collect();
 
-    sort_outlier_scores(&mut scores);
-    scores
+    make_outlier_result(scores, "Random outlier score", false, F::zero(), F::zero(), F::infinity())
 }
 
 /// A completely non-informative detector that assigns a score of zero to every
 /// point.  It still returns a sorted list so that the caller observes a
 /// deterministic order (indices in ascending order).
-pub fn zero_outlier_scores<D: DistanceData<F>, F: Float>(data: D) -> Vec<BaselineOutlierScore<F>> {
-    let mut scores = data
-        .iter()
-        .map(|idx| BaselineOutlierScore {
-            index: idx,
-            score: F::zero(),
-        })
-        .collect::<Vec<_>>();
-    sort_outlier_scores(&mut scores);
-    scores
+pub fn zero<D: DistanceData<F> + Sync, F: Float + Send + Sync>(data: D) -> OutlierResult<F> {
+    let scores: Vec<F> = if cfg!(feature = "parallel") {
+        use rayon::prelude::*;
+        (0..data.size()).into_par_iter().map(|_| F::zero()).collect()
+    } else {
+        data.iter().map(|_| F::zero()).collect()
+    };
+
+    make_outlier_result(scores, "Random outlier score", false, F::zero(), F::zero(), F::infinity())
 }
 
 #[cfg(test)]
@@ -143,13 +130,12 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
+    use crate::api::Data;
     use crate::distance::EuclideanDistance;
     use crate::vptree::VPTree;
 
-    fn make_simple_data() -> (
-        TableWithDistance<'static, Vec<f64>, EuclideanDistance, f64>,
-        VPTree<f64>,
-    ) {
+    fn make_simple_data()
+    -> (TableWithDistance<'static, f64, Vec<f64>, EuclideanDistance, f64>, VPTree<f64>) {
         // allocate the backing vector on the heap and leak it so that the
         // returned `MatrixDataAccess` can safely hold a `'static` reference.
         let leaked: &'static mut Vec<Vec<f64>> = Box::leak(Box::new(vec![
@@ -168,37 +154,46 @@ mod tests {
     #[test]
     fn origin_ranks_remote_point_highest() {
         let (data, _tree) = make_simple_data();
-        let scores = distance_from_origin_outlier_scores(&data);
-        assert_eq!(scores[0].index, 4);
-        assert!(scores[0].score > scores[1].score);
+        let results = distance_from_origin(&data);
+
+        let (best_index, _) = results
+            .scores
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .unwrap();
+
+        assert_eq!(best_index, 4);
     }
 
     #[test]
     fn center_ranks_remote_point_highest() {
         let (data, _tree) = make_simple_data();
-        let scores = distance_from_center_outlier_scores(&data);
-        assert_eq!(scores[0].index, 4);
-        assert!(scores[0].score > scores[1].score);
+        let results = distance_from_center(&data);
+        let (best_index, _) = results
+            .scores
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .unwrap();
+        assert_eq!(best_index, 4);
     }
 
     #[test]
     fn random_is_reproducible() {
         let (data, _tree) = make_simple_data();
-        let s1 = random_outlier_scores(&data, 7);
-        let s2 = random_outlier_scores(&data, 7);
+        let s1 = random(&data, 7);
+        let s2 = random(&data, 7);
         assert_eq!(s1, s2);
         // they should not all be equal
-        assert!(s1.iter().any(|e| e.score != 0.0));
+        assert!(s1.scores.iter().any(|&e| e != 0.0));
     }
 
     #[test]
     fn zero_scores_behaviour() {
         let (data, _tree) = make_simple_data();
-        let scores = zero_outlier_scores(&data);
-        assert!(scores.iter().all(|e| e.score == 0.0));
-        // sorted by index ascending because all scores equal
-        for (i, e) in scores.iter().enumerate() {
-            assert_eq!(e.index, i);
-        }
+        let scores = zero(&data);
+        assert!(scores.scores.iter().all(|&e| e == 0.0));
+        assert_eq!(scores.scores.len(), data.size());
     }
 }
