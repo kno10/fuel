@@ -1,21 +1,30 @@
-/// Rational Quadratic kernel: 1 - d^2 / (d^2 + c), where d^2 = ||x - y||^2
+use crate::Float;
+use crate::distance::squared_euclidean_distance;
+use crate::kernel::Kernel;
+
+/// Rational Quadratic kernel: 1 - d^2 / (d^2 + c), with d^2 = ||x - y||^2.
+///
+/// $$k(x, y) = 1 - \frac{\|x - y\|^2}{\|x - y\|^2 + c}$$
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RationalQuadraticKernel {
-    pub c: f64,
+pub struct RationalQuadraticKernel<F: Float> {
+    pub c: F,
 }
 
-impl RationalQuadraticKernel {
-    pub fn new(c: f64) -> Self { Self { c } }
+impl<F: Float> RationalQuadraticKernel<F> {
+    pub fn new(c: F) -> Self { Self { c } }
 
-    pub fn similarity(&self, x: &[f64], y: &[f64]) -> f64 {
-        let dist2: f64 = x
-            .iter()
-            .zip(y.iter())
-            .map(|(&a, &b)| {
-                let v = a - b;
-                v * v
-            })
-            .sum();
-        1.0 - dist2 / (dist2 + self.c)
+    pub fn similarity(&self, x: &[F], y: &[F]) -> F {
+        let dist2 = squared_euclidean_distance::<F, F>(x, y);
+        F::one() - dist2 / (dist2 + self.c)
     }
+}
+
+impl<F: Float> Kernel<Vec<F>, F> for RationalQuadraticKernel<F> {
+    fn similarity(&self, x: &Vec<F>, y: &Vec<F>) -> F {
+        self.similarity(x.as_slice(), y.as_slice())
+    }
+}
+
+impl<F: Float> Kernel<[F], F> for RationalQuadraticKernel<F> {
+    fn similarity(&self, x: &[F], y: &[F]) -> F { self.similarity(x, y) }
 }
