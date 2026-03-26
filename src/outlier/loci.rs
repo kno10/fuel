@@ -175,7 +175,7 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
     use crate::vptree::VPTree;
@@ -190,7 +190,7 @@ mod tests {
             vec![0.05, 0.05],
             vec![5.0, 5.0],
         ];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
@@ -213,7 +213,7 @@ mod tests {
     #[test]
     fn loci_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
         let result = local_correlation_integral(&tree, &data, 0.2, 20, 0.5);

@@ -142,8 +142,7 @@ mod tests {
     #[test]
     fn rabid_estimator_query_graph_non_panic() {
         let points = vec![vec![0.0, 0.0], vec![1.0, 1.0]];
-        let data =
-            crate::TableWithDistance::with_distance(&points, crate::distance::EuclideanDistance);
+        let data = crate::TableWithDistance::with_distance(&points, crate::distance::Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(0);
         let tree: crate::vptree::VPTree<f64> = crate::vptree::VPTree::new(&data, 2, &mut rng);
         let _ = RABID::estimate_from_knn(&tree, &data, 0, 1);
@@ -152,10 +151,8 @@ mod tests {
     #[test]
     fn rabid_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(1000, 0);
-        let table = crate::data::TableWithDistance::with_distance(
-            &data,
-            crate::distance::EuclideanDistance,
-        );
+        let table =
+            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
         let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
 
         let estimate = RABID::estimate_from_knn(&tree, &table, 0, 100);
@@ -171,8 +168,7 @@ mod tests {
     #[test]
     fn abid_estimator_query_graph_non_panic() {
         let points = vec![vec![0.0, 0.0], vec![1.0, 1.0]];
-        let data =
-            crate::TableWithDistance::with_distance(&points, crate::distance::EuclideanDistance);
+        let data = crate::TableWithDistance::with_distance(&points, crate::distance::Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(0);
         let tree: crate::vptree::VPTree<f64> = crate::vptree::VPTree::new(&data, 2, &mut rng);
         let _ = ABID::estimate_from_knn(&tree, &data, 0, 1);
@@ -181,10 +177,8 @@ mod tests {
     #[test]
     fn abid_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(1000, 0);
-        let table = crate::data::TableWithDistance::with_distance(
-            &data,
-            crate::distance::EuclideanDistance,
-        );
+        let table =
+            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
         let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
 
         let estimate = ABID::estimate_from_knn(&tree, &table, 0, 100);

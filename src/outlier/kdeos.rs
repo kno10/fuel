@@ -1,5 +1,5 @@
-use rs_stats::distributions::Normal;
 use rs_stats::Distribution;
+use rs_stats::distributions::Normal;
 
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
 // Use for_each_knn(tree,data,k,true,...) when we need the self point included in neighbors.
@@ -143,14 +143,14 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
 
     #[test]
     fn kdeos_remote_outlier() {
         let points = vec![vec![0.0], vec![0.1], vec![0.2], vec![10.0]];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree: crate::vptree::VPTree<f64> =
             crate::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
 
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn kdeos_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: crate::vptree::VPTree<f64> = crate::vptree::VPTree::new(&data, 2, &mut rng);
 

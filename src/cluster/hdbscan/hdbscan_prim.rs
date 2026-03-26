@@ -69,7 +69,7 @@ mod tests {
     use super::hdbscan_prim;
     use crate::TableWithDistance;
     use crate::cluster::hdbscan::{HdbscanHierarchy, slink_hdbscan};
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
 
     #[test]
     fn prim_hdbscan_matches_slink_hdbscan() {
@@ -82,7 +82,7 @@ mod tests {
             vec![10.0, 10.0],
         ];
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mst: HdbscanHierarchy<f64> = hdbscan_prim(&data, 2);
         let slink: HdbscanHierarchy<f64> = slink_hdbscan(&data, 2);
 

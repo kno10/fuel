@@ -20,9 +20,9 @@ pub fn jeffrey_divergence<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct JeffreyDistance;
+pub struct Jeffrey;
 
-impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for JeffreyDistance {
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for Jeffrey {
     fn distance(&self, a: &[N], b: &[N]) -> F { jeffrey_divergence(a, b) }
 }
 

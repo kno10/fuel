@@ -3,7 +3,7 @@ use rand::rngs::StdRng;
 
 use super::super::VPTree;
 use crate::api::DistanceData;
-use crate::distance::EuclideanDistance;
+use crate::distance::Euclidean;
 use crate::{CoordinateQuery, DistanceSearch, IndexQuery, TableWithDistance};
 
 #[test]
@@ -14,7 +14,7 @@ fn test_range_search() {
             points.push(vec![f64::from(x), f64::from(y)]);
         }
     }
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(42);
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
 
@@ -37,7 +37,7 @@ fn test_range_search() {
 #[test]
 fn test_range_search_zero_radius_returns_self_only() {
     let points = vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 1.0], vec![1.0, 1.0]];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(9001);
     let tree: VPTree<f64> = VPTree::new(&dataset, 2, rng);
 
@@ -55,7 +55,7 @@ fn test_range_search_zero_radius_returns_self_only() {
 fn test_query_can_be_external_slice() {
     let points = vec![vec![0.0, 0.0], vec![3.0, 4.0], vec![1.0, 1.0]];
     let query = vec![0.5, 0.5];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
 
     let expected0 = 0.5f64.hypot(0.5f64);
     let expected1 = 2.5f64.hypot(3.5f64);

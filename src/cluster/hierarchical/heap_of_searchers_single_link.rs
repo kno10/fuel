@@ -167,7 +167,7 @@ mod tests {
     use crate::TableWithDistance;
     use crate::cluster::hierarchical::restarting_search_single_link;
     use crate::data::CondensedDistanceMatrix;
-    use crate::distance::{DistanceFunction, EuclideanDistance};
+    use crate::distance::{DistanceFunction, Euclidean};
     use crate::vptree::VPTree;
 
     fn condensed_abs_1d(points: &[Vec<f64>]) -> Vec<f64> {
@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn hssl_matches_slink_on_unique_1d_distances() {
         let points = vec![vec![0.0], vec![1.1], vec![3.7], vec![10.2], vec![20.5]];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(17);
         let tree = VPTree::new(&data, 3, &mut rng);
 
@@ -207,14 +207,14 @@ mod tests {
         impl<'a> DistanceFunction<Vec<f64>, f64> for CountingDist<'a> {
             fn distance(&self, a: &Vec<f64>, b: &Vec<f64>) -> f64 {
                 self.counter.set(self.counter.get() + 1);
-                EuclideanDistance.distance(a, b)
+                Euclidean.distance(a, b)
             }
         }
 
         impl<'a> DistanceFunction<[f64], f64> for CountingDist<'a> {
             fn distance(&self, a: &[f64], b: &[f64]) -> f64 {
                 self.counter.set(self.counter.get() + 1);
-                EuclideanDistance.distance(a, b)
+                Euclidean.distance(a, b)
             }
         }
 

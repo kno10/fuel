@@ -7,7 +7,7 @@ use std::arch::x86_64::{
 
 use crate::Float;
 use crate::distance::DistanceFunction;
-use crate::distance::partial::PartialDistance;
+use crate::distance::partial::Partial;
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
@@ -65,6 +65,8 @@ unsafe fn squared_euclidean_distance_f64_avx_fma(a: &[f64], b: &[f64]) -> f64 {
     sum
 }
 
+/// Squared Euclidean distance:
+/// $$d_2^2(a,b)=\sum_i (a_i-b_i)^2$$
 pub fn squared_euclidean_distance<N, F>(a: &[N], b: &[N]) -> F
 where
     N: Float + 'static,
@@ -130,9 +132,10 @@ where
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct SquaredEuclideanDistance;
+/// Squared Euclidean distance strategy (L2 squared).
+pub struct SquaredEuclidean;
 
-impl<N, F> DistanceFunction<[N], F> for SquaredEuclideanDistance
+impl<N, F> DistanceFunction<[N], F> for SquaredEuclidean
 where
     N: Float + 'static,
     F: Float + 'static,
@@ -140,7 +143,7 @@ where
     fn distance(&self, a: &[N], b: &[N]) -> F { squared_euclidean_distance(a, b) }
 }
 
-impl<N, F> DistanceFunction<Vec<N>, F> for SquaredEuclideanDistance
+impl<N, F> DistanceFunction<Vec<N>, F> for SquaredEuclidean
 where
     N: Float + 'static,
     F: Float + 'static,
@@ -148,7 +151,7 @@ where
     fn distance(&self, a: &Vec<N>, b: &Vec<N>) -> F { squared_euclidean_distance(a, b) }
 }
 
-impl<N, F> PartialDistance<N, F> for SquaredEuclideanDistance
+impl<N, F> Partial<N, F> for SquaredEuclidean
 where
     N: Float + 'static,
     F: Float + 'static,

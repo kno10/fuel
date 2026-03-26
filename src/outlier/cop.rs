@@ -163,8 +163,7 @@ where
                         if cleaned.is_empty() {
                             Gamma::new(1.0, 0.5).unwrap()
                         } else {
-                            Gamma::fit(&cleaned)
-                                .unwrap_or_else(|_| Gamma::new(1.0, 0.5).unwrap())
+                            Gamma::fit(&cleaned).unwrap_or_else(|_| Gamma::new(1.0, 0.5).unwrap())
                         }
                     };
 
@@ -201,7 +200,7 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::vptree::VPTree;
 
     #[test]
@@ -214,7 +213,7 @@ mod tests {
             vec![0.05, 0.05],
             vec![5.0, 5.0],
         ];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
@@ -230,7 +229,7 @@ mod tests {
     #[test]
     fn cop_10_matches_reference_outlier_score() {
         let points = crate::outlier::common::load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
@@ -241,8 +240,8 @@ mod tests {
         let labels: Vec<u8> = crate::outlier::common::label_from_reference(&reference);
 
         if cfg!(debug_assertions) {
-            for i in 0..10 {
-                println!("idx {} got {} expected {}", i, result.scores[i], expected[i]);
+            for (i, (got, exp)) in result.scores.iter().zip(expected.iter()).enumerate().take(10) {
+                println!("idx {} got {} expected {}", i, got, exp);
             }
         }
 

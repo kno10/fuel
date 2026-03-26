@@ -7,7 +7,7 @@ use super::super::VPTree;
 use super::shared::get_all_neighbors;
 use crate::api::{Data, DistanceData, DistanceSearch};
 use crate::data::TableQuery;
-use crate::distance::EuclideanDistance;
+use crate::distance::Euclidean;
 use crate::vptree::{NodePoints, SearchFilter};
 use crate::{CoordinateQuery, Float, IndexQuery, TableWithDistance};
 
@@ -72,7 +72,7 @@ where
 fn test_priority_search() {
     let points =
         vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 1.0], vec![1.0, 1.0], vec![2.0, 2.0]];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(42);
 
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
@@ -105,7 +105,7 @@ fn test_priority_searcher_reuse_reset() {
         vec![3.0, 0.5],
         vec![-1.0, 1.5],
     ];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(12345);
     let tree: VPTree<f64> = VPTree::new(&dataset, 3, rng);
 
@@ -143,7 +143,7 @@ fn test_priority_search_cutoff_and_skip() {
         }
     }
 
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(314_159);
     let tree: VPTree<f64> = VPTree::new(&dataset, 3, rng);
     let query_idx = 2 * 5 + 2;
@@ -179,7 +179,7 @@ fn test_compare_search_methods() {
             points.push(vec![f64::from(x), f64::from(y)]);
         }
     }
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(42);
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
 
@@ -219,7 +219,7 @@ fn test_priority_search_with_external_query_data() {
         vec![3.0, 1.0],
     ];
     let query = vec![0.5, 0.25];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(271_828);
     let tree: VPTree<f64> = VPTree::new(&dataset, 2, rng);
 
@@ -247,7 +247,7 @@ fn test_priority_search_with_external_query_data() {
 #[test]
 fn test_priority_search_uses_bounds_to_prune_distance_computations() {
     let points = vec![vec![0.0], vec![1.0], vec![2.0], vec![100.0], vec![101.0], vec![102.0]];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(7);
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
 
@@ -284,7 +284,7 @@ fn test_priority_search_uses_bounds_to_prune_distance_computations() {
 #[test]
 fn test_priority_search_all_lower_bound_tracks_remaining_candidates() {
     let points = vec![vec![0.0], vec![1.0], vec![2.0], vec![10.0]];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(99);
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
 
@@ -306,7 +306,7 @@ fn test_priority_search_all_lower_bound_tracks_remaining_candidates() {
 #[test]
 fn test_priority_search_uses_upper_bounds_for_skip_pruning() {
     let points = vec![vec![0.0], vec![1.0], vec![2.0], vec![100.0], vec![101.0], vec![102.0]];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(7);
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
 
@@ -328,7 +328,7 @@ fn test_priority_search_uses_upper_bounds_for_skip_pruning() {
 #[test]
 fn test_priority_search_filter_skips_distance_computation() {
     let points = vec![vec![0.0], vec![1.0], vec![2.0], vec![3.0], vec![4.0]];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(1234);
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
 
@@ -347,7 +347,7 @@ fn test_priority_search_filter_skips_distance_computation() {
 #[test]
 fn test_priority_search_filter_skips_distance_computation_with_skip_threshold() {
     let points = vec![vec![0.0], vec![1.0], vec![2.0], vec![3.0], vec![4.0]];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(1234);
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
 
@@ -390,7 +390,7 @@ impl SearchFilter for SkipSubtreeFilter {
 #[test]
 fn test_priority_search_node_filter_skips_subtree_distance_computations() {
     let points = vec![vec![0.0], vec![1.0], vec![2.0], vec![100.0], vec![101.0], vec![102.0]];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(7);
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
 

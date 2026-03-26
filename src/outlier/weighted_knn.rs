@@ -1,5 +1,5 @@
 #[cfg(test)]
-use crate::distance::EuclideanDistance;
+use crate::distance::Euclidean;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
 use crate::{DistanceData, Float, KnnSearch};
 
@@ -45,7 +45,7 @@ mod tests {
         let points =
             vec![vec![0.0, 0.0], vec![0.1, 0.0], vec![0.0, 0.1], vec![6.0, 6.0], vec![0.1, 0.1]];
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
@@ -65,7 +65,7 @@ mod tests {
     #[test]
     fn knnw_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 

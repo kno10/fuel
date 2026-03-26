@@ -1,6 +1,8 @@
 use super::DistanceFunction;
 use crate::Float;
 
+/// Chi-squared distance:
+/// $$d_{\chi^2}(a,b)=\frac12\sum_i \frac{(a_i-b_i)^2}{a_i+b_i}$$
 pub fn chi_squared_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     let d = a.len().min(b.len());
     let mut sum = F::zero();
@@ -22,9 +24,10 @@ pub fn chi_squared_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct ChiSquaredDistance;
+/// Chi distance strategy (a scaled chi-square formulation).
+pub struct ChiSquared;
 
-impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for ChiSquaredDistance {
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for ChiSquared {
     fn distance(&self, a: &[N], b: &[N]) -> F { chi_squared_distance(a, b) }
 }
 

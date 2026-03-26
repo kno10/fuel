@@ -32,7 +32,7 @@ mod tests {
 
     use super::*;
     use crate::data::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::intrinsicdimensionality::HillID;
     use crate::outlier::common::*;
@@ -41,7 +41,7 @@ mod tests {
     #[test]
     fn lid_10_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
@@ -67,7 +67,7 @@ mod tests {
     #[test]
     fn lid_20_hill_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 

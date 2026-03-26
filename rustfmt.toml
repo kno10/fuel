@@ -1,0 +1,6 @@
+fn_params_layout = "Compressed"
+fn_single_line = true
+imports_granularity = "Module"
+newline_style = "Unix"
+group_imports = "StdExternalCrate"
+use_small_heuristics = "Max"

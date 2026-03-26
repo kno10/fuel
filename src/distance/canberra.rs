@@ -8,7 +8,7 @@ use std::arch::x86_64::{
 };
 
 use crate::Float;
-use crate::distance::{DistanceFunction, DistanceMetric};
+use crate::distance::DistanceFunction;
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx")]
@@ -92,6 +92,8 @@ unsafe fn canberra_distance_f64_avx(a: &[f64], b: &[f64]) -> f64 {
     sum
 }
 
+/// Canberra distance:
+/// $$d_C(a,b)=\sum_i \frac{|a_i-b_i|}{|a_i|+|b_i|}$$
 pub fn canberra_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     #[cfg(target_arch = "x86_64")]
     if is_x86_feature_detected!("avx") {
@@ -154,10 +156,11 @@ fn canberra_distance_fallback<N: Float, F: Float + 'static>(a: &[N], b: &[N]) ->
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct CanberraDistance;
+/// Canberra distance strategy (weighted L1 with normalization).
+pub struct Canberra;
 
-impl<N: Float, F: Float + 'static> DistanceMetric<[N], F> for CanberraDistance {}
-
-impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for CanberraDistance {
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for Canberra {
     fn distance(&self, a: &[N], b: &[N]) -> F { canberra_distance(a, b) }
+
+    fn is_metric(&self) -> bool { true }
 }

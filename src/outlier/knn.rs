@@ -1,6 +1,6 @@
 use super::common::{OutlierResult, for_each_knn, make_outlier_result};
 #[cfg(test)]
-use crate::distance::EuclideanDistance;
+use crate::distance::Euclidean;
 use crate::{DistanceData, Float, KnnSearch};
 
 /// Compute KNN-based outlier scores for each point in the data set.
@@ -49,7 +49,7 @@ mod tests {
     fn knn_outlier_ranks_remote_point_highest_vp() {
         let points = sample_points();
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
@@ -63,7 +63,7 @@ mod tests {
     fn knn_outlier_ranks_remote_point_highest_kd() {
         let points = sample_points();
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree = KdTree::new(&data, MaxVarianceSplit);
 
         let results = k_nearest_neighbors_outlier(&tree, &data, 2);
@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn knn_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 

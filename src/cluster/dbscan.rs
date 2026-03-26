@@ -88,7 +88,7 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::vptree::VPTree;
 
     #[test]
@@ -103,7 +103,7 @@ mod tests {
             vec![5.0, 5.0],
         ];
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(7);
         let tree = VPTree::new(&data, 2, &mut rng);
 
@@ -140,7 +140,7 @@ mod tests {
         ];
 
         for (min_points, expected_labels) in expected_cases {
-            let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+            let data = TableWithDistance::with_distance(&points, Euclidean);
             let mut rng = StdRng::seed_from_u64(7);
             let tree = VPTree::new(&data, 2, &mut rng);
 

@@ -1,6 +1,8 @@
 use crate::Float;
 use crate::distance::DistanceFunction;
 
+/// Histogram intersection distance:
+/// $$d_{HI}=1-\frac{\sum_i\min(a_i,b_i)}{\sum_i a_i}$$
 pub fn histogram_intersection_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     let d = a.len().min(b.len());
     let mut intersection = F::zero();
@@ -19,9 +21,10 @@ pub fn histogram_intersection_distance<N: Float, F: Float + 'static>(a: &[N], b:
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct HistogramIntersectionDistance;
+/// Histogram intersection distance strategy.
+pub struct HistogramIntersection;
 
-impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for HistogramIntersectionDistance {
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for HistogramIntersection {
     fn distance(&self, a: &[N], b: &[N]) -> F { histogram_intersection_distance(a, b) }
 }
 

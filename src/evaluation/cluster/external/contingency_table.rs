@@ -51,10 +51,14 @@ impl ClusterContingencyTable {
         let mut noise1 = vec![false; size1];
         let mut noise2 = vec![false; size2];
 
-        if let Some(noise) = noise_label1 && let Some(idx) = map1.get(&noise).copied() {
+        if let Some(noise) = noise_label1
+            && let Some(idx) = map1.get(&noise).copied()
+        {
             noise1[idx] = true;
         }
-        if let Some(noise) = noise_label2 && let Some(idx) = map2.get(&noise).copied() {
+        if let Some(noise) = noise_label2
+            && let Some(idx) = map2.get(&noise).copied()
+        {
             noise2[idx] = true;
         }
 

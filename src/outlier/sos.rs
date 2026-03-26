@@ -44,9 +44,7 @@ fn compute_h(distances: &[f64], beta: f64) -> (f64, Vec<f64>) {
     (h, p)
 }
 
-pub(crate) fn compute_pi(
-    distances: &[f64], perplexity: f64,
-) -> Vec<f64> {
+pub(crate) fn compute_pi(distances: &[f64], perplexity: f64) -> Vec<f64> {
     let log_perp = perplexity_to_entropy(perplexity);
     let mut beta = estimate_initial_beta(distances, perplexity);
     let mut betamin = f64::NEG_INFINITY;
@@ -72,7 +70,6 @@ pub(crate) fn compute_pi(
 
     p
 }
-
 
 pub fn stochastic_outlier_selection<'a, S, D, F>(
     tree: &S, data: &'a D, perplexity: f64,
@@ -133,14 +130,14 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
 
     #[test]
     fn sos_test() {
         let points = vec![vec![0.0], vec![0.1], vec![0.2], vec![10.0]];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree: crate::vptree::VPTree<f64> =
             crate::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
 
@@ -151,7 +148,7 @@ mod tests {
     #[test]
     fn sos_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: crate::vptree::VPTree<f64> = crate::vptree::VPTree::new(&data, 2, &mut rng);
 

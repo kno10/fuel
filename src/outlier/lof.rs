@@ -1,6 +1,6 @@
 use super::common::{OutlierResult, for_each_knn, make_outlier_result};
 #[cfg(test)]
-use crate::distance::EuclideanDistance;
+use crate::distance::Euclidean;
 use crate::{DistanceData, Float, KnnSearch};
 
 /// Compute Local Outlier Factor (LOF) scores.
@@ -101,7 +101,7 @@ mod tests {
         let points =
             vec![vec![0.0, 0.0], vec![0.1, 0.0], vec![0.0, 0.1], vec![0.1, 0.1], vec![6.0, 6.0]];
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(23);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
@@ -125,7 +125,7 @@ mod tests {
     fn lof_matches_sklearn_reference_values() {
         let points = vec![vec![1.0, 1.0], vec![1.0, 2.0], vec![2.0, 1.0]];
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(123);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
@@ -155,7 +155,7 @@ mod tests {
             vec![-4.0, 2.0],
         ];
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(777);
         let tree: VPTree<f64> = VPTree::new(&data, 4, &mut rng);
 
@@ -180,7 +180,7 @@ mod tests {
         points.extend((0..150).map(|i| vec![0.1 + (i as f64) * 0.001]));
         points.extend((0..10).map(|i| vec![50.0 + i as f64]));
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(20260301);
         let tree: VPTree<f64> = VPTree::new(&data, 8, &mut rng);
         let results = local_outlier_factor(&tree, &data, 5);
@@ -197,7 +197,7 @@ mod tests {
     #[test]
     fn lof_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 

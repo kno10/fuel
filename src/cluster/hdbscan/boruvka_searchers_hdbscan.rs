@@ -250,7 +250,7 @@ mod tests {
     use super::boruvka_searchers_hdbscan;
     use crate::TableWithDistance;
     use crate::cluster::hdbscan::hdbscan_prim;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::vptree::VPTree;
 
     #[test]
@@ -263,7 +263,7 @@ mod tests {
             vec![3.2, 3.1],
             vec![10.0, 10.0],
         ];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(23);
         let tree = VPTree::<f64>::new(&data, 3, &mut rng);
 
@@ -280,7 +280,7 @@ mod tests {
         let dim = 5;
         let points: Vec<Vec<f64>> =
             (0..n).map(|_| (0..dim).map(|_| rng.gen_range(0.0..1.0)).collect()).collect();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree = VPTree::<f64>::new(&data, n, &mut rng);
 
         for min_pts in [2, 5, 10] {
@@ -325,7 +325,7 @@ mod tests {
         let dim = 8;
         let points: Vec<Vec<f64>> =
             (0..n).map(|_| (0..dim).map(|_| rng.gen_range(0.0..1.0)).collect()).collect();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree = VPTree::<f64>::new(&data, n, &mut rng);
 
         let min_pts = 10;

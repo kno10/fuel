@@ -26,9 +26,9 @@ pub fn jensen_shannon_divergence<N: Float, F: Float + 'static>(a: &[N], b: &[N])
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct JensenShannonDistance;
+pub struct JensenShannon;
 
-impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for JensenShannonDistance {
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for JensenShannon {
     fn distance(&self, a: &[N], b: &[N]) -> F { jensen_shannon_divergence(a, b) }
 }
 

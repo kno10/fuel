@@ -30,6 +30,14 @@ pub trait Kernel<D: ?Sized, F: Float> {
     fn similarity(&self, x: &D, y: &D) -> F;
 }
 
+/// Allow using boxed kernels as trait objects.
+impl<D: ?Sized, F: Float, K> Kernel<D, F> for Box<K>
+where
+    K: Kernel<D, F> + ?Sized,
+{
+    fn similarity(&self, x: &D, y: &D) -> F { (**self).similarity(x, y) }
+}
+
 /// Compute a full symmetric kernel matrix for a point set using the given similarity function.
 ///
 /// The kernel function is expected to be symmetric; diagonal values are computed with the

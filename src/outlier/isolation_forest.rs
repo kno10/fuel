@@ -165,15 +165,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Data, TableWithDistance};
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
+    use crate::{Data, TableWithDistance};
 
     #[test]
     fn isolation_forest_test() {
         let points = vec![vec![0.0], vec![0.1], vec![0.2], vec![10.0]];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let results = isolation_forest(&data, 20, 3, 42);
         let (best_index, _) = results
             .scores
@@ -187,7 +187,7 @@ mod tests {
     #[test]
     fn isolation_forest_full_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
 
         let results = isolation_forest(&data, 100, data.size(), 42);
         let reference = load_reference_scores();

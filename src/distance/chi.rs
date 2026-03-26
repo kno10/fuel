@@ -1,14 +1,17 @@
 use crate::Float;
 use crate::distance::{DistanceFunction, chi_squared_distance};
 
+/// Chi distance:
+/// $$d_{\chi}(a,b)=\sqrt{\sum_i \frac{(a_i-b_i)^2}{a_i+b_i}}$$
 pub fn chi_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     chi_squared_distance::<N, F>(a, b).sqrt()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct ChiDistance;
+/// Chi distance strategy (a scaled chi-square formulation).
+pub struct Chi;
 
-impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for ChiDistance {
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for Chi {
     fn distance(&self, a: &[N], b: &[N]) -> F { chi_distance(a, b) }
 }
 

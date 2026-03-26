@@ -131,11 +131,11 @@ mod tests {
     use super::*;
     use crate::TableWithDistance;
     use crate::api::Data;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::vptree::VPTree;
 
-    fn make_simple_data()
-    -> (TableWithDistance<'static, f64, Vec<f64>, EuclideanDistance, f64>, VPTree<f64>) {
+    fn make_simple_data() -> (TableWithDistance<'static, f64, Vec<f64>, Euclidean, f64>, VPTree<f64>)
+    {
         // allocate the backing vector on the heap and leak it so that the
         // returned `MatrixDataAccess` can safely hold a `'static` reference.
         let leaked: &'static mut Vec<Vec<f64>> = Box::leak(Box::new(vec![
@@ -145,7 +145,7 @@ mod tests {
             vec![0.1, 0.1],
             vec![6.0, 6.0],
         ]));
-        let data = TableWithDistance::with_distance(leaked, EuclideanDistance);
+        let data = TableWithDistance::with_distance(leaked, Euclidean);
         let mut rng = StdRng::seed_from_u64(42);
         let tree = VPTree::new(&data, 2, &mut rng);
         (data, tree)
@@ -160,7 +160,7 @@ mod tests {
             .scores
             .iter()
             .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
             .unwrap();
 
         assert_eq!(best_index, 4);
@@ -174,7 +174,7 @@ mod tests {
             .scores
             .iter()
             .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
             .unwrap();
         assert_eq!(best_index, 4);
     }

@@ -47,7 +47,9 @@ fn read_comma_separated(path: &str, limit: Option<usize>) -> Result<Vec<Vec<f64>
     let mut expected_dims: Option<usize> = None;
 
     for (line_no, record_result) in reader.records().enumerate() {
-        if let Some(limit) = limit && rows.len() >= limit {
+        if let Some(limit) = limit
+            && rows.len() >= limit
+        {
             break;
         }
         let record = record_result?;
@@ -105,7 +107,9 @@ fn read_whitespace_separated(
     let mut expected_dims: Option<usize> = None;
 
     for (line_no, line_result) in reader.lines().enumerate() {
-        if let Some(limit) = limit && rows.len() >= limit {
+        if let Some(limit) = limit
+            && rows.len() >= limit
+        {
             break;
         }
         let line = line_result?;

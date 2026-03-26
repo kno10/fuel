@@ -46,10 +46,8 @@ where
                 if j == idx {
                     continue;
                 }
-                let shared = query_neighbors
-                    .iter()
-                    .filter(|&&v| neighbor_list.contains(&v))
-                    .count();
+                let shared =
+                    query_neighbors.iter().filter(|&&v| neighbor_list.contains(&v)).count();
                 similarities.push((j, shared));
             }
 
@@ -130,13 +128,13 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::vptree::VPTree;
 
     #[test]
     fn sod_remote_outlier_highest() {
         let points = vec![vec![0.0], vec![0.1], vec![0.2], vec![10.0]];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
@@ -154,7 +152,7 @@ mod tests {
     #[test]
     fn sod_10_matches_reference_outlier_score() {
         let points = crate::outlier::common::load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 

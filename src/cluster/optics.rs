@@ -4,7 +4,7 @@ use std::collections::BinaryHeap;
 use crate::api::RangeSearch;
 use crate::cluster::dbscan::NOISE;
 #[cfg(test)]
-use crate::distance::EuclideanDistance;
+use crate::distance::Euclidean;
 use crate::{DistanceData, Float, IndexQuery};
 
 #[derive(Debug, Clone, Copy)]
@@ -461,7 +461,7 @@ mod tests {
             vec![5.0, 5.0],
         ];
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(7);
         let tree = VPTree::new(&data, 2, &mut rng);
 
@@ -490,7 +490,7 @@ mod tests {
     fn optics_returns_full_ordering() {
         let points = vec![vec![0.0, 0.0], vec![0.2, 0.0], vec![0.4, 0.0], vec![0.6, 0.0]];
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(99);
         let tree = VPTree::new(&data, 2, &mut rng);
 
@@ -552,7 +552,7 @@ mod tests {
     fn optics_matches_sklearn_processing_order_reference() {
         let points = vec![vec![0.0], vec![10.0], vec![-10.0], vec![25.0]];
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(1234);
         let tree = VPTree::new(&data, 1, &mut rng);
 
@@ -716,7 +716,7 @@ mod tests {
             3.0321982337972537,
         ];
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(0);
         let tree = VPTree::new(&data, 4, &mut rng);
 

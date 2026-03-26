@@ -6,7 +6,7 @@ use std::arch::x86_64::{
 };
 
 use crate::Float;
-use crate::distance::{DistanceFunction, DistanceMetric};
+use crate::distance::DistanceFunction;
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx,fma")]
@@ -127,10 +127,7 @@ fn cosine_similarity<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
 
 fn cosine_similarity_fallback<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     let d = a.len().min(b.len());
-    let mut dot = F::zero();
-    let mut norm_a = F::zero();
-    let mut norm_b = F::zero();
-
+    let (mut dot, mut norm_a, mut norm_b) = (F::zero(), F::zero(), F::zero());
     for i in 0..d {
         unsafe {
             let left: F = (*a.get_unchecked(i)).to_float::<F>();
@@ -145,28 +142,34 @@ fn cosine_similarity_fallback<N: Float, F: Float + 'static>(a: &[N], b: &[N]) ->
     if denominator == F::zero() { F::one() } else { dot / denominator }
 }
 
+/// Cosine distance:
+/// $$d_{cos}(a,b)=1-\frac{a\cdot b}{\|a\|\,\|b\|}$$
 pub fn cosine_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     F::one() - cosine_similarity(a, b)
 }
 
+/// Arccosine distance:
+/// $$d_{acos}(a,b)=\arccos\left(\frac{a\cdot b}{\|a\|\,\|b\|}\right)$$
 pub fn arccosine_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
-    cosine_similarity::<N, F>(a, b).max(-F::one()).min(F::one()).acos()
+    cosine_similarity::<N, F>(a, b).clamp(-F::one(), F::one()).acos()
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct CosineDistance;
+/// Cosine distance strategy (1 - cosine similarity).
+pub struct Cosine;
 
-impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for CosineDistance {
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for Cosine {
     fn distance(&self, a: &[N], b: &[N]) -> F { cosine_distance(a, b) }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct ArccosineDistance;
+/// Arccosine distance strategy (angle-based distance).
+pub struct Arccosine;
 
-impl<N: Float, F: Float + 'static> DistanceMetric<[N], F> for ArccosineDistance {}
-
-impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for ArccosineDistance {
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for Arccosine {
     fn distance(&self, a: &[N], b: &[N]) -> F { arccosine_distance(a, b) }
+
+    fn is_metric(&self) -> bool { true }
 }
 
 #[cfg(test)]

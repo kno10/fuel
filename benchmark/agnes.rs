@@ -25,15 +25,12 @@ fn main() {
 fn run() -> Result<(), Box<dyn Error>> {
     let mut args = std::env::args().skip(1);
 
-    let csv_path = args
-        .next()
-        .ok_or("usage: cargo run --features benchmark --bin agnes_benchmark -- <csv_path> <k> <linkage>")?;
+    let csv_path = args.next().ok_or(
+        "usage: cargo run --features benchmark --bin agnes_benchmark -- <csv_path> <k> <linkage>",
+    )?;
 
-    let k: usize = args
-        .next()
-        .ok_or("missing k")?
-        .parse()
-        .map_err(|_| "k must be a positive integer")?;
+    let k: usize =
+        args.next().ok_or("missing k")?.parse().map_err(|_| "k must be a positive integer")?;
 
     if k == 0 {
         return Err("k must be greater than 0".into());

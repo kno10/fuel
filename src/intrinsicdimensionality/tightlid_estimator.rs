@@ -124,7 +124,7 @@ impl KNNIDEstimator for TightLID {
 mod tests {
     use super::*;
     use crate::data::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::intrinsicdimensionality::test::make_intrinsic_subspace_data;
     use crate::kd::{KdTree, LargestSpreadSplit};
 
@@ -138,7 +138,7 @@ mod tests {
             vec![2.0, 2.0],
             vec![3.0, 1.0],
         ];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree = KdTree::new(&data, LargestSpreadSplit);
 
         let est = TightLID::estimate_from_knn(&tree, &data, 0, 4);
@@ -149,7 +149,7 @@ mod tests {
     #[test]
     fn tightlid_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(10000, 0);
-        let table = TableWithDistance::with_distance(&data, EuclideanDistance);
+        let table = TableWithDistance::with_distance(&data, Euclidean);
         let tree = KdTree::new(&table, LargestSpreadSplit);
 
         let est = TightLID::estimate_from_knn(&tree, &table, 0, 200);

@@ -1,13 +1,9 @@
-use crate::outlier::common::{for_each_knn, make_outlier_result, OutlierResult};
+use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
 use crate::outlier::kernel::KernelDensityFunction;
 use crate::{DistanceData, Float, KnnSearch, VectorData};
 
 pub fn simple_kd_lof<'a, S, D, F>(
-    tree: &S,
-    data: &'a D,
-    k: usize,
-    _h: f64,
-    kernel: KernelDensityFunction,
+    tree: &S, data: &'a D, k: usize, _h: f64, kernel: KernelDensityFunction,
 ) -> OutlierResult<F>
 where
     F: Float + Send + Sync,
@@ -69,11 +65,7 @@ where
             sum += kernel.density(v) / max_dist.powf(dim);
         }
 
-        density[i] = if !neigh.is_empty() {
-            sum / (neigh.len() as f64)
-        } else {
-            0.0
-        };
+        density[i] = if !neigh.is_empty() { sum / (neigh.len() as f64) } else { 0.0 };
     }
 
     let scores: Vec<F> = (0..size)
@@ -81,11 +73,8 @@ where
             let own = density[i];
             let neigh = &neighborhoods[i];
             let sum_neighbors: f64 = neigh.iter().map(|(idx, _)| density[*idx]).sum();
-            let mean_neighbors = if !neigh.is_empty() {
-                sum_neighbors / (neigh.len() as f64)
-            } else {
-                0.0
-            };
+            let mean_neighbors =
+                if !neigh.is_empty() { sum_neighbors / (neigh.len() as f64) } else { 0.0 };
 
             let score = if own.is_nan() || own <= 0.0 {
                 1.0
@@ -99,14 +88,7 @@ where
         })
         .collect();
 
-    make_outlier_result(
-        scores,
-        "KDLOF",
-        false,
-        F::zero(),
-        F::zero(),
-        F::infinity(),
-    )
+    make_outlier_result(scores, "KDLOF", false, F::zero(), F::zero(), F::infinity())
 }
 
 #[cfg(test)]
@@ -115,14 +97,14 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
 
     #[test]
     fn simple_kd_lof_remote_outlier() {
         let points = vec![vec![0.0], vec![0.1], vec![0.2], vec![10.0]];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree: crate::vptree::VPTree<f64> =
             crate::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
 
@@ -139,7 +121,7 @@ mod tests {
     #[test]
     fn simple_kd_lof_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: crate::vptree::VPTree<f64> = crate::vptree::VPTree::new(&data, 2, &mut rng);
 

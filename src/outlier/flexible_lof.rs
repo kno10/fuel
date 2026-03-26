@@ -107,7 +107,7 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
 
     #[test]
     fn flexible_lof_remote_is_outlier() {
@@ -119,7 +119,7 @@ mod tests {
             vec![0.05, 0.05],
             vec![5.0, 5.0],
         ];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree: crate::vptree::VPTree<f64> =
             crate::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
 

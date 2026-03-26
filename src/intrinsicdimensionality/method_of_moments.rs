@@ -69,10 +69,8 @@ mod tests {
     #[test]
     fn mom_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(10000, 0);
-        let table = crate::data::TableWithDistance::with_distance(
-            &data,
-            crate::distance::EuclideanDistance,
-        );
+        let table =
+            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
         let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
 
         let estimate = MethodOfMoments::estimate_from_knn(&tree, &table, 0, 100);

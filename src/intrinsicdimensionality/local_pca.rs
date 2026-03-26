@@ -141,7 +141,7 @@ impl LocalPCAID {
 mod tests {
     use super::*;
     use crate::data::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::intrinsicdimensionality::test::make_intrinsic_subspace_data;
     use crate::kd::{AxisCycleSplit, KdTree};
 
@@ -149,7 +149,7 @@ mod tests {
     fn local_pca_estimator_linspace() {
         let points =
             vec![vec![0.0, 0.0], vec![1.0, 1.0], vec![2.0, 2.0], vec![3.0, 3.0], vec![4.0, 4.0]];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree = KdTree::new(&data, AxisCycleSplit);
 
         let dim = LocalPCAID::estimate_from_knn(&tree, &data, 0, 4, 0.95);
@@ -160,7 +160,7 @@ mod tests {
     fn local_pca_estimator_full_plane() {
         let points =
             vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 1.0], vec![1.0, 1.0], vec![2.0, 2.0]];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree = KdTree::new(&data, AxisCycleSplit);
 
         let dim = LocalPCAID::estimate_from_knn(&tree, &data, 0, 4, 0.95);
@@ -170,10 +170,8 @@ mod tests {
     #[test]
     fn local_pca_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(1000, 0);
-        let table = crate::data::TableWithDistance::with_distance(
-            &data,
-            crate::distance::EuclideanDistance,
-        );
+        let table =
+            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
         let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
 
         let estimate = LocalPCAID::estimate_from_knn(&tree, &table, 0, 100, 0.95);

@@ -9,7 +9,7 @@ use std::arch::x86_64::{
 };
 
 use crate::Float;
-use crate::distance::{DistanceFunction, DistanceMetric};
+use crate::distance::DistanceFunction;
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx")]
@@ -97,6 +97,8 @@ unsafe fn clark_distance_f64_avx(a: &[f64], b: &[f64]) -> f64 {
     sum.sqrt()
 }
 
+/// Clark distance:
+/// $$d_{CL}(a,b)=\sqrt{\sum_i \left(\frac{a_i-b_i}{a_i+b_i}\right)^2}$$
 pub fn clark_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     #[cfg(target_arch = "x86_64")]
     if is_x86_feature_detected!("avx") {
@@ -165,10 +167,11 @@ fn clark_distance_fallback<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F 
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct ClarkDistance;
+/// Clark distance strategy (square-root scaled L2 over sum).
+pub struct Clark;
 
-impl<N: Float, F: Float + 'static> DistanceMetric<[N], F> for ClarkDistance {}
-
-impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for ClarkDistance {
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for Clark {
     fn distance(&self, a: &[N], b: &[N]) -> F { clark_distance(a, b) }
+
+    fn is_metric(&self) -> bool { true }
 }

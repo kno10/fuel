@@ -90,7 +90,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::api::DistanceData;
-    use crate::distance::SquaredEuclideanDistance;
+    use crate::distance::SquaredEuclidean;
     use crate::kd::{AxisCycleSplit, KdTree, LargestSpreadSplit, MaxVarianceSplit};
     use crate::{CoordinateQuery, DistPair, KnnSearch, RangeSearch, TableWithDistance};
 
@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn search_knn_returns_nearest() {
         let points = sample_points();
-        let data = TableWithDistance::with_distance(&points, SquaredEuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, SquaredEuclidean);
         let tree = KdTree::new(&data, MaxVarianceSplit);
         let query = data.query().with_coordinates(&points[0]);
         let neighbors: Vec<DistPair<f64>> = tree.search_knn(&query, 3);
@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn range_search_finds_close_points() {
         let points = sample_points();
-        let data = TableWithDistance::with_distance(&points, SquaredEuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, SquaredEuclidean);
         let tree = KdTree::new(&data, MaxVarianceSplit);
         let query = data.query().with_coordinates(&points[0]);
         let result: Vec<DistPair<f64>> = tree.search_range(&query, 1.01);
@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn zero_k_returns_empty() {
         let points = sample_points();
-        let data = TableWithDistance::with_distance(&points, SquaredEuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, SquaredEuclidean);
         let tree = KdTree::new(&data, MaxVarianceSplit);
         let query = data.query().with_coordinates(&points[0]);
         let result: Vec<DistPair<f64>> = tree.search_knn(&query, 0);
@@ -139,7 +139,7 @@ mod tests {
     #[test]
     fn manhattan_range_respects_l1_radius() {
         let points = sample_points();
-        let data = TableWithDistance::with_distance(&points, SquaredEuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, SquaredEuclidean);
         let tree = KdTree::new(&data, MaxVarianceSplit);
         let query = data.query().with_coordinates(&points[0]);
         let result: Vec<DistPair<f64>> = tree.search_range(&query, 2.0);
@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn minkowski_with_two_matches_euclidean_knn() {
         let points = sample_points();
-        let data = TableWithDistance::with_distance(&points, SquaredEuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, SquaredEuclidean);
         let euclid = KdTree::new(&data, MaxVarianceSplit);
         let minkowski = KdTree::new(&data, MaxVarianceSplit);
 
@@ -173,8 +173,8 @@ mod tests {
     #[test]
     fn axis_cycle_strategy_is_available() {
         let points = sample_points();
-        let data: TableWithDistance<'_, f64, Vec<f64>, SquaredEuclideanDistance, f64> =
-            TableWithDistance::with_distance(&points, SquaredEuclideanDistance);
+        let data: TableWithDistance<'_, f64, Vec<f64>, SquaredEuclidean, f64> =
+            TableWithDistance::with_distance(&points, SquaredEuclidean);
         let tree = KdTree::new(&data, AxisCycleSplit);
         assert_eq!(tree.len(), points.len());
     }
@@ -182,8 +182,8 @@ mod tests {
     #[test]
     fn largest_spread_strategy_is_available() {
         let points = sample_points();
-        let data: TableWithDistance<'_, f64, Vec<f64>, SquaredEuclideanDistance, f64> =
-            TableWithDistance::with_distance(&points, SquaredEuclideanDistance);
+        let data: TableWithDistance<'_, f64, Vec<f64>, SquaredEuclidean, f64> =
+            TableWithDistance::with_distance(&points, SquaredEuclidean);
         let tree = KdTree::new(&data, LargestSpreadSplit);
         assert_eq!(tree.len(), points.len());
     }

@@ -21,9 +21,7 @@ where
         .map(|i| {
             let d = knn_distances[i].to_f64().unwrap_or(0.0);
             let neighbor_idx = neighborhoods[i].last().map(|(idx, _)| *idx);
-            let nd = neighbor_idx
-                .map(|j| knn_distances[j].to_f64().unwrap_or(0.0))
-                .unwrap_or(0.0);
+            let nd = neighbor_idx.map(|j| knn_distances[j].to_f64().unwrap_or(0.0)).unwrap_or(0.0);
 
             let sc = if nd > 0.0 {
                 d / nd
@@ -46,14 +44,14 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
 
     #[test]
     fn knndd_test() {
         let points = vec![vec![0.0], vec![0.1], vec![1.0], vec![100.0]];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree: crate::vptree::VPTree<f64> =
             crate::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
 
@@ -70,7 +68,7 @@ mod tests {
     #[test]
     fn knndd_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: crate::vptree::VPTree<f64> = crate::vptree::VPTree::new(&data, 2, &mut rng);
 

@@ -7,8 +7,8 @@ use std::arch::x86_64::{
 };
 
 use crate::Float;
-use crate::distance::partial::PartialDistance;
-use crate::distance::{DistanceFunction, DistanceMetric};
+use crate::distance::DistanceFunction;
+use crate::distance::partial::Partial;
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx")]
@@ -66,6 +66,8 @@ unsafe fn manhattan_distance_f64_avx(a: &[f64], b: &[f64]) -> f64 {
     sum
 }
 
+/// Manhattan distance (L1 norm):
+/// $$d_1(a,b)=\sum_i |a_i-b_i|$$
 pub fn manhattan_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     #[cfg(target_arch = "x86_64")]
     if is_x86_feature_detected!("avx") {
@@ -122,15 +124,16 @@ fn manhattan_distance_fallback<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct ManhattanDistance;
+/// Manhattan distance strategy (L1 norm).
+pub struct Manhattan;
 
-impl<N: Float, F: Float + 'static> DistanceMetric<[N], F> for ManhattanDistance {}
-
-impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for ManhattanDistance {
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for Manhattan {
     fn distance(&self, a: &[N], b: &[N]) -> F { manhattan_distance(a, b) }
+
+    fn is_metric(&self) -> bool { true }
 }
 
-impl<F: Float + Copy> PartialDistance<F, F> for ManhattanDistance {
+impl<F: Float + Copy> Partial<F, F> for Manhattan {
     fn axis_distance(&self, delta: F) -> F { delta.abs() }
 
     fn combine_axis_distances(&self, a: F, b: F) -> F { a + b }

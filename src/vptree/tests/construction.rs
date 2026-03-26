@@ -2,7 +2,7 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 
 use crate::api::Data;
-use crate::distance::EuclideanDistance;
+use crate::distance::Euclidean;
 use crate::vptree::VPTree;
 use crate::vptree::tests::shared::get_all_neighbors;
 use crate::{DistPair, DistanceData, IndexQuery, TableWithDistance};
@@ -11,7 +11,7 @@ use crate::{DistPair, DistanceData, IndexQuery, TableWithDistance};
 fn test_vptree_construction() {
     let points =
         vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 1.0], vec![1.0, 1.0], vec![2.0, 2.0]];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(42);
 
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
@@ -36,7 +36,7 @@ fn test_vp_tree_with_sampling() {
         vec![4.0, 4.0],
         vec![5.0, 5.0],
     ];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(42);
 
     let tree: VPTree<f64> = VPTree::new(&dataset, 3, rng);
@@ -60,7 +60,7 @@ fn test_sample_size_one_supports_all_searchers() {
         vec![2.0, 2.0],
         vec![3.0, 1.0],
     ];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(1234);
 
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
@@ -91,7 +91,7 @@ fn test_sample_size_one_supports_all_searchers() {
 #[test]
 fn test_matrix_data_access_supports_f32_points() {
     let points = vec![vec![0.0_f32, 0.0_f32], vec![3.0_f32, 4.0_f32]];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
 
     let dist = DistanceData::<f32>::distance(&dataset, 0, 1);
     assert!((dist - 5.0).abs() < 1e-6);

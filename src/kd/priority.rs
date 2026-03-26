@@ -125,7 +125,9 @@ where
                 && self.heap.peek().is_none_or(|entry| entry.mindist >= candidate.distance)
             {
                 let cand = self.candidates.pop();
-                if let Some(c) = &cand && c.distance < self.skip_threshold {
+                if let Some(c) = &cand
+                    && c.distance < self.skip_threshold
+                {
                     continue;
                 }
                 return cand;
@@ -235,7 +237,7 @@ mod tests {
 
     use super::*;
     use crate::api::{DistanceData, PrioritySearcher};
-    use crate::distance::{EuclideanDistance, SquaredEuclideanDistance};
+    use crate::distance::{Euclidean, SquaredEuclidean};
     use crate::kd::MaxVarianceSplit;
     use crate::{CoordinateQuery, KnnSearch, TableWithDistance};
 
@@ -246,7 +248,7 @@ mod tests {
     #[test]
     fn priority_search_produces_knn_in_order() {
         let points = sample_points();
-        let data = TableWithDistance::with_distance(&points, SquaredEuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, SquaredEuclidean);
         let tree = KdTree::new(&data, MaxVarianceSplit);
 
         let query = data.query().with_coordinates(&points[0]);
@@ -271,8 +273,8 @@ mod tests {
     #[test]
     fn priority_search_can_decrease_cutoff() {
         let points = sample_points();
-        let data: TableWithDistance<'_, f64, Vec<f64>, EuclideanDistance, f64> =
-            TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data: TableWithDistance<'_, f64, Vec<f64>, Euclidean, f64> =
+            TableWithDistance::with_distance(&points, Euclidean);
         let tree = KdTree::new(&data, MaxVarianceSplit);
         let mut searcher = crate::kd::priority::KdTreePrioritySearcher::new(&tree);
         searcher.decrease_cutoff(0.5);

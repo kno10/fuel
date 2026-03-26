@@ -84,13 +84,13 @@ impl KNNIDEstimator for ALID {
 mod tests {
     use super::*;
     use crate::data::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::intrinsicdimensionality::test::make_intrinsic_subspace_data;
 
     #[test]
     fn alid_estimator_smoke() {
         let data = make_intrinsic_subspace_data(1000, 0);
-        let table = TableWithDistance::with_distance(&data, EuclideanDistance);
+        let table = TableWithDistance::with_distance(&data, Euclidean);
         let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
         let estimate = ALID::estimate_from_knn(&tree, &table, 0, 200);
         let expected = 5.399605402602233;

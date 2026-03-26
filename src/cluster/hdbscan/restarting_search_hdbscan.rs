@@ -133,7 +133,7 @@ mod tests {
     use crate::api::Data;
     use crate::cluster::hdbscan::extraction::extract_clusters_with_noise;
     use crate::cluster::hdbscan::{buffered_search_hdbscan, hdbscan_prim};
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::vptree::VPTree;
 
     #[test]
@@ -146,7 +146,7 @@ mod tests {
             vec![3.2, 3.1],
             vec![10.0, 10.0],
         ];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(11);
         let tree = VPTree::<f64>::new(&data, 3, &mut rng);
 
@@ -162,7 +162,7 @@ mod tests {
         let points: Vec<Vec<f64>> =
             (0..30).map(|_| vec![rng.r#gen::<f64>(), rng.r#gen::<f64>()]).collect();
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree = VPTree::<f64>::new(&data, 3, &mut rng);
 
         let hist_r = restarting_search_hdbscan(&tree, &data, 2);

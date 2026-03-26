@@ -194,7 +194,7 @@ fn worst_candidate<F: Float>(buffer: &[DistPair<F>]) -> DistPair<F> {
 
 /// Replace the worst entry in the buffer with `item`.
 fn replace_worst<F: Float>(buffer: &mut [DistPair<F>], item: DistPair<F>) {
-    if let Some(idx) = buffer.iter().enumerate().min_by_key(|(_, v)| *v).map(|(i, _)| i) { 
+    if let Some(idx) = buffer.iter().enumerate().min_by_key(|(_, v)| *v).map(|(i, _)| i) {
         buffer[idx] = item;
     }
 }
@@ -215,7 +215,7 @@ mod tests {
     use super::*;
     use crate::TableWithDistance;
     use crate::data::CondensedDistanceMatrix;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::vptree::VPTree;
 
     fn condensed_abs_1d(points: &[Vec<f64>]) -> Vec<f64> {
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn buffered_matches_slink_on_unique_1d_distances() {
         let points = vec![vec![0.0], vec![1.1], vec![3.7], vec![10.2], vec![20.5]];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(11);
         let tree = VPTree::new(&data, 3, &mut rng);
 

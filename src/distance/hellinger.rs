@@ -1,6 +1,8 @@
 use super::DistanceFunction;
 use crate::Float;
 
+/// Hellinger distance:
+/// $$d_H(a,b)=\sqrt{1-\sum_i\sqrt{a_i b_i}}$$
 pub fn hellinger_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     let d = a.len().min(b.len());
     let mut sum = F::zero();
@@ -21,9 +23,10 @@ pub fn hellinger_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct HellingerDistance;
+/// Hellinger distance strategy for probability vectors.
+pub struct Hellinger;
 
-impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for HellingerDistance {
+impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for Hellinger {
     fn distance(&self, a: &[N], b: &[N]) -> F { hellinger_distance(a, b) }
 }
 

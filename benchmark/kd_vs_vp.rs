@@ -464,10 +464,7 @@ where
     let mut candidates: BinaryHeap<MaxDistance> = BinaryHeap::new();
     loop {
         if candidates.len() == rank
-            && candidates
-                .peek()
-                .map(|worst| searcher.all_lower_bound() >= worst.0)
-                .unwrap_or(false)
+            && candidates.peek().map(|worst| searcher.all_lower_bound() >= worst.0).unwrap_or(false)
         {
             return candidates.peek().map(|worst| worst.0);
         }
@@ -494,9 +491,7 @@ struct MaxDistance(f64);
 impl Eq for MaxDistance {}
 
 impl PartialOrd for MaxDistance {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> { Some(self.cmp(other)) }
 }
 
 impl Ord for MaxDistance {

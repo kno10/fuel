@@ -6,14 +6,14 @@ use rand::{Rng, SeedableRng};
 use super::super::VPTree;
 use super::shared::brute_force_knn;
 use crate::api::Data;
-use crate::distance::EuclideanDistance;
+use crate::distance::Euclidean;
 use crate::{CoordinateQuery, DistanceData, DistanceSearch, IndexQuery, TableWithDistance};
 
 #[test]
 fn test_search_knn_small_dataset() {
     let points =
         vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 1.0], vec![1.0, 1.0], vec![2.0, 2.0]];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(42);
 
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
@@ -38,7 +38,7 @@ fn test_search_knn_small_dataset() {
 #[test]
 fn test_edge_cases() {
     let points = vec![vec![0.0, 0.0]];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(42);
 
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
@@ -62,7 +62,7 @@ fn test_grid_search() {
             points.push(vec![f64::from(x), f64::from(y)]);
         }
     }
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(42);
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
 
@@ -89,7 +89,7 @@ fn test_knn_against_brute_force() {
             points.push(vec![f64::from(x), f64::from(y)]);
         }
     }
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(42);
     let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
 
@@ -133,7 +133,7 @@ fn test_knn_matches_bruteforce_multiple_queries() {
         ]);
     }
 
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(123);
     let tree: VPTree<f64> = VPTree::new(&dataset, 4, rng);
 
@@ -190,7 +190,7 @@ fn test_knn_with_k_larger_than_dataset() {
         vec![3.0, 1.0],
         vec![1.0, 3.0],
     ];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(7);
     let tree: VPTree<f64> = VPTree::new(&dataset, 2, rng);
 
@@ -224,7 +224,7 @@ fn test_knn_self_is_nearest_for_all_queries() {
         vec![0.7, 3.5],
         vec![-1.6, -2.2],
     ];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(99);
     let tree: VPTree<f64> = VPTree::new(&dataset, 3, rng);
 
@@ -246,7 +246,7 @@ fn test_knn_random_fixed_seed_top5_matches_bruteforce() {
         points.push(vec![rng.gen_range(-500.0..500.0), rng.gen_range(-500.0..500.0)]);
     }
 
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let tree_rng = &mut StdRng::seed_from_u64(424_242);
     let tree: VPTree<f64> = VPTree::new(&dataset, 8, tree_rng);
 
@@ -301,7 +301,7 @@ fn test_knn_with_external_query_data_matches_bruteforce() {
     ];
 
     let query = vec![0.5, 0.25];
-    let dataset = TableWithDistance::with_distance(&points, EuclideanDistance);
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
     let rng = &mut StdRng::seed_from_u64(20_260_301);
     let tree: VPTree<f64> = VPTree::new(&dataset, 2, rng);
 

@@ -116,7 +116,7 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
     use crate::vptree::VPTree;
@@ -124,7 +124,7 @@ mod tests {
     #[test]
     fn fast_abod_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn fast_and_lbabod_poly2_smoke() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
 
         let kernel = crate::kernel::polynomial::PolynomialKernel::new(2, 1.0, 0.0);
         let _fast =

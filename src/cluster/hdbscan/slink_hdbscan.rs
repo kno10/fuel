@@ -70,14 +70,14 @@ mod tests {
     use super::slink_hdbscan;
     use crate::TableWithDistance;
     use crate::cluster::hdbscan::HdbscanHierarchy;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
 
     #[test]
     fn slink_hdbscan_produces_complete_hierarchy() {
         let points =
             vec![vec![0.0, 0.0], vec![0.1, 0.0], vec![3.0, 3.0], vec![3.2, 3.1], vec![10.0, 10.0]];
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let result: HdbscanHierarchy<f64> = slink_hdbscan(&data, 2);
 
         assert_eq!(result.core_distances.len(), points.len());

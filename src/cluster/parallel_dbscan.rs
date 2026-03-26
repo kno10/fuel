@@ -154,13 +154,13 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::vptree::VPTree;
 
     fn build_tree<'a>(
         points: &'a [Vec<f64>],
-    ) -> (TableWithDistance<'a, f64, Vec<f64>, EuclideanDistance, f64>, VPTree<f64>) {
-        let data = TableWithDistance::with_distance(points, EuclideanDistance);
+    ) -> (TableWithDistance<'a, f64, Vec<f64>, Euclidean, f64>, VPTree<f64>) {
+        let data = TableWithDistance::with_distance(points, Euclidean);
         let mut rng = StdRng::seed_from_u64(7);
         let tree = VPTree::new(&data, 2, &mut rng);
         (data, tree)

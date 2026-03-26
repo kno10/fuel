@@ -1,6 +1,7 @@
-#[cfg(test)]
-use crate::distance::EuclideanDistance;
 use rs_stats::prob::erf;
+
+#[cfg(test)]
+use crate::distance::Euclidean;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
 use crate::{DistanceData, Float, KnnSearch};
 
@@ -109,7 +110,7 @@ mod tests {
     fn loop_matches_sklearn_reference_values() {
         let points = vec![vec![-1.1], vec![0.2], vec![101.1], vec![0.3]];
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(123);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
@@ -130,7 +131,7 @@ mod tests {
     #[test]
     fn loop_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 

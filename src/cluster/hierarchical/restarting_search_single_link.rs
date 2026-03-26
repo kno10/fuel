@@ -129,7 +129,7 @@ mod tests {
     use super::*;
     use crate::TableWithDistance;
     use crate::cluster::hierarchical::buffered_search_single_link;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::vptree::VPTree;
 
     /// Ensure that restarting search produces the same merge history as a
@@ -141,7 +141,7 @@ mod tests {
         let points: Vec<Vec<f64>> =
             (0..20).map(|_| vec![rng.r#gen::<f64>(), rng.r#gen::<f64>()]).collect();
 
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree = VPTree::<f64>::new(&data, 3, &mut rng);
 
         let hist_r = restarting_search_single_link(&tree, &data);

@@ -56,7 +56,9 @@ where
         if sqd_ab.is_nan() || sqd_ab <= F::zero() {
             continue;
         }
-        for (_b, &(sqd_ac, idx_ac, sim_ac)) in neighbors.iter().enumerate().skip(a + 1).take(k_effective - a - 1) {
+        for (_b, &(sqd_ac, idx_ac, sim_ac)) in
+            neighbors.iter().enumerate().skip(a + 1).take(k_effective - a - 1)
+        {
             if sqd_ac.is_nan() || sqd_ac <= F::zero() {
                 continue;
             }
@@ -173,14 +175,14 @@ where
 mod tests {
     use super::*;
     use crate::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
 
     #[test]
     fn lbabod_10_poly2_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
 
         let kernel = crate::kernel::polynomial::PolynomialKernel::new(2, 1.0, 0.0);
         let _fast = crate::outlier::fast_abod::fast_angle_based_outlier_detection_kernel(

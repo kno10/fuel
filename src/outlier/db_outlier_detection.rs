@@ -36,7 +36,7 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
-    use crate::distance::EuclideanDistance;
+    use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
 
@@ -50,7 +50,7 @@ mod tests {
             vec![0.05, 0.05],
             vec![5.0, 5.0],
         ];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(0);
         let tree = crate::vptree::VPTree::new(&data, 2, &mut rng);
         let results = db_outlier_detection(&tree, &data, 0.2, 0.2);
@@ -66,7 +66,7 @@ mod tests {
     #[test]
     fn db_outlier_detection_matches_reference_outlier_score() {
         let points = load_gaussian4d_points();
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree = crate::vptree::VPTree::new(&data, 2, &mut rng);
 
@@ -87,7 +87,7 @@ mod tests {
     #[test]
     fn db_outlier_detection_counts_self_behavior() {
         let points = vec![vec![0.0], vec![0.1], vec![100.0]];
-        let data = TableWithDistance::with_distance(&points, EuclideanDistance);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree = crate::vptree::VPTree::new(&data, 2, &mut rng);
 
