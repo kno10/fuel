@@ -1,11 +1,9 @@
-use std::collections::BinaryHeap;
-
 use super::hdbscan_common::{HdbscanHierarchy, compute_core_distances_tree};
 use crate::api::DistanceData;
 use crate::cluster::hierarchical::common::BufferedNeighbors;
 use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
 use crate::{
-    DistPair, DistanceSearch, Float, IndexQuery, KnnSearch, PrioritySearcher,
+    CandidateHeap, DistPair, DistanceSearch, Float, IndexQuery, KnnSearch, PrioritySearcher,
     PrioritySearcherFactory,
 };
 /// Lazy buffered-search HDBSCAN MST.
@@ -34,7 +32,7 @@ where
     }
 
     let mut builder = ClusterBuilder::new(n);
-    let mut heap = BinaryHeap::<DistPair<F>>::new();
+    let mut heap = CandidateHeap::<F>::new();
     let mut neighbor_buffers: Vec<BufferedNeighbors<F>> =
         (0..n).map(|_| BufferedNeighbors::new()).collect();
     let mut thresholds = vec![F::infinity(); n];

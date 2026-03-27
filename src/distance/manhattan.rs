@@ -8,7 +8,7 @@ use std::arch::x86_64::{
 
 use crate::Float;
 use crate::distance::DistanceFunction;
-use crate::distance::partial::Partial;
+use crate::distance::partial::PartialDistance;
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx")]
@@ -133,7 +133,7 @@ impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for Manhattan {
     fn is_metric(&self) -> bool { true }
 }
 
-impl<F: Float + Copy> Partial<F, F> for Manhattan {
+impl<F: Float + Copy> PartialDistance<F, F> for Manhattan {
     fn axis_distance(&self, delta: F) -> F { delta.abs() }
 
     fn combine_axis_distances(&self, a: F, b: F) -> F { a + b }

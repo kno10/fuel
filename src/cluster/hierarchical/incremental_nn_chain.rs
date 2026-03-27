@@ -6,7 +6,7 @@ use rand::rngs::StdRng;
 use super::WardLinkage;
 use super::common::{Builder, MergeHistory};
 use super::linkage::GeometricLinkage;
-use crate::distance::{DistanceFunction, Partial};
+use crate::distance::{DistanceFunction, PartialDistance};
 use crate::vptree::VPTree;
 use crate::{CoordinateQuery, DistanceData, Float, TableWithDistance};
 
@@ -31,7 +31,7 @@ impl<F: Float> DistanceFunction<[F], F> for SquaredEuclidean {
     }
 }
 
-impl<F: Float> Partial<F, F> for SquaredEuclidean {
+impl<F: Float> PartialDistance<F, F> for SquaredEuclidean {
     fn axis_distance(&self, delta: F) -> F { delta * delta }
 
     fn combine_axis_distances(&self, a: F, b: F) -> F { a + b }

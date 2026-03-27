@@ -14,7 +14,7 @@ use fuel::cluster::hierarchical::{
     buffered_search_single_link, heap_of_searchers_single_link, lazy_buffered_search_single_link,
     muellner, nn_chain, restarting_search_single_link, slink,
 };
-use fuel::distance::EuclideanDistance;
+use fuel::distance::Euclidean;
 use fuel::kd::{KdTree, MaxVarianceSplit};
 use fuel::vptree::VPTree;
 use rand::SeedableRng;
@@ -103,8 +103,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let dimension = rows.first().map(|row| row.len()).unwrap_or(0);
 
     // wrap the Euclidean distance so we can count how many times it's evaluated
-    let distance = CountingPartialDistance::new(EuclideanDistance);
-    let data: TableWithDistance<f64, Vec<f64>, CountingPartialDistance<EuclideanDistance>, f64> =
+    let distance = CountingPartialDistance::new(Euclidean);
+    let data: TableWithDistance<f64, Vec<f64>, CountingPartialDistance<Euclidean>, f64> =
         TableWithDistance::with_distance(&rows, distance.clone());
     let sample_size = tree_sample_size.min(used_rows).max(1);
 

@@ -1,11 +1,10 @@
 use std::cmp::Ordering;
-use std::collections::BinaryHeap;
 
 use crate::api::{DistanceData, PrioritySearcher, PrioritySearcherFactory, SearchFilter};
 use crate::cluster::hdbscan::hdbscan_common::SameComponentFilter;
 use crate::cluster::hierarchical::common::{MergeHistory, UnionFind};
 use crate::cluster::hierarchical::search_single_link_common::ClusterBuilder;
-use crate::{DistPair, DistanceSearch, Float, IndexQuery};
+use crate::{CandidateHeap, DistPair, DistanceSearch, Float, IndexQuery};
 
 #[derive(Debug, Clone, Copy)]
 struct Edge<F: Float> {
@@ -49,8 +48,8 @@ where
 
     let mut builder = ClusterBuilder::<F>::new(n);
     let mut uf = UnionFind::new(n);
-    let mut neighbor_heaps: Vec<Option<BinaryHeap<DistPair<F>>>> =
-        (0..n).map(|_| Some(BinaryHeap::new())).collect();
+    let mut neighbor_heaps: Vec<Option<CandidateHeap<F>>> =
+        (0..n).map(|_| Some(CandidateHeap::new())).collect();
     let mut searchers: Vec<Option<S::Searcher<'a>>> = (0..n).map(|_| None).collect();
     let mut node_cluster = vec![u32::MAX; n];
 
@@ -89,7 +88,7 @@ where
                 continue;
             };
             let ca = uf.find(a);
-            while let Some(top) = heap.peek().copied() {
+            while let Some(top) = heap.peek() {
                 if uf.find(top.index) == ca {
                     heap.pop();
                 } else {
@@ -107,7 +106,7 @@ where
                 query.set_index(a);
                 refill_neighbors(&query, searcher, &mut uf, a, heap, &mut node_cluster);
             }
-            let Some(top) = heap.peek().copied() else {
+            let Some(top) = heap.peek() else {
                 neighbor_heaps[a] = None;
                 searchers[a] = None;
                 continue;
@@ -137,14 +136,14 @@ where
                 continue;
             };
             let ca = uf.find(a);
-            while let Some(top) = heap.peek().copied() {
+            while let Some(top) = heap.peek() {
                 if uf.find(top.index) == ca {
                     heap.pop();
                 } else {
                     break;
                 }
             }
-            let Some(top) = heap.peek().copied() else {
+            let Some(top) = heap.peek() else {
                 continue;
             };
             if top.distance != dist {
@@ -172,7 +171,7 @@ where
 
 fn initialize_neighbors<F, Q, S>(
     query: &Q, searcher: &mut S, builder: &mut ClusterBuilder<F>, uf: &mut UnionFind, a: usize,
-    heap: &mut Option<BinaryHeap<DistPair<F>>>, node_cluster: &mut [u32],
+    heap: &mut Option<CandidateHeap<F>>, node_cluster: &mut [u32],
 ) where
     F: Float,
     Q: DistanceSearch<F> + ?Sized,
@@ -206,8 +205,8 @@ fn initialize_neighbors<F, Q, S>(
 }
 
 fn refill_neighbors<F, Q, S>(
-    query: &Q, searcher: &mut S, uf: &mut UnionFind, a: usize, heap: &mut BinaryHeap<DistPair<F>>,
-    node_cluster: &mut [u32],
+    query: &Q, searcher: &mut S, uf: &mut UnionFind, a: usize,
+    heap: &mut CandidateHeap<F>, node_cluster: &mut [u32],
 ) where
     F: Float,
     Q: DistanceSearch<F> + ?Sized,

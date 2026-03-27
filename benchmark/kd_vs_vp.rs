@@ -10,8 +10,9 @@ use csv::ReaderBuilder;
 use fuel::Float;
 use fuel::VectorData;
 use fuel::api::{Data, DistanceData, DistanceSearch};
+use fuel::covertree::CoverTree;
 use fuel::data::TableQuery;
-use fuel::distance::{DistanceFunction, EuclideanDistance, PartialDistance};
+use fuel::distance::{DistanceFunction, Euclidean, PartialDistance};
 use fuel::kd::{KdTree, MaxVarianceSplit};
 use fuel::vptree::VPTree;
 // TableWithDistance is available at the crate root for convenience
@@ -79,23 +80,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Use the same query set for all methods (kd-tree, vp-tree, linear) for consistency.
     let explore_queries = queries.clone();
 
-    let kd_metric = CountingPartialDistance::new(EuclideanDistance);
-    let kd_data = TableWithDistance::with_distance(&points, kd_metric.clone());
-    kd_metric.reset();
-    let kd_build_start = Instant::now();
-    let kd_tree = KdTree::new(&kd_data, MaxVarianceSplit);
-    let kd_build_time = kd_build_start.elapsed();
-    let kd_build_distances = kd_metric.count();
-
-    let vp_distance = CountingDistance::new(EuclideanDistance);
-    let vp_data = TableWithDistance::with_distance(&points, vp_distance.clone());
-    vp_distance.reset();
-    let mut vp_rng = StdRng::seed_from_u64(1337);
-    let vp_build_start = Instant::now();
-    let vp_tree = VPTree::new(&vp_data, 10, &mut vp_rng);
-    let vp_build_time = vp_build_start.elapsed();
-    let vp_build_distances = vp_distance.count();
-
     println!("Dataset: {} points × {} dims (source: {})", points.len(), point_dims, source);
     println!(
         "Benchmark k={} (~10% of {} points), queries={}",
@@ -103,123 +87,224 @@ fn main() -> Result<(), Box<dyn Error>> {
         points.len(),
         num_queries
     );
+
+    let kd_metric = CountingPartialDistance::new(Euclidean);
+    let kd_data = TableWithDistance::with_distance(&points, kd_metric.clone());
+    kd_metric.reset();
+    let kd_build_start = Instant::now();
+    let kd_tree = KdTree::new(&kd_data, MaxVarianceSplit);
+    let kd_build_time = kd_build_start.elapsed();
+    let kd_build_distances = kd_metric.count();
+
     println!(
         "kd-tree  : build={:.3}s distances={}",
         kd_build_time.as_secs_f64(),
         kd_build_distances
     );
+
+    let vp_distance = CountingDistance::new(Euclidean);
+    let vp_data = TableWithDistance::with_distance(&points, vp_distance.clone());
+    vp_distance.reset();
+    let mut vp_rng = StdRng::seed_from_u64(1337);
+    let vp_build_start = Instant::now();
+    let vp_tree = VPTree::new(&vp_data, 10, &mut vp_rng);
+    let vp_build_time = vp_build_start.elapsed();
+    let vp_build_distances = vp_distance.count();
     println!(
         "vp-tree  : build={:.3}s distances={}",
         vp_build_time.as_secs_f64(),
         vp_build_distances
     );
 
-    let (kd_knn_time, kd_knn_dist, kd_knn_avg) =
-        measure_kd_kth_neighbor(&kd_tree, &kd_data, &explore_queries, neighbor_rank, &kd_metric);
-    println!(
-        "kNN kd-tree (queries={}, k={}) : query={:.3}s distances={} avg-dist={:.6}",
+    let ct_distance = CountingDistance::new(Euclidean);
+    let ct_data = TableWithDistance::with_distance(&points, ct_distance.clone());
+    let mut ct_rng = StdRng::seed_from_u64(2026);
+    let ct_build_start = Instant::now();
+    let ct_tree = CoverTree::new(&ct_data, 1.3, 1, &mut ct_rng);
+    let ct_build_time = ct_build_start.elapsed();
+    let ct_build_distances = ct_distance.count();
+
+    print_build_report("kd-tree", kd_build_time, kd_build_distances);
+    print_build_report("vp-tree", vp_build_time, vp_build_distances);
+    print_build_report("cover-tree", ct_build_time, ct_build_distances);
+
+    let (kd_knn_time, kd_knn_dist, kd_knn_avg) = measure_knn_coordinates(
+        &kd_tree,
+        &kd_data,
+        &explore_queries,
+        neighbor_rank,
+        &kd_metric,
+    );
+    report_measure(
+        "kNN kd-tree",
         explore_queries.len(),
         neighbor_rank,
-        kd_knn_time.as_secs_f64(),
+        kd_knn_time,
         kd_knn_dist,
-        kd_knn_avg
+        kd_knn_avg,
+        "avg-dist",
     );
 
-    let vp_knn_distance = CountingDistance::new(EuclideanDistance);
+    let vp_knn_distance = CountingDistance::new(Euclidean);
     let vp_knn_data = TableWithDistance::with_distance(&points, vp_knn_distance.clone());
-    let (vp_knn_time, vp_knn_dist, vp_knn_avg) = measure_vp_kth_neighbor(
+    let (vp_knn_time, vp_knn_dist, vp_knn_avg) = measure_knn_index(
         &vp_tree,
         &vp_knn_data,
         &explore_queries,
         neighbor_rank,
         &vp_knn_distance,
     );
-    println!(
-        "kNN vp-tree (queries={}, k={}) : query={:.3}s distances={} avg-dist={:.6}",
+    report_measure(
+        "kNN vp-tree",
         explore_queries.len(),
         neighbor_rank,
-        vp_knn_time.as_secs_f64(),
+        vp_knn_time,
         vp_knn_dist,
-        vp_knn_avg
+        vp_knn_avg,
+        "avg-dist",
     );
 
-    let kd_range_radius = kd_knn_avg.max(0.0);
-    let (kd_range_time, kd_range_dist, kd_range_avg) =
-        measure_kd_range(&kd_tree, &kd_data, &explore_queries, kd_range_radius, &kd_metric);
-    println!(
-        "range kd-tree (radius={:.6}, queries={}, k={}) : query={:.3}s distances={} avg-results={:.3}",
-        kd_range_radius,
-        explore_queries.len(),
-        neighbor_rank,
-        kd_range_time.as_secs_f64(),
-        kd_range_dist,
-        kd_range_avg
-    );
-
-    let vp_range_radius = vp_knn_avg.max(0.0);
-    let vp_range_distance = CountingDistance::new(EuclideanDistance);
-    let vp_range_data = TableWithDistance::with_distance(&points, vp_range_distance.clone());
-    let (vp_range_time, vp_range_dist, vp_range_avg) = measure_vp_range(
-        &vp_tree,
-        &vp_range_data,
+    let (ct_knn_time, ct_knn_dist, ct_knn_avg) = measure_knn_index(
+        &ct_tree,
+        &ct_data,
         &explore_queries,
-        vp_range_radius,
-        &vp_range_distance,
+        neighbor_rank,
+        &ct_distance,
     );
-    println!(
-        "range vp-tree (radius={:.6}, queries={}, k={}) : query={:.3}s distances={} avg-results={:.3}",
-        vp_range_radius,
+    report_measure(
+        "kNN cover-tree",
         explore_queries.len(),
         neighbor_rank,
-        vp_range_time.as_secs_f64(),
-        vp_range_dist,
-        vp_range_avg
+        ct_knn_time,
+        ct_knn_dist,
+        ct_knn_avg,
+        "avg-dist",
     );
 
-    let kd_priority_metric = CountingPartialDistance::new(EuclideanDistance);
-    let (kd_priority_time, kd_priority_dist, kd_priority_avg) = measure_kd_priority(
+    let range_radius = kd_knn_avg;
+    let (kd_range_time, kd_range_dist, kd_range_avg) = measure_range_coordinates(
         &kd_tree,
         &kd_data,
         &explore_queries,
-        &kd_priority_metric,
-        neighbor_rank,
+        range_radius,
+        &kd_metric,
     );
-    println!(
-        "priority kd-tree (queries={}, k={}) : query={:.3}s distances={} avg-dist={:.6}",
+    report_measure(
+        "range kd-tree",
         explore_queries.len(),
         neighbor_rank,
-        kd_priority_time.as_secs_f64(),
-        kd_priority_dist,
-        kd_priority_avg
+        kd_range_time,
+        kd_range_dist,
+        kd_range_avg,
+        "avg-results",
     );
 
-    let vp_priority_distance = CountingDistance::new(EuclideanDistance);
+    let ct_range_distance = CountingDistance::new(Euclidean);
+    let ct_range_data = TableWithDistance::with_distance(&points, ct_range_distance.clone());
+    let (ct_range_time, ct_range_dist, ct_range_avg) = measure_range_index(
+        &ct_tree,
+        &ct_range_data,
+        &explore_queries,
+        range_radius,
+        &ct_range_distance,
+    );
+    report_measure(
+        "range cover-tree",
+        explore_queries.len(),
+        neighbor_rank,
+        ct_range_time,
+        ct_range_dist,
+        ct_range_avg,
+        "avg-results",
+    );
+
+    let vp_range_distance = CountingDistance::new(Euclidean);
+    let vp_range_data = TableWithDistance::with_distance(&points, vp_range_distance.clone());
+    let (vp_range_time, vp_range_dist, vp_range_avg) = measure_range_index(
+        &vp_tree,
+        &vp_range_data,
+        &explore_queries,
+        range_radius,
+        &vp_range_distance,
+    );
+    report_measure(
+        "range vp-tree",
+        explore_queries.len(),
+        neighbor_rank,
+        vp_range_time,
+        vp_range_dist,
+        vp_range_avg,
+        "avg-results",
+    );
+
+    let kd_priority_metric = CountingPartialDistance::new(Euclidean);
+    let (kd_priority_time, kd_priority_dist, kd_priority_avg) = measure_priority_coordinates(
+        &kd_tree,
+        &kd_data,
+        &explore_queries,
+        neighbor_rank,
+        &kd_priority_metric,
+    );
+    report_measure(
+        "priority kd-tree",
+        explore_queries.len(),
+        neighbor_rank,
+        kd_priority_time,
+        kd_priority_dist,
+        kd_priority_avg,
+        "avg-dist",
+    );
+
+    let vp_priority_distance = CountingDistance::new(Euclidean);
     let vp_priority_data = TableWithDistance::with_distance(&points, vp_priority_distance.clone());
-    let (vp_priority_time, vp_priority_dist, vp_priority_avg) = measure_vp_priority(
+    let (vp_priority_time, vp_priority_dist, vp_priority_avg) = measure_priority_index(
         &vp_tree,
         &vp_priority_data,
         &explore_queries,
-        &vp_priority_distance,
         neighbor_rank,
+        &vp_priority_distance,
     );
-    println!(
-        "priority vp-tree (queries={}, k={}) : query={:.3}s distances={} avg-dist={:.6}",
+    report_measure(
+        "priority vp-tree",
         explore_queries.len(),
         neighbor_rank,
-        vp_priority_time.as_secs_f64(),
+        vp_priority_time,
         vp_priority_dist,
-        vp_priority_avg
+        vp_priority_avg,
+        "avg-dist",
     );
 
-    let linear_distance = CountingDistance::new(EuclideanDistance);
+    let ct_priority_distance = CountingDistance::new(Euclidean);
+    let ct_priority_data = TableWithDistance::with_distance(&points, ct_priority_distance.clone());
+    let (ct_priority_time, ct_priority_dist, ct_priority_avg) = measure_priority_index(
+        &ct_tree,
+        &ct_priority_data,
+        &explore_queries,
+        neighbor_rank,
+        &ct_priority_distance,
+    );
+    report_measure(
+        "priority cover-tree",
+        explore_queries.len(),
+        neighbor_rank,
+        ct_priority_time,
+        ct_priority_dist,
+        ct_priority_avg,
+        "avg-dist",
+    );
+
+    let linear_distance = CountingDistance::new(Euclidean);
     let linear_data = TableWithDistance::with_distance(&points, linear_distance.clone());
     let (linear_query_time, linear_dist, linear_avg) =
         measure_linear(&linear_data, &linear_distance, &queries, neighbor_rank);
-    println!(
-        "linear kNN : query={:.3}s distances={} avg-dist={:.6}",
-        linear_query_time.as_secs_f64(),
+    report_measure(
+        "linear kNN",
+        queries.len(),
+        neighbor_rank,
+        linear_query_time,
         linear_dist,
-        linear_avg
+        linear_avg,
+        "avg-dist",
     );
 
     Ok(())
@@ -237,81 +322,270 @@ fn generate_points(n: usize, dims: usize, rng: &mut StdRng) -> Vec<Vec<f64>> {
     points
 }
 
-fn measure_kd_kth_neighbor(
-    tree: &KdTree<f64>,
-    data: &TableWithDistance<'_, f64, Vec<f64>, CountingPartialDistance<EuclideanDistance>, f64>,
-    queries: &[usize], rank: usize, metric: &CountingPartialDistance<EuclideanDistance>,
-) -> (std::time::Duration, usize, f64) {
-    metric.reset();
-    let start = Instant::now();
-    let mut sum = 0.0;
-    let mut found = 0;
-    let mut query = data.query();
-    for &query_idx in queries {
-        if let Some(dist) = kth_neighbor_distance_kd(tree, data, &mut query, query_idx, rank) {
-            sum += dist;
-            found += 1;
-        }
-    }
-    let avg = if found == 0 { 0.0 } else { sum / found as f64 };
-    (start.elapsed(), metric.count(), avg)
+trait Counter {
+    fn reset(&self);
+    fn count(&self) -> usize;
 }
 
-fn kth_neighbor_distance_kd(
-    tree: &KdTree<f64>,
-    data: &TableWithDistance<'_, f64, Vec<f64>, CountingPartialDistance<EuclideanDistance>, f64>,
-    query: &mut impl CoordinateQuery<f64, f64>, query_idx: usize, rank: usize,
-) -> Option<f64> {
+impl<D> Counter for CountingDistance<D> {
+    fn reset(&self) { self.reset() }
+    fn count(&self) -> usize { self.count() }
+}
+
+impl<M> Counter for CountingPartialDistance<M> {
+    fn reset(&self) { self.reset() }
+    fn count(&self) -> usize { self.count() }
+}
+
+fn kth_neighbor_distance_from_knn<T, Q>(
+    tree: &T,
+    query: &Q,
+    query_idx: usize,
+    rank: usize,
+) -> Option<f64>
+where
+    T: KnnSearch<f64, Q>,
+    Q: DistanceSearch<f64> + ?Sized,
+{
     if rank == 0 {
         return None;
     }
-    query.set_coordinates(data.point(query_idx));
-    let neighbors = tree.search_knn(query, rank + 1);
-    neighbors
+
+    tree.search_knn(query, rank + 1)
         .into_iter()
         .filter(|neighbor| neighbor.index != query_idx)
         .nth(rank - 1)
         .map(|neighbor| neighbor.distance)
 }
 
-fn measure_vp_kth_neighbor(
-    tree: &VPTree<f64>,
-    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
-    queries: &[usize], rank: usize, counter: &CountingDistance<EuclideanDistance>,
-) -> (std::time::Duration, usize, f64) {
+fn kth_neighbor_distance_from_searcher<Q, S>(
+    searcher: &mut S,
+    query: &Q,
+    rank: usize,
+    query_idx: usize,
+) -> Option<f64>
+where
+    Q: DistanceSearch<f64> + ?Sized,
+    S: PrioritySearcher<f64, Q>,
+{
+    if rank == 0 {
+        return None;
+    }
+
+    let mut candidates: BinaryHeap<MaxDistance> = BinaryHeap::new();
+    loop {
+        if candidates.len() == rank
+            && candidates
+                .peek()
+                .map(|worst| searcher.all_lower_bound() >= worst.0)
+                .unwrap_or(false)
+        {
+            return candidates.peek().map(|worst| worst.0);
+        }
+
+        match searcher.next(query) {
+            Some(neighbor) => {
+                if neighbor.index == query_idx {
+                    continue;
+                }
+                let dist = neighbor.distance;
+                candidates.push(MaxDistance(dist));
+                if candidates.len() > rank {
+                    candidates.pop();
+                }
+            }
+            None => return candidates.peek().map(|candidate| candidate.0),
+        }
+    }
+}
+
+fn measure_knn_index<'a, T, D, C>(
+    tree: &T,
+    data: &'a D,
+    queries: &[usize],
+    rank: usize,
+    counter: &C,
+) -> (std::time::Duration, usize, f64)
+where
+    D: DistanceData<f64> + VectorData<f64> + 'a,
+    D::Query<'a>: DistanceSearch<f64> + IndexQuery<f64>,
+    T: KnnSearch<f64, D::Query<'a>>,
+    C: Counter,
+{
     counter.reset();
     let start = Instant::now();
     let mut sum = 0.0;
     let mut found = 0;
+    let mut query: D::Query<'a> = data.query();
+
     for &query_idx in queries {
-        if let Some(dist) = kth_neighbor_distance_vp(tree, data, query_idx, rank) {
+        query.set_index(query_idx);
+        if let Some(dist) = kth_neighbor_distance_from_knn(tree, &query, query_idx, rank) {
             sum += dist;
             found += 1;
         }
     }
+
     let avg = if found == 0 { 0.0 } else { sum / found as f64 };
     (start.elapsed(), counter.count(), avg)
 }
 
-fn kth_neighbor_distance_vp(
-    tree: &VPTree<f64>,
-    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
-    query_idx: usize, rank: usize,
-) -> Option<f64> {
-    if rank == 0 {
-        return None;
+fn measure_knn_coordinates<'a, T, D, C>(
+    tree: &T,
+    data: &'a D,
+    queries: &[usize],
+    rank: usize,
+    counter: &C,
+) -> (std::time::Duration, usize, f64)
+where
+    D: DistanceData<f64> + VectorData<f64> + 'a,
+    D::Query<'a>: DistanceSearch<f64> + CoordinateQuery<f64, f64>,
+    T: KnnSearch<f64, D::Query<'a>>,
+    C: Counter,
+{
+    counter.reset();
+    let start = Instant::now();
+    let mut sum = 0.0;
+    let mut found = 0;
+    let mut query: D::Query<'a> = data.query();
+
+    for &query_idx in queries {
+        query.set_coordinates(data.point(query_idx));
+        if let Some(dist) = kth_neighbor_distance_from_knn(tree, &query, query_idx, rank) {
+            sum += dist;
+            found += 1;
+        }
     }
-    let query = data.query().with_index(query_idx);
-    tree.search_knn(&query, rank + 1)
-        .into_iter()
-        .filter(|neighbor| neighbor.index != query_idx)
-        .nth(rank - 1)
-        .map(|neighbor| neighbor.distance)
+
+    let avg = if found == 0 { 0.0 } else { sum / found as f64 };
+    (start.elapsed(), counter.count(), avg)
+}
+
+fn measure_range_index<'a, T, D, C>(
+    tree: &T,
+    data: &'a D,
+    queries: &[usize],
+    radius: f64,
+    counter: &C,
+) -> (std::time::Duration, usize, f64)
+where
+    D: DistanceData<f64> + VectorData<f64> + 'a,
+    D::Query<'a>: DistanceSearch<f64> + IndexQuery<f64>,
+    T: RangeSearch<f64, D::Query<'a>>,
+    C: Counter,
+{
+    counter.reset();
+    let start = Instant::now();
+    let mut total_found = 0_usize;
+    let mut query: D::Query<'a> = data.query();
+
+    for &query_idx in queries {
+        query.set_index(query_idx);
+        let neighbors = tree.search_range(&query, radius);
+        total_found += neighbors.into_iter().filter(|neighbor| neighbor.index != query_idx).count();
+    }
+
+    let avg = if queries.is_empty() { 0.0 } else { total_found as f64 / queries.len() as f64 };
+    (start.elapsed(), counter.count(), avg)
+}
+
+fn measure_range_coordinates<'a, T, D, C>(
+    tree: &T,
+    data: &'a D,
+    queries: &[usize],
+    radius: f64,
+    counter: &C,
+) -> (std::time::Duration, usize, f64)
+where
+    D: DistanceData<f64> + VectorData<f64> + 'a,
+    D::Query<'a>: DistanceSearch<f64> + CoordinateQuery<f64, f64>,
+    T: RangeSearch<f64, D::Query<'a>>,
+    C: Counter,
+{
+    counter.reset();
+    let start = Instant::now();
+    let mut total_found = 0_usize;
+    let mut query: D::Query<'a> = data.query();
+
+    for &query_idx in queries {
+        query.set_coordinates(data.point(query_idx));
+        let neighbors = tree.search_range(&query, radius);
+        total_found += neighbors.into_iter().filter(|neighbor| neighbor.index != query_idx).count();
+    }
+
+    let avg = if queries.is_empty() { 0.0 } else { total_found as f64 / queries.len() as f64 };
+    (start.elapsed(), counter.count(), avg)
+}
+
+fn measure_priority_index<'a, T, D, C>(
+    tree: &T,
+    data: &'a D,
+    queries: &[usize],
+    kth: usize,
+    counter: &C,
+) -> (std::time::Duration, usize, f64)
+where
+    D: DistanceData<f64> + VectorData<f64> + 'a,
+    D::Query<'a>: DistanceSearch<f64> + IndexQuery<f64>,
+    T: PrioritySearcherFactory<f64, D::Query<'a>>,
+    C: Counter,
+{
+    counter.reset();
+    let start = Instant::now();
+    let mut sum = 0.0;
+    let mut found = 0;
+    let mut query: D::Query<'a> = data.query();
+
+    for &query_idx in queries {
+        query.set_index(query_idx);
+
+        let mut searcher = <T as PrioritySearcherFactory<f64, D::Query<'_>>>::priority_searcher(tree);
+        if let Some(dist) = kth_neighbor_distance_from_searcher(&mut searcher, &query, kth, query_idx) {
+            sum += dist;
+            found += 1;
+        }
+    }
+
+    let avg = if found == 0 { 0.0 } else { sum / found as f64 };
+    (start.elapsed(), counter.count(), avg)
+}
+
+fn measure_priority_coordinates<'a, T, D, C>(
+    tree: &T,
+    data: &'a D,
+    queries: &[usize],
+    kth: usize,
+    counter: &C,
+) -> (std::time::Duration, usize, f64)
+where
+    D: DistanceData<f64> + VectorData<f64> + 'a,
+    D::Query<'a>: DistanceSearch<f64> + CoordinateQuery<f64, f64>,
+    T: PrioritySearcherFactory<f64, D::Query<'a>>,
+    C: Counter,
+{
+    counter.reset();
+    let start = Instant::now();
+    let mut sum = 0.0;
+    let mut found = 0;
+    let mut query: D::Query<'a> = data.query();
+
+    for &query_idx in queries {
+        query.set_coordinates(data.point(query_idx));
+
+        let mut searcher = <T as PrioritySearcherFactory<f64, D::Query<'_>>>::priority_searcher(tree);
+        if let Some(dist) = kth_neighbor_distance_from_searcher(&mut searcher, &query, kth, query_idx) {
+            sum += dist;
+            found += 1;
+        }
+    }
+
+    let avg = if found == 0 { 0.0 } else { sum / found as f64 };
+    (start.elapsed(), counter.count(), avg)
 }
 
 fn measure_linear(
-    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
-    counter: &CountingDistance<EuclideanDistance>, queries: &[usize], rank: usize,
+    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<Euclidean>, f64>,
+    counter: &CountingDistance<Euclidean>, queries: &[usize], rank: usize,
 ) -> (std::time::Duration, usize, f64) {
     counter.reset();
     let start = Instant::now();
@@ -327,49 +601,8 @@ fn measure_linear(
     (start.elapsed(), counter.count(), avg)
 }
 
-fn measure_kd_range(
-    tree: &KdTree<f64>,
-    data: &TableWithDistance<'_, f64, Vec<f64>, CountingPartialDistance<EuclideanDistance>, f64>,
-    queries: &[usize], radius: f64, metric: &CountingPartialDistance<EuclideanDistance>,
-) -> (std::time::Duration, usize, f64) {
-    metric.reset();
-    let start = Instant::now();
-    let mut total_found = 0usize;
-    let mut query = data.query();
-    for &query_idx in queries {
-        query.set_coordinates(data.point(query_idx));
-        let neighbors = tree.search_range(&query, radius);
-        total_found += neighbors.into_iter().filter(|neighbor| neighbor.index != query_idx).count();
-    }
-    let avg = if queries.is_empty() { 0.0 } else { total_found as f64 / queries.len() as f64 };
-    (start.elapsed(), metric.count(), avg)
-}
-
-fn measure_vp_range(
-    tree: &VPTree<f64>,
-    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
-    queries: &[usize], radius: f64, counter: &CountingDistance<EuclideanDistance>,
-) -> (std::time::Duration, usize, f64) {
-    counter.reset();
-    let start = Instant::now();
-    let mut total_found = 0usize;
-    let mut query = data.query();
-    for &query_idx in queries {
-        let mut count = 0usize;
-        query.set_index(query_idx);
-        tree.search_range(&query, radius, |pair| {
-            if pair.index != query_idx {
-                count += 1;
-            }
-        });
-        total_found += count;
-    }
-    let avg = if queries.is_empty() { 0.0 } else { total_found as f64 / queries.len() as f64 };
-    (start.elapsed(), counter.count(), avg)
-}
-
 fn linear_kth_neighbor_distance(
-    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
+    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<Euclidean>, f64>,
     query_idx: usize, rank: usize,
 ) -> Option<f64> {
     if rank == 0 {
@@ -379,110 +612,6 @@ fn linear_kth_neighbor_distance(
         data.iter().map(|idx| (data.distance(query_idx, idx), idx)).collect();
     distances.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     distances.iter().filter(|(_, idx)| *idx != query_idx).nth(rank - 1).map(|(dist, _)| *dist)
-}
-
-fn measure_kd_priority(
-    tree: &KdTree<f64>,
-    data: &TableWithDistance<'_, f64, Vec<f64>, CountingPartialDistance<EuclideanDistance>, f64>,
-    explore_queries: &[usize], metric: &CountingPartialDistance<EuclideanDistance>, kth: usize,
-) -> (std::time::Duration, usize, f64) {
-    metric.reset();
-    let start = Instant::now();
-    let mut sum = 0.0;
-    let mut query = data.query();
-    for &query_idx in explore_queries {
-        let query_point = data.point(query_idx);
-        query.set_coordinates(query_point);
-        let mut rank = 0;
-        let mut distance = None;
-        let mut searcher = <KdTree<f64> as PrioritySearcherFactory<
-            f64,
-            TableQuery<'_, '_, f64, Vec<f64>, CountingPartialDistance<EuclideanDistance>, f64>,
-        >>::priority_searcher(tree);
-        loop {
-            if rank >= kth {
-                break;
-            }
-            let Some(neighbor) = searcher.next(&query) else {
-                break;
-            };
-            if neighbor.index == query_idx {
-                continue;
-            }
-            rank += 1;
-            if rank == kth {
-                distance = Some(neighbor.distance);
-                break;
-            }
-        }
-        if let Some(dist) = distance {
-            sum += dist;
-        }
-    }
-    let avg = if explore_queries.is_empty() { 0.0 } else { sum / explore_queries.len() as f64 };
-    (start.elapsed(), metric.count(), avg)
-}
-
-fn measure_vp_priority(
-    tree: &VPTree<f64>,
-    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
-    explore_queries: &[usize], counter: &CountingDistance<EuclideanDistance>, kth: usize,
-) -> (std::time::Duration, usize, f64) {
-    counter.reset();
-    let start = Instant::now();
-    let mut sum = 0.0;
-    let mut found = 0;
-    let mut query = data.query();
-    for &query_idx in explore_queries {
-        query.set_index(query_idx);
-        let mut searcher = <VPTree<f64> as PrioritySearcherFactory<
-            f64,
-            TableQuery<'_, '_, f64, Vec<f64>, CountingDistance<EuclideanDistance>, f64>,
-        >>::priority_searcher(tree);
-        if let Some(dist) =
-            kth_neighbor_distance_from_vp_searcher(&mut searcher, &query, kth, query_idx)
-        {
-            sum += dist;
-            found += 1;
-        }
-    }
-    let avg = if found == 0 { 0.0 } else { sum / found as f64 };
-    (start.elapsed(), counter.count(), avg)
-}
-
-fn kth_neighbor_distance_from_vp_searcher<Q, S>(
-    searcher: &mut S, data: &Q, rank: usize, query_idx: usize,
-) -> Option<f64>
-where
-    Q: DistanceSearch<f64> + ?Sized,
-    S: PrioritySearcher<f64, Q>,
-{
-    if rank == 0 {
-        return None;
-    }
-
-    let mut candidates: BinaryHeap<MaxDistance> = BinaryHeap::new();
-    loop {
-        if candidates.len() == rank
-            && candidates.peek().map(|worst| searcher.all_lower_bound() >= worst.0).unwrap_or(false)
-        {
-            return candidates.peek().map(|worst| worst.0);
-        }
-
-        match searcher.next(data) {
-            Some(neighbor) => {
-                if neighbor.index == query_idx {
-                    continue;
-                }
-                let dist = neighbor.distance;
-                candidates.push(MaxDistance(dist));
-                if candidates.len() > rank {
-                    candidates.pop();
-                }
-            }
-            None => return candidates.peek().map(|candidate| candidate.0),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -569,6 +698,36 @@ fn print_help() {
     eprintln!("  --seed N       RNG seed (default: 42)");
     eprintln!("  --csv PATH     Load points from CSV instead of generating random data");
     eprintln!("  --help, -h     Show this help message");
+}
+
+fn print_build_report(name: &str, elapsed: std::time::Duration, distance_calls: usize) {
+    println!(
+        "{:10}: build={:.3}s distances={}",
+        name,
+        elapsed.as_secs_f64(),
+        distance_calls
+    );
+}
+
+fn report_measure(
+    name: &str,
+    queries: usize,
+    k: usize,
+    elapsed: std::time::Duration,
+    distance_calls: usize,
+    avg: f64,
+    avg_label: &str,
+) {
+    println!(
+        "{} (queries={}, k={}) : query={:.3}s distances={} {}={:.6}",
+        name,
+        queries,
+        k,
+        elapsed.as_secs_f64(),
+        distance_calls,
+        avg_label,
+        avg
+    );
 }
 
 #[derive(Debug)]

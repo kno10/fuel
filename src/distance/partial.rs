@@ -6,7 +6,7 @@ use crate::Float;
 /// (e.g. `f32` input, `f64` output). Implementers are expected to provide a
 /// full distance implementation via `DistanceFunction` in addition to partial
 /// distance bounds.
-pub trait Partial<N: Float, F: Float> {
+pub trait PartialDistance<N: Float, F: Float> {
     /// Distance penalty incurred when moving `delta` along one axis.
     fn axis_distance(&self, delta: N) -> F;
 

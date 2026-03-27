@@ -1,5 +1,5 @@
 use crate::api::{Data, DistanceData, DistanceSearch, VectorData};
-use crate::distance::{DistanceFunction, Partial};
+use crate::distance::{DistanceFunction, PartialDistance};
 use crate::{CoordinateQuery, CoordinateSearch, Float, IndexQuery};
 
 // List of points with a distance function.
@@ -139,7 +139,7 @@ impl<'q, 'd, C, T, DF, F> CoordinateSearch<C, F> for TableQuery<'q, 'd, C, T, DF
 where
     C: Float,
     T: AsRef<[C]>,
-    DF: DistanceFunction<[C], F> + Partial<C, F>,
+    DF: DistanceFunction<[C], F> + PartialDistance<C, F>,
     F: Float,
 {
     fn query_coordinate(&self, axis: usize) -> C { self.query_coords()[axis] }
@@ -155,7 +155,7 @@ impl<'q, 'd, C, T, DF, F> CoordinateQuery<C, F> for TableQuery<'q, 'd, C, T, DF,
 where
     C: Float,
     T: AsRef<[C]>,
-    DF: DistanceFunction<[C], F> + Partial<C, F>,
+    DF: DistanceFunction<[C], F> + PartialDistance<C, F>,
     F: Float,
 {
     fn set_coordinates(&mut self, coords: &[C]) {

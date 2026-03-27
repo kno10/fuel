@@ -1,8 +1,5 @@
-use std::cmp::{Ordering, Reverse};
-use std::collections::BinaryHeap;
-
 use crate::vptree::VPTree;
-use crate::{DistPair, DistanceSearch, Float};
+use crate::{DistPair, DistanceSearch, Float, KNNHeap};
 
 impl<F: Float> VPTree<F> {
     /// Find k nearest neighbors to the query point
@@ -13,23 +10,15 @@ impl<F: Float> VPTree<F> {
             return Vec::new();
         }
 
-        let mut heap: BinaryHeap<Reverse<DistPair<F>>> = BinaryHeap::with_capacity(k + 1);
-        self.search_knn_recursive(query, k, 0, self.points.len(), &mut heap);
+        let mut heap: KNNHeap<F> = KNNHeap::new(k);
+        self.search_knn_recursive(query, 0, self.points.len(), &mut heap);
 
-        let mut result: Vec<DistPair<F>> = heap.into_iter().map(|item| item.0).collect();
-        result.sort_by(|a, b| {
-            a.distance
-                .partial_cmp(&b.distance)
-                .unwrap_or(Ordering::Equal)
-                .then_with(|| a.index.cmp(&b.index))
-        });
-        result
+        heap.into_vec()
     }
 
     /// Recursively search for k nearest neighbors
     fn search_knn_recursive<Q: DistanceSearch<F> + ?Sized>(
-        &self, query: &Q, k: usize, left: usize, right: usize,
-        heap: &mut BinaryHeap<Reverse<DistPair<F>>>,
+        &self, query: &Q, left: usize, right: usize, heap: &mut KNNHeap<F>,
     ) -> F {
         let node_idx = left;
         let vp = self.points[node_idx];
@@ -38,15 +27,7 @@ impl<F: Float> VPTree<F> {
         let d = query.query_distance(vp as usize);
 
         // Add vantage point to candidates
-        if heap.len() < k {
-            heap.push(Reverse(DistPair::new(d, vp as usize)));
-        } else if d < heap.peek().unwrap().0.distance {
-            heap.pop();
-            heap.push(Reverse(DistPair::new(d, vp as usize)));
-        }
-
-        // Current tau (distance to k-th nearest neighbor)
-        let mut tau = if heap.len() < k { F::infinity() } else { heap.peek().unwrap().0.distance };
+        let mut tau = heap.insert(DistPair::new(d, vp as usize));
 
         if left + 1 >= right {
             return tau;
@@ -92,18 +73,18 @@ impl<F: Float> VPTree<F> {
                 };
 
                 if first.2 <= tau {
-                    tau = self.search_knn_recursive(query, k, first.0, first.1, heap);
+                    tau = self.search_knn_recursive(query, first.0, first.1, heap);
                 }
                 if second.2 <= tau {
-                    self.search_knn_recursive(query, k, second.0, second.1, heap);
+                    self.search_knn_recursive(query, second.0, second.1, heap);
                 }
             }
             (Some(node), None) | (None, Some(node)) if node.2 <= tau => {
-                self.search_knn_recursive(query, k, node.0, node.1, heap);
+                self.search_knn_recursive(query, node.0, node.1, heap);
             }
             _ => {}
         }
 
-        if heap.len() < k { F::infinity() } else { heap.peek().unwrap().0.distance }
+        heap.k_distance()
     }
 }

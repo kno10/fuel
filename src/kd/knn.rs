@@ -1,8 +1,5 @@
-use std::cmp::Reverse;
-use std::collections::BinaryHeap;
-
 use crate::kd::KdTree;
-use crate::{CoordinateSearch, DistPair, DistanceSearch, Float, KnnSearch};
+use crate::{CoordinateSearch, DistPair, DistanceSearch, Float, KNNHeap, KnnSearch};
 
 impl<C, F, Q> KnnSearch<F, Q> for KdTree<C>
 where
@@ -16,14 +13,10 @@ where
             return Vec::new();
         }
 
-        let mut heap: BinaryHeap<Reverse<DistPair<F>>> = BinaryHeap::with_capacity(k + 1);
-        self.search_knn_recursive(query, k, 0, self.points.len(), &mut heap, F::zero());
+        let mut heap: KNNHeap<F> = KNNHeap::new(k);
+        self.search_knn_recursive(query, 0, self.points.len(), &mut heap, F::zero());
 
-        let mut result: Vec<DistPair<F>> = heap.into_vec().into_iter().map(|r| r.0).collect();
-        result.sort_by(|a, b| {
-            a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal)
-        });
-        result
+        heap.into_vec()
     }
 }
 
@@ -32,18 +25,18 @@ where
     C: Float,
 {
     fn search_knn_recursive<F, Q>(
-        &self, query: &Q, k: usize, left: usize, right: usize,
-        heap: &mut BinaryHeap<Reverse<DistPair<F>>>, lower_bound: F,
+        &self, query: &Q, left: usize, right: usize, heap: &mut KNNHeap<F>,
+        lower_bound: F,
     ) -> F
     where
         F: Float,
         Q: DistanceSearch<F> + CoordinateSearch<C, F> + ?Sized,
     {
         if left >= right {
-            return self.tau(heap, k);
+            return self.tau(heap);
         }
 
-        let mut tau = self.tau(heap, k);
+        let mut tau = self.tau(heap);
         if lower_bound > tau {
             return tau;
         }
@@ -52,14 +45,7 @@ where
         let point_idx = self.points[node_idx];
         let dist = query.query_distance(point_idx);
 
-        if heap.len() < k {
-            heap.push(Reverse(DistPair::new(dist, point_idx)));
-        } else if dist < heap.peek().unwrap().0.distance {
-            heap.pop();
-            heap.push(Reverse(DistPair::new(dist, point_idx)));
-        }
-
-        tau = self.tau(heap, k);
+        tau = heap.insert(DistPair::new(dist, point_idx));
         let axis = self.split_axes[node_idx];
         let split = self.split_values[node_idx];
 
@@ -79,16 +65,14 @@ where
         };
 
         if first.0 < first.1 {
-            tau = self.search_knn_recursive(query, k, first.0, first.1, heap, first.2);
+            tau = self.search_knn_recursive(query, first.0, first.1, heap, first.2);
         }
         if second.0 < second.1 && second.2 <= tau {
-            tau = self.search_knn_recursive(query, k, second.0, second.1, heap, second.2);
+            tau = self.search_knn_recursive(query, second.0, second.1, heap, second.2);
         }
 
         tau
     }
 
-    fn tau<F: Float>(&self, heap: &BinaryHeap<Reverse<DistPair<F>>>, k: usize) -> F {
-        if heap.len() < k { F::infinity() } else { heap.peek().unwrap().0.distance }
-    }
+    fn tau<F: Float>(&self, heap: &KNNHeap<F>) -> F { heap.k_distance() }
 }

@@ -1,9 +1,7 @@
-use std::collections::BinaryHeap;
-
 use crate::api::{DistanceData, DistanceSearch, PrioritySearcher, PrioritySearcherFactory};
 use crate::cluster::hierarchical::common::MergeHistory;
 use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
-use crate::{DistPair, Float, IndexQuery};
+use crate::{CandidateHeap, DistPair, Float, IndexQuery};
 
 /// Buffered-Search Single-Link (BSSL) with VP-tree priority search.
 ///
@@ -27,7 +25,7 @@ where
     assert!(slack > 0, "slack must be positive");
 
     let mut builder = ClusterBuilder::new(n);
-    let mut primary = BinaryHeap::<DistPair<F>>::new();
+    let mut primary = CandidateHeap::<F>::new();
     // Per-point bounded buffers (sorted ascending by distance, best at end).
     let mut buffers: Vec<Vec<DistPair<F>>> = (0..n).map(|_| Vec::with_capacity(slack)).collect();
     let mut skip: Vec<F> = vec![F::zero(); n];
@@ -169,10 +167,10 @@ pub(crate) fn refill_buffer<F: Float, Q, S>(
             }
         } else {
             // Replace the worst candidate if this one is better (smaller distance,
-            // breaking ties by smaller index). With reversed `DistPair` ordering,
-            // a better candidate is > worst.
+            // breaking ties by smaller index). With natural `DistPair` ordering,
+            // a better candidate is < worst.
             let worst = worst_candidate(buffer);
-            if candidate > worst {
+            if candidate < worst {
                 replace_worst(buffer, candidate);
                 threshold = worst_candidate(buffer).distance;
                 searcher.decrease_cutoff(threshold);
@@ -186,15 +184,14 @@ pub(crate) fn refill_buffer<F: Float, Q, S>(
 
 /// Get the worst candidate in the buffer according to the `DistPair` ordering.
 fn worst_candidate<F: Float>(buffer: &[DistPair<F>]) -> DistPair<F> {
-    // `DistPair` ordering is reversed so that smaller distances are "greater".
-    // Here we want the worst one (largest distance, then largest index), which is
-    // the minimal `DistPair` under reversed ordering.
-    *buffer.iter().min().expect("buffer should not be empty")
+    // We want the worst one (largest distance, then largest index), which is
+    // the maximal `DistPair` under natural ordering.
+    *buffer.iter().max().expect("buffer should not be empty")
 }
 
 /// Replace the worst entry in the buffer with `item`.
 fn replace_worst<F: Float>(buffer: &mut [DistPair<F>], item: DistPair<F>) {
-    if let Some(idx) = buffer.iter().enumerate().min_by_key(|(_, v)| *v).map(|(i, _)| i) {
+    if let Some(idx) = buffer.iter().enumerate().max_by_key(|(_, v)| *v).map(|(i, _)| i) {
         buffer[idx] = item;
     }
 }

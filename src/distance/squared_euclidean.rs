@@ -7,7 +7,7 @@ use std::arch::x86_64::{
 
 use crate::Float;
 use crate::distance::DistanceFunction;
-use crate::distance::partial::Partial;
+use crate::distance::partial::PartialDistance;
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
@@ -151,7 +151,7 @@ where
     fn distance(&self, a: &Vec<N>, b: &Vec<N>) -> F { squared_euclidean_distance(a, b) }
 }
 
-impl<N, F> Partial<N, F> for SquaredEuclidean
+impl<N, F> PartialDistance<N, F> for SquaredEuclidean
 where
     N: Float + 'static,
     F: Float + 'static,

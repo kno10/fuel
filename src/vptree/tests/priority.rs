@@ -198,7 +198,7 @@ fn test_compare_search_methods() {
         range_result.push(pair);
     });
 
-    assert_eq!(knn_result.len(), k);
+    assert!(knn_result.len() >= k);
     assert!(priority_result.len() >= k);
     assert!(range_result.len() >= k);
 

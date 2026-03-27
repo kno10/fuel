@@ -11,6 +11,7 @@ pub mod kernel;
 pub mod outlier;
 pub mod statistics;
 
+pub mod covertree;
 pub mod kd;
 pub mod vptree;
 pub use crate::api::*;

@@ -6,11 +6,9 @@
 //! while tracking cluster sizes, along with a convenience function for
 //! computing indices into the condensed distance matrix.
 
-use std::collections::BinaryHeap;
-
 use crate::cluster::hierarchical::SetLinkage;
 use crate::cluster::hierarchical::linkage::Linkage;
-use crate::{DistPair, DistanceData, Float};
+use crate::{CandidateHeap, DistPair, DistanceData, Float};
 
 /// Compute the index in the condensed array for pair `(i, j)`, assuming
 /// `i > j`.
@@ -40,7 +38,7 @@ pub(crate) fn condensed_set<F>(mat: &mut [F], a: usize, b: usize, value: F) {
 /// Small buffer used by several search algorithms.
 #[derive(Default)]
 pub(crate) struct BufferedNeighbors<F: Float> {
-    pub(crate) heap: BinaryHeap<DistPair<F>>,
+    pub(crate) heap: CandidateHeap<F>,
     pub(crate) threshold: F,
 }
 
@@ -48,7 +46,7 @@ impl<F: Float> BufferedNeighbors<F>
 where
     F: Float,
 {
-    pub(crate) fn new() -> Self { Self { heap: BinaryHeap::new(), threshold: F::infinity() } }
+    pub(crate) fn new() -> Self { Self { heap: CandidateHeap::new(), threshold: F::infinity() } }
 
     #[inline]
     pub(crate) fn is_empty(&self) -> bool { self.heap.is_empty() }
@@ -60,7 +58,7 @@ where
     pub(crate) fn pop(&mut self) -> Option<DistPair<F>> { self.heap.pop() }
 
     #[inline]
-    pub(crate) fn peek(&self) -> Option<DistPair<F>> { self.heap.peek().copied() }
+    pub(crate) fn peek(&self) -> Option<DistPair<F>> { self.heap.peek() }
 
     /// Reset the buffer to its initial empty state.
     #[inline]

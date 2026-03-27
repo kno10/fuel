@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 
 /// Common Float requirements to keep the source readable...
 pub trait Float:
@@ -150,6 +151,120 @@ impl<F: Float> DistPair<F> {
     pub fn is_sentinel(&self) -> bool { self.index == usize::MAX }
 }
 
+/// Helper that tracks the best `k` neighbors and includes all ties at the
+/// current kth distance.
+#[derive(Debug, Clone)]
+pub struct KNNHeap<F: Float> {
+    k: usize,
+    heap: BinaryHeap<DistPair<F>>,
+    ties: Vec<DistPair<F>>,
+    k_distance: F,
+}
+
+impl<F: Float> KNNHeap<F> {
+    /// Create a new heap for a fixed `k`.
+    pub fn new(k: usize) -> Self {
+        Self { k, heap: BinaryHeap::with_capacity(k), ties: Vec::new(), k_distance: F::infinity() }
+    }
+
+    /// Number of stored neighbors, including ties.
+    pub fn len(&self) -> usize { self.heap.len() + self.ties.len() }
+
+    /// Whether the heap currently stores no neighbors.
+    pub fn is_empty(&self) -> bool { self.heap.is_empty() && self.ties.is_empty() }
+
+    /// Current kth distance, or infinity while fewer than `k` neighbors are stored.
+    pub fn k_distance(&self) -> F {
+        if self.k == 0 || self.heap.len() < self.k { F::infinity() } else { self.k_distance }
+    }
+
+    /// Insert a neighbor and return the current kth distance.
+    pub fn insert(&mut self, pair: DistPair<F>) -> F {
+        if self.k == 0 {
+            return F::infinity();
+        }
+
+        if self.heap.len() < self.k {
+            self.heap.push(pair);
+            if self.heap.len() == self.k {
+                self.k_distance = self.heap.peek().unwrap().distance;
+            }
+            return self.k_distance();
+        }
+
+        match pair.distance.partial_cmp(&self.k_distance).unwrap_or(Ordering::Equal) {
+            Ordering::Less => {
+                let removed = self.heap.pop().expect("full knn heap must not be empty");
+                self.heap.push(pair);
+                let new_k_distance = self.heap.peek().unwrap().distance;
+                if new_k_distance < self.k_distance {
+                    self.ties.clear();
+                } else if removed.distance == new_k_distance {
+                    self.ties.push(removed);
+                }
+                self.k_distance = new_k_distance;
+            }
+            Ordering::Equal => self.ties.push(pair),
+            Ordering::Greater => {}
+        }
+
+        self.k_distance()
+    }
+
+    /// Remove all stored neighbors.
+    pub fn clear(&mut self) {
+        self.heap.clear();
+        self.ties.clear();
+        self.k_distance = F::infinity();
+    }
+
+    /// Convert to an ascending vector including ties.
+    pub fn into_vec(self) -> Vec<DistPair<F>> {
+        let mut out: Vec<DistPair<F>> = self.heap.into_vec();
+        out.extend(self.ties);
+        out.sort_unstable();
+        out
+    }
+}
+
+/// Candidate queue ordered by increasing distance.
+///
+/// This is a thin wrapper around a min-heap of `DistPair`s and is used by
+/// search algorithms that grow a frontier of candidate points or subtree
+/// bounds.
+#[derive(Debug, Clone, Default)]
+pub struct CandidateHeap<F: Float> {
+    heap: BinaryHeap<std::cmp::Reverse<DistPair<F>>>,
+}
+
+impl<F: Float> CandidateHeap<F> {
+    /// Create an empty candidate heap.
+    pub fn new() -> Self { Self { heap: BinaryHeap::new() } }
+
+    /// Create an empty candidate heap with capacity.
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self { heap: BinaryHeap::with_capacity(capacity) }
+    }
+
+    /// Number of stored candidates.
+    pub fn len(&self) -> usize { self.heap.len() }
+
+    /// Whether the heap is empty.
+    pub fn is_empty(&self) -> bool { self.heap.is_empty() }
+
+    /// Remove all candidates.
+    pub fn clear(&mut self) { self.heap.clear(); }
+
+    /// Push a candidate.
+    pub fn push(&mut self, pair: DistPair<F>) { self.heap.push(std::cmp::Reverse(pair)); }
+
+    /// Pop the best candidate.
+    pub fn pop(&mut self) -> Option<DistPair<F>> { self.heap.pop().map(|pair| pair.0) }
+
+    /// Peek at the best candidate.
+    pub fn peek(&self) -> Option<DistPair<F>> { self.heap.peek().copied().map(|pair| pair.0) }
+}
+
 impl<F: Float> Eq for DistPair<F> {}
 
 impl<F: Float> PartialOrd for DistPair<F> {
@@ -158,12 +273,10 @@ impl<F: Float> PartialOrd for DistPair<F> {
 
 impl<F: Float> Ord for DistPair<F> {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Reversed order
-        other
-            .distance
-            .partial_cmp(&self.distance)
+        self.distance
+            .partial_cmp(&other.distance)
             .unwrap_or(Ordering::Equal)
-            .then_with(|| other.index.cmp(&self.index))
+            .then_with(|| self.index.cmp(&other.index))
     }
 }
 
@@ -171,6 +284,9 @@ impl<F: Float> Ord for DistPair<F> {
 ///
 /// This trait allows algorithms (e.g. outlier detection) to be written once and
 /// used with multiple underlying kNN indices (KD-tree, VP-tree, etc.).
+///
+/// Implementations return all neighbors whose distance is at most the kth
+/// distance, so ties at the boundary are included.
 pub trait KnnSearch<F: Float, Q: DistanceSearch<F> + ?Sized> {
     fn search_knn(&self, query: &Q, k: usize) -> Vec<DistPair<F>>;
 }

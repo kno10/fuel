@@ -22,6 +22,10 @@ where
     T: DistanceData<S>,
     S: Float + PartialOrd,
 {
+    if k == 0 || dataset.size() == 0 {
+        return Vec::new();
+    }
+
     let mut distances: Vec<(S, usize)> =
         dataset.iter().map(|i| (dataset.distance(query_idx, i), i)).collect();
 
@@ -29,9 +33,10 @@ where
         a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal).then_with(|| a.1.cmp(&b.1))
     });
 
+    let kth_distance = distances[k.min(dataset.size()) - 1].0;
     distances
         .into_iter()
-        .take(k.min(dataset.size()))
+        .take_while(|(distance, _)| *distance <= kth_distance)
         .map(|(distance, index)| DistPair::new(distance, index))
         .collect()
 }

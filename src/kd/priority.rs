@@ -3,7 +3,8 @@ use std::collections::BinaryHeap;
 
 use crate::kd::KdTree;
 use crate::{
-    CoordinateSearch, DistPair, DistanceSearch, Float, PrioritySearcherFactory, SearchFilter,
+    CandidateHeap, CoordinateSearch, DistPair, DistanceSearch, Float, PrioritySearcherFactory,
+    SearchFilter,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,7 +40,7 @@ where
     heap: BinaryHeap<PriorityBranch<F>>,
     threshold: F,
     skip_threshold: F,
-    candidates: BinaryHeap<DistPair<F>>,
+    candidates: CandidateHeap<F>,
 }
 
 impl<'a, C, F> KdTreePrioritySearcher<'a, C, F>
@@ -54,7 +55,7 @@ where
             heap: BinaryHeap::new(),
             threshold: F::infinity(),
             skip_threshold: F::zero(),
-            candidates: BinaryHeap::new(),
+            candidates: CandidateHeap::new(),
         };
         searcher.reset_queue();
         searcher

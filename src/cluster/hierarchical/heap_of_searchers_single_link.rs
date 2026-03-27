@@ -1,9 +1,7 @@
-use std::collections::BinaryHeap;
-
 use crate::api::{DistanceData, DistanceSearch, PrioritySearcher, PrioritySearcherFactory};
 use crate::cluster::hierarchical::common::MergeHistory;
 use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
-use crate::{DistPair, Float, IndexQuery};
+use crate::{CandidateHeap, DistPair, Float, IndexQuery};
 
 /// Heap-of-Searchers Single-Link (HSSL) with priority-search acceleration.
 #[must_use]
@@ -17,8 +15,8 @@ where
     assert!(n > 0, "number of points must be positive");
 
     let mut builder = ClusterBuilder::new(n);
-    let mut primary = BinaryHeap::<DistPair<F>>::new();
-    let mut neighbor_heaps: Vec<BinaryHeap<DistPair<F>>> = vec![BinaryHeap::new(); n];
+    let mut primary = CandidateHeap::<F>::new();
+    let mut neighbor_heaps: Vec<CandidateHeap<F>> = vec![CandidateHeap::new(); n];
     let mut searchers: Vec<Option<S::Searcher<'a>>> = (0..n).map(|_| None).collect();
     let mut node_cluster = vec![u32::MAX; n];
 
@@ -39,7 +37,7 @@ where
             &mut neighbor_heaps[a],
             &mut node_cluster,
         );
-        if let Some(top) = neighbor_heaps[a].peek().copied() {
+        if let Some(top) = neighbor_heaps[a].peek() {
             primary.push(DistPair::new(top.distance, a));
             searchers[a] = Some(searcher);
         }
@@ -59,10 +57,11 @@ where
         // the distance at which `a` was queued.  If a recent merge made the
         // queued distance stale (heap min is now farther), defer via re-queue
         // but still fall through to the refill below.
-        if let Some(best) = nn.peek().copied().filter(|b| b.distance <= top.distance) {
+        if let Some(best) = nn.peek().filter(|b| b.distance <= top.distance) {
             nn.pop();
             let b = best.index;
-            if builder.merge_points(a, b, best.distance).is_some() && builder.merge_count() == n - 1
+            if builder.merge_points(a, b, best.distance).is_some()
+                && builder.merge_count() == n - 1
             {
                 break;
             }
@@ -80,7 +79,7 @@ where
             }
         }
 
-        if let Some(next) = nn.peek().copied() {
+        if let Some(next) = nn.peek() {
             primary.push(DistPair::new(next.distance, a));
         } else {
             searchers[a] = None;
@@ -96,7 +95,7 @@ where
 // the algorithm.
 fn initialize_neighbors<F: Float, Q, S>(
     query: &Q, searcher: &mut S, builder: &mut ClusterBuilder<F>, a: usize,
-    heap: &mut BinaryHeap<DistPair<F>>, node_cluster: &mut [u32],
+    heap: &mut CandidateHeap<F>, node_cluster: &mut [u32],
 ) where
     Q: DistanceSearch<F> + ?Sized,
     S: PrioritySearcher<F, Q>,
@@ -124,7 +123,7 @@ fn initialize_neighbors<F: Float, Q, S>(
 
 fn refill_neighbors<F: Float, Q, S>(
     query: &Q, searcher: &mut S, builder: &mut ClusterBuilder<F>, query_index: usize,
-    heap: &mut BinaryHeap<DistPair<F>>, node_cluster: &mut [u32],
+    heap: &mut CandidateHeap<F>, node_cluster: &mut [u32],
 ) where
     Q: DistanceSearch<F> + ?Sized,
     S: PrioritySearcher<F, Q>,
@@ -150,10 +149,10 @@ fn refill_neighbors<F: Float, Q, S>(
 }
 
 pub(crate) fn purge_same_cluster<F: Float>(
-    heap: &mut BinaryHeap<DistPair<F>>, builder: &mut ClusterBuilder<F>, a: usize,
+    heap: &mut CandidateHeap<F>, builder: &mut ClusterBuilder<F>, a: usize,
 ) {
     let ca = builder.find(a);
-    while heap.peek().copied().is_some_and(|n| builder.find(n.index) == ca) {
+    while heap.peek().is_some_and(|n| builder.find(n.index) == ca) {
         heap.pop();
     }
 }

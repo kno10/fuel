@@ -1,6 +1,6 @@
 use crate::Float;
 use crate::distance::DistanceFunction;
-use crate::distance::partial::Partial;
+use crate::distance::partial::PartialDistance;
 
 /// Minkowski distance (L^p norm):
 /// $$d_p(a,b)=\left(\sum_i |a_i-b_i|^p\right)^{1/p}$$
@@ -43,7 +43,7 @@ impl<F: Float> DistanceFunction<Vec<F>, F> for Minkowski<F> {
     fn is_metric(&self) -> bool { self.p >= F::one() }
 }
 
-impl<F: Float + Copy> Partial<F, F> for Minkowski<F> {
+impl<F: Float + Copy> PartialDistance<F, F> for Minkowski<F> {
     fn axis_distance(&self, delta: F) -> F { delta.abs().powf(self.p) }
 
     fn combine_axis_distances(&self, a: F, b: F) -> F { a.max(b) }

@@ -84,7 +84,7 @@ where
     for (i, slot) in core.iter_mut().enumerate().take(n) {
         query.set_index(i);
         let neighbors = tree.search_knn(&query, k);
-        if neighbors.len() == k {
+        if neighbors.len() >= k {
             *slot = neighbors[k - 1].distance;
         }
     }

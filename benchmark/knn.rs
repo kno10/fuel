@@ -10,7 +10,7 @@ use counting_euclidean_distance::CountingEuclideanDistance;
 use counting_partial_distance::CountingPartialDistance;
 use data_loading::read_numeric_data;
 use fuel::TableWithDistance;
-use fuel::distance::EuclideanDistance;
+use fuel::distance::Euclidean;
 use fuel::kd::{KdTree, MaxVarianceSplit};
 use fuel::outlier::{k_nearest_neighbors_outlier as knn, outlier_detection_independence_neighbor};
 use fuel::vptree::VPTree;
@@ -101,7 +101,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             ("vp".to_string(), distance_count_after_index, scores, dist_count, elapsed)
         }
         TreeKind::Kd => {
-            let kd_metric = CountingPartialDistance::new(EuclideanDistance);
+            let kd_metric = CountingPartialDistance::new(Euclidean);
             let data = TableWithDistance::with_distance(&rows, kd_metric.clone());
             let start = Instant::now();
             let tree = KdTree::new(&data, MaxVarianceSplit);

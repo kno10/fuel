@@ -105,7 +105,7 @@ pub use jeffrey::{Jeffrey, jeffrey_divergence};
 pub use jensen_shannon::{JensenShannon, jensen_shannon_divergence};
 pub use manhattan::{Manhattan, manhattan_distance};
 pub use minkowski::{Minkowski, minkowski_distance};
-pub use partial::Partial;
+pub use partial::PartialDistance;
 pub use squared_euclidean::{SquaredEuclidean, squared_euclidean_distance};
 
 use crate::Float;

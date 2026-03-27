@@ -13,7 +13,7 @@ use data_loading::read_numeric_data;
 use fuel::TableWithDistance;
 use fuel::cluster::dbscan::{NOISE, dbscan};
 use fuel::cluster::parallel_dbscan::parallel_dbscan;
-use fuel::distance::EuclideanDistance;
+use fuel::distance::Euclidean;
 use fuel::kd::{KdTree, MaxVarianceSplit};
 use fuel::vptree::VPTree;
 use rand::SeedableRng;
@@ -140,7 +140,7 @@ fn benchmark_variant(
                 ("vp".to_string(), distance_after_index, labels, distance_after_algorithm, elapsed)
             }
             TreeKind::Kd => {
-                let kd_metric = CountingPartialDistance::new(EuclideanDistance);
+                let kd_metric = CountingPartialDistance::new(Euclidean);
                 let data = TableWithDistance::with_distance(rows, kd_metric.clone());
                 let start = Instant::now();
                 let tree = KdTree::new(&data, MaxVarianceSplit);

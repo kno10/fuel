@@ -1,10 +1,8 @@
-use std::collections::BinaryHeap;
-
 use super::hdbscan_common::{HdbscanHierarchy, compute_core_distances_tree};
 use crate::api::DistanceData;
 use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
 use crate::{
-    DistPair, DistanceSearch, Float, IndexQuery, KnnSearch, PrioritySearcher,
+    CandidateHeap, DistPair, DistanceSearch, Float, IndexQuery, KnnSearch, PrioritySearcher,
     PrioritySearcherFactory,
 };
 
@@ -37,7 +35,7 @@ where
     }
 
     let mut builder = ClusterBuilder::new(n);
-    let mut primary = BinaryHeap::<DistPair<F>>::new();
+    let mut primary = CandidateHeap::<F>::new();
     let mut buffers: Vec<Vec<DistPair<F>>> = (0..n).map(|_| Vec::with_capacity(slack)).collect();
     let mut node_cluster = vec![u32::MAX; n];
     let mut searcher = S::priority_searcher(tree);

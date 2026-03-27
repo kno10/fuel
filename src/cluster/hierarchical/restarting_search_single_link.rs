@@ -1,9 +1,7 @@
-use std::collections::BinaryHeap;
-
 use crate::api::{DistanceData, DistanceSearch, PrioritySearcher, PrioritySearcherFactory};
 use crate::cluster::hierarchical::common::MergeHistory;
 use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
-use crate::{DistPair, Float, IndexQuery};
+use crate::{CandidateHeap, DistPair, Float, IndexQuery};
 
 /// Restarting-Search Single-Link (RSSL) with per-point continuing priority search.
 #[must_use]
@@ -17,7 +15,7 @@ where
     assert!(n > 0, "number of points must be positive");
 
     let mut builder = ClusterBuilder::new(n);
-    let mut primary = BinaryHeap::<DistPair<F>>::new();
+    let mut primary = CandidateHeap::<F>::new();
     let mut buffers: Vec<DistPair<F>> = vec![DistPair::undefined(); n];
     let mut node_cluster = vec![u32::MAX; n];
 

@@ -1,6 +1,6 @@
 use super::{DistanceFunction, squared_euclidean_distance};
 use crate::Float;
-use crate::distance::partial::Partial;
+use crate::distance::partial::PartialDistance;
 
 /// Euclidean distance (L2 norm):
 /// $$d_2(a,b)=\sqrt{\sum_i (a_i-b_i)^2}$$
@@ -24,7 +24,7 @@ impl<N: Float, F: Float + 'static> DistanceFunction<Vec<N>, F> for Euclidean {
     fn is_metric(&self) -> bool { true }
 }
 
-impl<F: Float + 'static> Partial<F, F> for Euclidean {
+impl<F: Float + 'static> PartialDistance<F, F> for Euclidean {
     fn axis_distance(&self, delta: F) -> F { delta * delta }
 
     fn combine_axis_distances(&self, a: F, b: F) -> F { a + b }

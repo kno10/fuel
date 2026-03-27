@@ -1,5 +1,4 @@
 use std::cmp::Ordering;
-use std::collections::BinaryHeap;
 
 use super::hdbscan_common::{
     HdbscanHierarchy, SameComponentFilter, compute_core_distances_tree,
@@ -8,7 +7,7 @@ use super::hdbscan_common::{
 use crate::api::{DistanceData, PrioritySearcher, PrioritySearcherFactory, VectorData};
 use crate::cluster::hierarchical::common::UnionFind;
 use crate::cluster::hierarchical::search_single_link_common::ClusterBuilder;
-use crate::{DistPair, DistanceSearch, Float, IndexQuery, KnnSearch};
+use crate::{CandidateHeap, DistPair, DistanceSearch, Float, IndexQuery, KnnSearch};
 
 #[derive(Debug, Clone, Copy)]
 struct Edge<F: Float> {
@@ -60,8 +59,8 @@ where
     }
 
     let mut uf = UnionFind::new(n);
-    let mut neighbor_heaps: Vec<Option<BinaryHeap<DistPair<F>>>> =
-        (0..n).map(|_| Some(BinaryHeap::new())).collect();
+    let mut neighbor_heaps: Vec<Option<CandidateHeap<F>>> =
+        (0..n).map(|_| Some(CandidateHeap::new())).collect();
     let mut searchers: Vec<Option<S::Searcher<'a>>> = (0..n).map(|_| None).collect();
     let mut node_cluster = vec![u32::MAX; n];
 
@@ -90,7 +89,7 @@ where
                 continue;
             };
             let ca = uf.find(a);
-            while let Some(top) = heap.peek().copied() {
+            while let Some(top) = heap.peek() {
                 if uf.find(top.index) == ca {
                     heap.pop();
                 } else {
@@ -127,7 +126,7 @@ where
             let Some(heap) = heap_opt.as_ref() else {
                 continue;
             };
-            let Some(top) = heap.peek().copied() else {
+            let Some(top) = heap.peek() else {
                 continue;
             };
             let ca = uf.find(a);
@@ -157,7 +156,7 @@ where
             let Some(heap) = neighbor_heaps[a].as_mut() else {
                 continue;
             };
-            let Some(top) = heap.peek().copied() else {
+            let Some(top) = heap.peek() else {
                 continue;
             };
             if top.distance != dist {
@@ -195,8 +194,8 @@ where
 /// the set of candidates accumulated in the heap) is identical to the other
 /// HDBSCAN variants.
 fn initialize_neighbors<F: Float, Q, S>(
-    query: &Q, searcher: &mut S, query_index: usize, heap: &mut Option<BinaryHeap<DistPair<F>>>,
-    core_distances: &[F],
+    query: &Q, searcher: &mut S, query_index: usize,
+    heap: &mut Option<CandidateHeap<F>>, core_distances: &[F],
 ) where
     Q: DistanceSearch<F> + ?Sized,
     S: PrioritySearcher<F, Q>,
@@ -221,8 +220,8 @@ fn initialize_neighbors<F: Float, Q, S>(
 }
 
 fn refill_neighbors<F: Float, Q, S>(
-    data: &Q, searcher: &mut S, uf: &mut UnionFind, a: usize, heap: &mut BinaryHeap<DistPair<F>>,
-    core_distances: &[F], node_cluster: &mut [u32],
+    data: &Q, searcher: &mut S, uf: &mut UnionFind, a: usize,
+    heap: &mut CandidateHeap<F>, core_distances: &[F], node_cluster: &mut [u32],
 ) where
     Q: DistanceSearch<F> + ?Sized,
     S: PrioritySearcher<F, Q>,
