@@ -25,7 +25,24 @@ impl<N: Float, F: Float + 'static> DistanceFunction<Vec<N>, F> for Euclidean {
 }
 
 impl<F: Float + 'static> PartialDistance<F, F> for Euclidean {
-    fn axis_distance(&self, delta: F) -> F { delta * delta }
+    fn axis_distance(&self, delta: F) -> F { delta.abs() }
 
-    fn combine_axis_distances(&self, a: F, b: F) -> F { a + b }
+    fn combine_axis_distances(&self, a: F, b: F) -> F {
+        (a * a + b * b).sqrt()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Euclidean;
+    use crate::distance::PartialDistance;
+
+    #[test]
+    fn partial_bounds_use_euclidean_units() {
+        let distance = Euclidean;
+
+        assert_eq!(distance.axis_distance(-3.0_f64), 3.0);
+        assert_eq!(distance.axis_distance(3.0_f64), 3.0);
+        assert_eq!(distance.combine_axis_distances(3.0, 4.0), 5.0);
+    }
 }
