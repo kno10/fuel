@@ -1,12 +1,11 @@
-mod counting_euclidean_distance;
-mod data_loading;
+mod common;
 
 use std::error::Error;
 use std::time::Instant;
 
-use counting_euclidean_distance::CountingEuclideanDistance;
-use data_loading::read_numeric_data;
+use common::{CountingDistance, read_numeric_data};
 use fuel::TableWithDistance;
+use fuel::distance::Euclidean;
 use fuel::outlier::{distance_from_center, distance_from_origin, random, zero};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -39,15 +38,15 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     // we build the tree only to have a uniform interface; the baseline
     // algorithms do not depend on it, but it exercises indexing overhead
-    let distance = CountingEuclideanDistance::new();
-    let distance_count = distance.counter();
-    let data = TableWithDistance::with_distance(&rows, distance);
+    let distance = CountingDistance::new(Euclidean);
+    let data: TableWithDistance<f64, Vec<f64>, CountingDistance<Euclidean>, f64> =
+        TableWithDistance::with_distance(&rows, distance.clone());
     let mut rng = StdRng::seed_from_u64(RNG_SEED);
     let sample_size = rows.len();
 
     let start = Instant::now();
     let _tree = fuel::vptree::VPTree::new(&data, sample_size, &mut rng);
-    let distance_count_after_index = distance_count.load(std::sync::atomic::Ordering::Relaxed);
+    let distance_count_after_index = distance.count();
 
     let scores = match mode.as_str() {
         "origin" => distance_from_origin(&data),
@@ -57,7 +56,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         other => return Err(format!("unknown mode: {}", other).into()),
     };
 
-    let dist_count = distance_count.load(std::sync::atomic::Ordering::Relaxed);
+    let dist_count = distance.count();
     let elapsed = start.elapsed();
 
     let avg_score = scores.scores.iter().copied().sum::<f64>() / scores.scores.len() as f64;

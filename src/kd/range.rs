@@ -13,12 +13,20 @@ where
             return Vec::new();
         }
 
+        let mut axis_bounds = vec![F::zero(); query.dims()];
         let mut result = Vec::new();
-        self.search_range_recursive(query, radius, 0, self.points.len(), &mut result, F::zero());
+        let bound_radius = query.distance_to_range_bound(radius);
+        self.search_range_recursive(
+            query,
+            radius,
+            bound_radius,
+            0,
+            self.points.len(),
+            &mut result,
+            &mut axis_bounds,
+        );
         // TODO: make sorting optional
-        result.sort_by(|a, b| {
-            a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        result.sort();
         result
     }
 }
@@ -28,8 +36,8 @@ where
     C: Float,
 {
     fn search_range_recursive<F, Q>(
-        &self, query: &Q, radius: F, left: usize, right: usize, result: &mut Vec<DistPair<F>>,
-        lower_bound: F,
+        &self, query: &Q, radius: F, radius_bound: F, left: usize, right: usize,
+        result: &mut Vec<DistPair<F>>, axis_bounds: &mut [F],
     ) where
         F: Float,
         Q: DistanceSearch<F> + CoordinateSearch<C, F> + ?Sized,
@@ -38,40 +46,74 @@ where
             return;
         }
 
-        if lower_bound > radius {
+        let mut lower_bound = F::zero();
+        for (axis, &axis_dist) in axis_bounds.iter().enumerate() {
+            lower_bound =
+                query.replace_axis_distance(lower_bound, axis, F::zero(), axis_dist, axis_bounds);
+        }
+
+        if lower_bound > radius_bound {
             return;
         }
 
         let node_idx = usize::midpoint(left, right);
-        let point_idx = self.points[node_idx];
+        let point_idx = self.points[node_idx] as usize;
         let dist = query.query_distance(point_idx);
 
         if dist <= radius {
             result.push(DistPair::new(dist, point_idx));
         }
 
-        let axis = self.split_axes[node_idx];
+        let axis = self.split_axes[node_idx] as usize;
         let split = self.split_values[node_idx];
         let diff = query.query_coordinate(axis) - split;
         let plane_dist = query.delta_to_distance(diff);
 
-        let (first, second) = if diff <= C::zero() {
-            (
-                (left, node_idx, lower_bound),
-                (node_idx + 1, right, query.combine_axis_distances(lower_bound, plane_dist)),
-            )
+        let (first_range, second_range) = if diff <= C::zero() {
+            ((left, node_idx), (node_idx + 1, right))
         } else {
-            (
-                (node_idx + 1, right, lower_bound),
-                (left, node_idx, query.combine_axis_distances(lower_bound, plane_dist)),
-            )
+            ((node_idx + 1, right), (left, node_idx))
         };
 
-        if first.0 < first.1 {
-            self.search_range_recursive(query, radius, first.0, first.1, result, first.2);
+        if first_range.0 < first_range.1 {
+            self.search_range_recursive(
+                query,
+                radius,
+                radius_bound,
+                first_range.0,
+                first_range.1,
+                result,
+                axis_bounds,
+            );
         }
-        if second.0 < second.1 && second.2 <= radius {
-            self.search_range_recursive(query, radius, second.0, second.1, result, second.2);
+
+        if second_range.0 < second_range.1 {
+            let old_axis_bound = axis_bounds[axis];
+            let new_axis_bound =
+                if plane_dist > old_axis_bound { plane_dist } else { old_axis_bound };
+            axis_bounds[axis] = new_axis_bound;
+
+            let axis_lower_bound = query.replace_axis_distance(
+                lower_bound,
+                axis,
+                old_axis_bound,
+                new_axis_bound,
+                axis_bounds,
+            );
+
+            if axis_lower_bound <= radius_bound {
+                self.search_range_recursive(
+                    query,
+                    radius,
+                    radius_bound,
+                    second_range.0,
+                    second_range.1,
+                    result,
+                    axis_bounds,
+                );
+            }
+
+            axis_bounds[axis] = old_axis_bound;
         }
     }
 }

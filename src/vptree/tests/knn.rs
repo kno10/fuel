@@ -215,6 +215,28 @@ fn test_knn_with_k_larger_than_dataset() {
 }
 
 #[test]
+fn test_search_aknn_equality_and_budget() {
+    let points =
+        vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 1.0], vec![1.0, 1.0], vec![2.0, 2.0]];
+    let dataset = TableWithDistance::with_distance(&points, Euclidean);
+    let rng = &mut StdRng::seed_from_u64(42);
+    let tree: VPTree<f64> = VPTree::new(&dataset, 1, rng);
+
+    let query = dataset.query().with_index(0);
+    let exact = tree.search_knn(&query, 3);
+    let approx_full = tree.search_aknn(&query, 3, 1.0);
+
+    assert_eq!(exact, approx_full);
+
+    let approx_small = tree.search_aknn(&query, 3, 0.2);
+    assert!(!approx_small.is_empty());
+    assert!(approx_small.len() <= 3);
+
+    let empty = tree.search_aknn(&query, 3, 0.0);
+    assert!(empty.is_empty());
+}
+
+#[test]
 fn test_knn_self_is_nearest_for_all_queries() {
     let points = vec![
         vec![-1.0, 0.5],

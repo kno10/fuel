@@ -194,8 +194,8 @@ where
 /// the set of candidates accumulated in the heap) is identical to the other
 /// HDBSCAN variants.
 fn initialize_neighbors<F: Float, Q, S>(
-    query: &Q, searcher: &mut S, query_index: usize,
-    heap: &mut Option<CandidateHeap<F>>, core_distances: &[F],
+    query: &Q, searcher: &mut S, query_index: usize, heap: &mut Option<CandidateHeap<F>>,
+    core_distances: &[F],
 ) where
     Q: DistanceSearch<F> + ?Sized,
     S: PrioritySearcher<F, Q>,
@@ -220,8 +220,8 @@ fn initialize_neighbors<F: Float, Q, S>(
 }
 
 fn refill_neighbors<F: Float, Q, S>(
-    data: &Q, searcher: &mut S, uf: &mut UnionFind, a: usize,
-    heap: &mut CandidateHeap<F>, core_distances: &[F], node_cluster: &mut [u32],
+    data: &Q, searcher: &mut S, uf: &mut UnionFind, a: usize, heap: &mut CandidateHeap<F>,
+    core_distances: &[F], node_cluster: &mut [u32],
 ) where
     Q: DistanceSearch<F> + ?Sized,
     S: PrioritySearcher<F, Q>,

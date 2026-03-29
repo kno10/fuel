@@ -205,8 +205,8 @@ fn initialize_neighbors<F, Q, S>(
 }
 
 fn refill_neighbors<F, Q, S>(
-    query: &Q, searcher: &mut S, uf: &mut UnionFind, a: usize,
-    heap: &mut CandidateHeap<F>, node_cluster: &mut [u32],
+    query: &Q, searcher: &mut S, uf: &mut UnionFind, a: usize, heap: &mut CandidateHeap<F>,
+    node_cluster: &mut [u32],
 ) where
     F: Float,
     Q: DistanceSearch<F> + ?Sized,

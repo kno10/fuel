@@ -1,3 +1,4 @@
+mod aknn;
 mod construct;
 mod knn;
 mod priority;

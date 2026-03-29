@@ -56,8 +56,13 @@ path = "benchmark/single_link.rs"
 required-features = ["benchmark"]
 
 [[bin]]
-name = "kd_vs_vp"
-path = "benchmark/kd_vs_vp.rs"
+name = "index_benchmark"
+path = "benchmark/index_benchmark.rs"
+required-features = ["benchmark"]
+
+[[bin]]
+name = "aknn_benchmark"
+path = "benchmark/aknn_benchmark.rs"
 required-features = ["benchmark"]
 
 [features]

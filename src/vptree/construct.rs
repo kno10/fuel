@@ -15,6 +15,7 @@ impl<T: Float> VPTree<T> {
     pub fn new<D: DistanceData<T>, R: Rng>(data: &D, sample_size: usize, rng: &mut R) -> Self {
         let size = data.size();
         assert!(size > 0, "Data set must contain at least one point.");
+        assert!(size <= vpsize::MAX as usize, "Data set size exceeds vpsize capacity");
 
         let mut tree = Self {
             points: vec![0; size],

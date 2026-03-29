@@ -6,36 +6,9 @@ use rand::rngs::StdRng;
 use super::WardLinkage;
 use super::common::{Builder, MergeHistory};
 use super::linkage::GeometricLinkage;
-use crate::distance::{DistanceFunction, PartialDistance};
+use crate::distance::SquaredEuclidean;
 use crate::vptree::VPTree;
 use crate::{CoordinateQuery, DistanceData, Float, TableWithDistance};
-
-#[derive(Clone, Copy, Default)]
-struct SquaredEuclidean;
-
-impl<F: Float> DistanceFunction<Vec<F>, F> for SquaredEuclidean {
-    fn distance(&self, a: &Vec<F>, b: &Vec<F>) -> F {
-        a.iter().zip(b).fold(F::zero(), |acc, (&x, &y)| {
-            let delta = x - y;
-            acc + delta * delta
-        })
-    }
-}
-
-impl<F: Float> DistanceFunction<[F], F> for SquaredEuclidean {
-    fn distance(&self, a: &[F], b: &[F]) -> F {
-        a.iter().zip(b).fold(F::zero(), |acc, (&x, &y)| {
-            let delta = x - y;
-            acc + delta * delta
-        })
-    }
-}
-
-impl<F: Float> PartialDistance<F, F> for SquaredEuclidean {
-    fn axis_distance(&self, delta: F) -> F { delta * delta }
-
-    fn combine_axis_distances(&self, a: F, b: F) -> F { a + b }
-}
 
 struct UnionFind {
     parent: Vec<usize>,

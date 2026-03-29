@@ -25,10 +25,16 @@ impl<N: Float, F: Float + 'static> DistanceFunction<Vec<N>, F> for Euclidean {
 }
 
 impl<F: Float + 'static> PartialDistance<F, F> for Euclidean {
-    fn axis_distance(&self, delta: F) -> F { delta.abs() }
+    fn axis_distance(&self, delta: F) -> F { delta * delta }
 
-    fn combine_axis_distances(&self, a: F, b: F) -> F {
-        (a * a + b * b).sqrt()
+    fn distance_to_range_bound(&self, distance: F) -> F { distance * distance }
+
+    fn range_bound_to_distance(&self, bound: F) -> F { bound.sqrt() }
+
+    fn replace_axis_distance(
+        &self, current: F, _axis: usize, old_axis: F, new_axis: F, _axis_bounds: &[F],
+    ) -> F {
+        current - old_axis + new_axis
     }
 }
 
@@ -41,8 +47,9 @@ mod tests {
     fn partial_bounds_use_euclidean_units() {
         let distance = Euclidean;
 
-        assert_eq!(distance.axis_distance(-3.0_f64), 3.0);
-        assert_eq!(distance.axis_distance(3.0_f64), 3.0);
-        assert_eq!(distance.combine_axis_distances(3.0, 4.0), 5.0);
+        assert_eq!(distance.axis_distance(-3.0_f64), 9.0);
+        assert_eq!(distance.axis_distance(3.0_f64), 9.0);
+        assert_eq!(distance.distance_to_range_bound(5.0_f64), 25.0);
+        assert_eq!(distance.replace_axis_distance(25.0, 0, 9.0, 16.0, &[9.0, 16.0]), 32.0);
     }
 }

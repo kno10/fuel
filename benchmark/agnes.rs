@@ -1,18 +1,16 @@
-mod counting_euclidean_distance;
-mod data_loading;
+mod common;
 
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use counting_euclidean_distance::CountingEuclideanDistance;
-use data_loading::read_numeric_data;
+use common::{CountingDistance, read_numeric_data};
 use fuel::cluster::hdbscan::extraction::{ExtractedHierarchy, extract_simplified_hierarchy};
 use fuel::cluster::hierarchical::{
     AverageLinkage, CentroidLinkage, CompleteLinkage, GroupAverageLinkage, MedianLinkage, Merge,
     MinimumVarianceLinkage, SingleLinkage, WardLinkage, WeightedAverageLinkage, agnes,
 };
+use fuel::distance::Euclidean;
 use fuel::{DistanceData, TableWithDistance};
 
 fn main() {
@@ -47,15 +45,15 @@ fn run() -> Result<(), Box<dyn Error>> {
         return Err("CSV must contain at least two rows".into());
     }
 
-    let distance = CountingEuclideanDistance::new();
-    let distance_count = distance.counter();
-    let data = TableWithDistance::with_distance(&rows, distance);
+    let distance = CountingDistance::new(Euclidean);
+    let data: TableWithDistance<f64, Vec<f64>, CountingDistance<Euclidean>, f64> =
+        TableWithDistance::with_distance(&rows, distance.clone());
 
     // build condensed lower-triangular distance matrix
     let data_ref = &data;
     let condensed: Vec<_> =
         (1..n).flat_map(|p| (0..p).map(move |q| data_ref.distance(p, q))).collect();
-    let distance_count_after_index = distance_count.load(Ordering::Relaxed);
+    let distance_count_after_index = distance.count();
 
     let start = Instant::now();
     let history = match linkage_name.as_str() {
@@ -71,7 +69,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         _ => return Err("unknown linkage type".into()),
     };
     let elapsed = start.elapsed();
-    let distance_count_after_algorithm = distance_count.load(Ordering::Relaxed);
+    let distance_count_after_algorithm = distance.count();
 
     // extract flat clusters from the hierarchy with ELKI-style tie handling.
     let labels = labels_from_simplified_hierarchy(&history, n, k);

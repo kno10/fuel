@@ -46,5 +46,26 @@ impl<F: Float> DistanceFunction<Vec<F>, F> for Minkowski<F> {
 impl<F: Float + Copy> PartialDistance<F, F> for Minkowski<F> {
     fn axis_distance(&self, delta: F) -> F { delta.abs().powf(self.p) }
 
-    fn combine_axis_distances(&self, a: F, b: F) -> F { a.max(b) }
+    fn distance_to_range_bound(&self, distance: F) -> F { distance }
+
+    fn range_bound_to_distance(&self, bound: F) -> F { bound }
+
+    fn replace_axis_distance(
+        &self, current: F, _axis: usize, old_axis: F, new_axis: F, axis_bounds: &[F],
+    ) -> F {
+        // For max-based partial bound, if the current maximum is replaced,
+        // recompute by scanning axis_bounds.
+        if old_axis < new_axis {
+            if new_axis >= current {
+                return new_axis;
+            }
+            return current;
+        }
+
+        if old_axis == current {
+            axis_bounds.iter().copied().fold(F::zero(), |acc, x| acc.max(x))
+        } else {
+            current
+        }
+    }
 }

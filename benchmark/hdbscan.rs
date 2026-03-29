@@ -1,13 +1,10 @@
-mod counting_euclidean_distance;
-mod data_loading;
+mod common;
 
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use counting_euclidean_distance::CountingEuclideanDistance;
-use data_loading::read_numeric_data;
+use common::{CountingDistance, read_numeric_data};
 use fuel::cluster::dbscan::NOISE;
 use fuel::cluster::hdbscan::extraction::extract_clusters_with_noise;
 use fuel::cluster::hdbscan::{
@@ -16,6 +13,7 @@ use fuel::cluster::hdbscan::{
     slink_hdbscan,
 };
 use fuel::cluster::hierarchical::Merge;
+use fuel::distance::Euclidean;
 use fuel::vptree::VPTree;
 use fuel::{Data, TableWithDistance};
 use rand::SeedableRng;
@@ -45,15 +43,14 @@ fn run() -> Result<(), Box<dyn Error>> {
     let mut maybe_tree: Option<VPTree<f64>> = None;
 
     if any_tree {
-        let distance = CountingEuclideanDistance::new();
-        let distance_counter = distance.counter();
-        let data = TableWithDistance::with_distance(&rows, distance);
+        let distance = CountingDistance::new(Euclidean);
+        let data = TableWithDistance::with_distance(&rows, distance.clone());
         let mut rng = StdRng::seed_from_u64(RNG_SEED);
 
         let start_idx = Instant::now();
         let tree = VPTree::new(&data, rows.len(), &mut rng);
         let index_time_ms = start_idx.elapsed().as_secs_f64() * 1_000.0;
-        let index_dist_count = distance_counter.load(Ordering::Relaxed);
+        let index_dist_count = distance.count();
         maybe_tree = Some(tree);
 
         // print index statistics once at the beginning
@@ -61,13 +58,12 @@ fn run() -> Result<(), Box<dyn Error>> {
     }
 
     // prepare data access for algorithm runs (new counter)
-    let distance = CountingEuclideanDistance::new();
-    let distance_counter = distance.counter();
-    let data = TableWithDistance::with_distance(&rows, distance);
+    let distance = CountingDistance::new(Euclidean);
+    let data: TableWithDistance<f64, Vec<f64>, CountingDistance<Euclidean>, f64> =
+        TableWithDistance::with_distance(&rows, distance.clone());
 
     for &variant in selection.variants() {
-        let result =
-            benchmark_variant(&data, min_points, variant, maybe_tree.as_ref(), &distance_counter);
+        let result = benchmark_variant(&data, min_points, variant, maybe_tree.as_ref(), &distance);
         print_result(&result);
     }
 
@@ -117,15 +113,15 @@ where
 }
 
 fn benchmark_variant(
-    data: &TableWithDistance<'_, f64, Vec<f64>, CountingEuclideanDistance, f64>, min_points: usize,
-    variant: Variant, prebuilt_tree: Option<&VPTree<f64>>,
-    distance_counter: &std::sync::atomic::AtomicU64,
+    data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<Euclidean>, f64>,
+    min_points: usize, variant: Variant, prebuilt_tree: Option<&VPTree<f64>>,
+    distance: &CountingDistance<Euclidean>,
 ) -> BenchmarkResult {
-    let baseline = distance_counter.load(Ordering::Relaxed);
+    let baseline = distance.count();
     let start = Instant::now();
     let hierarchy = variant.run(prebuilt_tree, data, min_points);
-    let after = distance_counter.load(Ordering::Relaxed);
-    let dist_count = after.saturating_sub(baseline);
+    let after = distance.count();
+    let dist_count = after.saturating_sub(baseline) as u64;
     let elapsed = start.elapsed();
 
     let mst_weight: f64 = hierarchy.merges.iter().map(|m| m.distance).sum();
@@ -193,7 +189,7 @@ impl Variant {
 
     fn run(
         &self, tree: Option<&VPTree<f64>>,
-        data: &TableWithDistance<'_, f64, Vec<f64>, CountingEuclideanDistance, f64>,
+        data: &TableWithDistance<'_, f64, Vec<f64>, CountingDistance<Euclidean>, f64>,
         min_points: usize,
     ) -> HdbscanHierarchy<f64> {
         match self {

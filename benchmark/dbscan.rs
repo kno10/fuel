@@ -1,15 +1,10 @@
-mod counting_euclidean_distance;
-mod counting_partial_distance;
-mod data_loading;
+mod common;
 
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use counting_euclidean_distance::CountingEuclideanDistance;
-use counting_partial_distance::CountingPartialDistance;
-use data_loading::read_numeric_data;
+use common::{CountingDistance, read_numeric_data};
 use fuel::TableWithDistance;
 use fuel::cluster::dbscan::{NOISE, dbscan};
 use fuel::cluster::parallel_dbscan::parallel_dbscan;
@@ -123,33 +118,32 @@ fn benchmark_variant(
     let (tree_label, distance_after_index, labels, distance_after_algorithm, elapsed) =
         match tree_kind {
             TreeKind::Vp => {
-                let distance = CountingEuclideanDistance::new();
-                let distance_counter = distance.counter();
-                let data = TableWithDistance::with_distance(rows, distance);
+                let distance = CountingDistance::new(Euclidean);
+                let data = TableWithDistance::with_distance(rows, distance.clone());
                 let mut rng = StdRng::seed_from_u64(RNG_SEED);
 
                 let start = Instant::now();
                 let tree = VPTree::new(&data, rows.len(), &mut rng);
-                let distance_after_index = distance_counter.load(Ordering::Relaxed);
+                let distance_after_index = distance.count() as u64;
                 let labels = match variant {
                     Variant::Sequential => dbscan(&tree, &data, eps, min_points),
                     Variant::Parallel => parallel_dbscan(&tree, &data, eps, min_points),
                 };
-                let distance_after_algorithm = distance_counter.load(Ordering::Relaxed);
+                let distance_after_algorithm = distance.count() as u64;
                 let elapsed = start.elapsed();
                 ("vp".to_string(), distance_after_index, labels, distance_after_algorithm, elapsed)
             }
             TreeKind::Kd => {
-                let kd_metric = CountingPartialDistance::new(Euclidean);
+                let kd_metric = CountingDistance::new(Euclidean);
                 let data = TableWithDistance::with_distance(rows, kd_metric.clone());
                 let start = Instant::now();
                 let tree = KdTree::new(&data, MaxVarianceSplit);
-                let distance_after_index = kd_metric.count();
+                let distance_after_index = kd_metric.count() as u64;
                 let labels = match variant {
                     Variant::Sequential => dbscan(&tree, &data, eps, min_points),
                     Variant::Parallel => parallel_dbscan(&tree, &data, eps, min_points),
                 };
-                let distance_after_algorithm = kd_metric.count();
+                let distance_after_algorithm = kd_metric.count() as u64;
                 let elapsed = start.elapsed();
                 ("kd".to_string(), distance_after_index, labels, distance_after_algorithm, elapsed)
             }

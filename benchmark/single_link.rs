@@ -1,12 +1,10 @@
-mod counting_partial_distance;
-mod data_loading;
+mod common;
 
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::time::Instant;
 
-use counting_partial_distance::CountingPartialDistance;
-use data_loading::read_numeric_data_with_limit;
+use common::{CountingDistance, read_numeric_data_with_limit};
 use fuel::TableWithDistance;
 use fuel::cluster::hdbscan::extraction::{ExtractedHierarchy, extract_simplified_hierarchy};
 use fuel::cluster::hierarchical::{
@@ -103,8 +101,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let dimension = rows.first().map(|row| row.len()).unwrap_or(0);
 
     // wrap the Euclidean distance so we can count how many times it's evaluated
-    let distance = CountingPartialDistance::new(Euclidean);
-    let data: TableWithDistance<f64, Vec<f64>, CountingPartialDistance<Euclidean>, f64> =
+    let distance = CountingDistance::new(Euclidean);
+    let data: TableWithDistance<f64, Vec<f64>, CountingDistance<Euclidean>, f64> =
         TableWithDistance::with_distance(&rows, distance.clone());
     let sample_size = tree_sample_size.min(used_rows).max(1);
 

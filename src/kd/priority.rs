@@ -12,10 +12,13 @@ struct PriorityBranch<F> {
     mindist: F,
     left: usize,
     right: usize,
+    axis_bounds: Vec<F>,
 }
 
 impl<F> PriorityBranch<F> {
-    const fn new(mindist: F, left: usize, right: usize) -> Self { Self { mindist, left, right } }
+    fn new(mindist: F, left: usize, right: usize, axis_bounds: Vec<F>) -> Self {
+        Self { mindist, left, right, axis_bounds }
+    }
 }
 
 impl<F: PartialEq> Eq for PriorityBranch<F> {}
@@ -41,6 +44,7 @@ where
     threshold: F,
     skip_threshold: F,
     candidates: CandidateHeap<F>,
+    lower_bound: F,
 }
 
 impl<'a, C, F> KdTreePrioritySearcher<'a, C, F>
@@ -56,6 +60,7 @@ where
             threshold: F::infinity(),
             skip_threshold: F::zero(),
             candidates: CandidateHeap::new(),
+            lower_bound: F::infinity(),
         };
         searcher.reset_queue();
         searcher
@@ -65,6 +70,7 @@ where
         self.reset_queue();
         self.threshold = F::infinity();
         self.skip_threshold = F::zero();
+        self.lower_bound = F::infinity();
     }
 
     /// Reset the searcher and set upper/lower cutoff bounds.
@@ -72,33 +78,31 @@ where
         self.reset_queue();
         self.threshold = cutoff;
         self.skip_threshold = skip;
+        self.lower_bound = F::infinity();
     }
 
     fn reset_queue(&mut self) {
         self.heap.clear();
         self.candidates.clear();
         if !self.tree.is_empty() {
-            self.heap.push(PriorityBranch::new(F::zero(), 0, self.tree.len()));
+            self.heap.push(PriorityBranch::new(F::zero(), 0, self.tree.len(), Vec::new()));
         }
     }
 
-    fn push_branch(&mut self, mindist: F, left: usize, right: usize) {
-        if left >= right || mindist > self.threshold {
+    fn push_branch(
+        &mut self, mindist: F, left: usize, right: usize, axis_bounds: Vec<F>, threshold_bound: F,
+    ) {
+        if left >= right || mindist > threshold_bound {
             return;
         }
-        self.heap.push(PriorityBranch::new(mindist, left, right));
+        self.heap.push(PriorityBranch::new(mindist, left, right, axis_bounds));
     }
 
     /// Reduce the upper distance cutoff (values must only decrease).
     pub fn decrease_cutoff(&mut self, threshold: F) {
         assert!(threshold <= self.threshold, "cutoff must only decrease");
         self.threshold = threshold;
-        while let Some(entry) = self.heap.peek() {
-            if entry.mindist <= self.threshold {
-                break;
-            }
-            self.heap.pop();
-        }
+        self.lower_bound = self.lower_bound.min(threshold);
         while let Some(candidate) = self.candidates.peek() {
             if candidate.distance <= self.threshold {
                 break;
@@ -110,20 +114,31 @@ where
     /// Alias for `decrease_cutoff`.
     pub fn set_threshold(&mut self, threshold: F) { self.decrease_cutoff(threshold); }
 
-    /// Lower bound for all remaining candidates.
-    pub fn all_lower_bound(&self) -> F {
-        let heap_bound = self.heap.peek().map_or(F::infinity(), |entry| entry.mindist);
-        let candidate_bound =
-            self.candidates.peek().map_or(F::infinity(), |candidate| candidate.distance);
-        self.skip_threshold.max(heap_bound.min(candidate_bound))
+    fn update_lower_bound(&mut self, heap_distance: F, candidate_distance: F) {
+        self.lower_bound = self.skip_threshold.max(heap_distance.min(candidate_distance));
     }
 
-    fn next_internal<Q: DistanceSearch<F> + CoordinateSearch<C, F> + ?Sized>(
-        &mut self, query: &Q,
-    ) -> Option<DistPair<F>> {
+    /// Lower bound for all remaining candidates.
+    pub fn all_lower_bound_value(&self) -> F { self.lower_bound }
+
+    fn next_internal<Q>(&mut self, query: &Q) -> Option<DistPair<F>>
+    where
+        Q: DistanceSearch<F> + CoordinateSearch<C, F> + ?Sized,
+    {
+        let threshold_bound = query.distance_to_range_bound(self.threshold);
+
         loop {
+            let heap_distance = query.range_bound_to_distance(
+                self.heap.peek().map_or(F::infinity(), |entry| entry.mindist),
+            );
+            let candidate_distance =
+                self.candidates.peek().map_or(F::infinity(), |candidate| candidate.distance);
+            self.update_lower_bound(heap_distance, candidate_distance);
+
             if let Some(candidate) = self.candidates.peek()
-                && self.heap.peek().is_none_or(|entry| entry.mindist >= candidate.distance)
+                && self.heap.peek().is_none_or(|entry| {
+                    entry.mindist >= query.distance_to_range_bound(candidate.distance)
+                })
             {
                 let cand = self.candidates.pop();
                 if let Some(c) = &cand
@@ -131,6 +146,14 @@ where
                 {
                     continue;
                 }
+
+                let heap_distance = query.range_bound_to_distance(
+                    self.heap.peek().map_or(F::infinity(), |entry| entry.mindist),
+                );
+                let candidate_distance =
+                    self.candidates.peek().map_or(F::infinity(), |candidate| candidate.distance);
+                self.update_lower_bound(heap_distance, candidate_distance);
+
                 return cand;
             }
 
@@ -141,39 +164,73 @@ where
                         if cand.distance < self.skip_threshold {
                             continue;
                         }
+                        self.lower_bound = F::infinity();
                         return Some(cand);
                     }
+                    self.lower_bound = F::infinity();
                     return None;
                 }
             };
 
-            if branch.mindist > self.threshold {
+            if branch.mindist > threshold_bound {
                 continue;
             }
 
             let node_idx = usize::midpoint(branch.left, branch.right);
-            let point_idx = self.tree.points[node_idx];
-            let axis = self.tree.split_axes[node_idx];
+            let point_idx = self.tree.points[node_idx] as usize;
+            let axis = self.tree.split_axes[node_idx] as usize;
             let split_value = self.tree.split_values[node_idx];
             let diff = query.query_coordinate(axis) - split_value;
             let axis_dist = query.delta_to_distance(diff);
 
+            let parent_bounds = if branch.axis_bounds.is_empty() {
+                vec![F::zero(); query.dims()]
+            } else {
+                branch.axis_bounds.clone()
+            };
+
             if branch.left < node_idx {
+                let mut left_bounds = parent_bounds.clone();
+                let old_axis_bound = left_bounds[axis];
                 let left_mindist = if diff > C::zero() {
-                    query.combine_axis_distances(branch.mindist, axis_dist)
+                    left_bounds[axis] = axis_dist;
+                    query.replace_axis_distance(
+                        branch.mindist,
+                        axis,
+                        old_axis_bound,
+                        axis_dist,
+                        &left_bounds,
+                    )
                 } else {
+                    left_bounds[axis] = old_axis_bound;
                     branch.mindist
                 };
-                self.push_branch(left_mindist, branch.left, node_idx);
+                self.push_branch(left_mindist, branch.left, node_idx, left_bounds, threshold_bound);
             }
 
             if node_idx + 1 < branch.right {
+                let mut right_bounds = parent_bounds.clone();
+                let old_axis_bound = right_bounds[axis];
                 let right_mindist = if diff < C::zero() {
-                    query.combine_axis_distances(branch.mindist, axis_dist)
+                    right_bounds[axis] = axis_dist;
+                    query.replace_axis_distance(
+                        branch.mindist,
+                        axis,
+                        old_axis_bound,
+                        axis_dist,
+                        &right_bounds,
+                    )
                 } else {
+                    right_bounds[axis] = old_axis_bound;
                     branch.mindist
                 };
-                self.push_branch(right_mindist, node_idx + 1, branch.right);
+                self.push_branch(
+                    right_mindist,
+                    node_idx + 1,
+                    branch.right,
+                    right_bounds,
+                    threshold_bound,
+                );
             }
 
             let dist = query.query_distance(point_idx);
@@ -186,7 +243,7 @@ where
 
 impl<C: Float, F: Float, Q> PrioritySearcherFactory<F, Q> for KdTree<C>
 where
-    Q: DistanceSearch<F> + CoordinateSearch<C, F> + ?Sized,
+    Q: DistanceSearch<F> + CoordinateSearch<C, F> + Sized,
 {
     type Searcher<'a>
         = KdTreePrioritySearcher<'a, C, F>
@@ -194,7 +251,6 @@ where
         C: 'a,
         F: 'a,
         Q: 'a;
-
     fn priority_searcher<'a>(&'a self) -> Self::Searcher<'a>
     where
         Q: 'a,
@@ -207,7 +263,7 @@ impl<'a, C, F, Q> crate::PrioritySearcher<F, Q> for KdTreePrioritySearcher<'a, C
 where
     C: Float,
     F: Float,
-    Q: DistanceSearch<F> + CoordinateSearch<C, F> + ?Sized,
+    Q: DistanceSearch<F> + CoordinateSearch<C, F> + Sized + 'a,
 {
     fn reset(&mut self) { KdTreePrioritySearcher::reset(self); }
 
@@ -227,7 +283,7 @@ where
         }
     }
 
-    fn all_lower_bound(&self) -> F { self.all_lower_bound() }
+    fn all_lower_bound(&self) -> F { self.all_lower_bound_value() }
 
     fn decrease_cutoff(&mut self, threshold: F) { self.decrease_cutoff(threshold); }
 }
@@ -279,6 +335,24 @@ mod tests {
         let tree = KdTree::new(&data, MaxVarianceSplit);
         let mut searcher = crate::kd::priority::KdTreePrioritySearcher::new(&tree);
         searcher.decrease_cutoff(0.5);
-        assert!(searcher.all_lower_bound() <= 0.5);
+        assert!(searcher.all_lower_bound_value() <= 0.5);
+    }
+
+    #[test]
+    fn priority_search_all_lower_bound_converts_range_bounds() {
+        let points = sample_points();
+        let data: TableWithDistance<'_, f64, Vec<f64>, Euclidean, f64> =
+            TableWithDistance::with_distance(&points, Euclidean);
+        let tree = KdTree::new(&data, MaxVarianceSplit);
+        let query = data.query().with_coordinates(&points[0]);
+
+        let mut searcher = crate::kd::priority::KdTreePrioritySearcher::new(&tree);
+        searcher.heap.clear();
+        searcher.heap.push(PriorityBranch::new(0.25, 0, 1, Vec::new()));
+        searcher.candidates.push(DistPair::new(0.6, 0));
+        let heap_distance = query.range_bound_to_distance(0.25);
+        searcher.update_lower_bound(heap_distance, 0.6);
+
+        assert_eq!(searcher.all_lower_bound_value(), 0.5);
     }
 }

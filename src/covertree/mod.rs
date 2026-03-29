@@ -1,3 +1,4 @@
+mod aknn;
 mod construct;
 mod knn;
 mod priority;
@@ -38,5 +39,13 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests;
+/// Expansion heuristic from intrinsic dimensionality.
+///
+/// 2^(1 / sqrt(intrinsic_dim)).
+pub fn expansion_heuristic_from_id(intrinsic_dim: f64) -> f64 {
+    assert!(
+        intrinsic_dim.is_finite() && intrinsic_dim > 0.0,
+        "intrinsic_dim must be positive finite"
+    );
+    1.5_f64.powf(1.0 / intrinsic_dim.sqrt())
+}

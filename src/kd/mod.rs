@@ -1,95 +1,39 @@
+mod aknn;
+mod construct;
 mod knn;
 mod priority;
 mod range;
 pub mod split;
 
-use std::cmp::Ordering;
-
 pub use priority::KdTreePrioritySearcher;
 pub use split::{AxisCycleSplit, LargestSpreadSplit, MaxVarianceSplit, SplitStrategy};
 
-use crate::{Float, VectorData};
+use crate::Float;
+
+#[allow(non_camel_case_types)]
+pub(crate) type kdsize = u32;
 
 /// A static KD-tree stored in heap order.
 pub struct KdTree<C> {
-    points: Vec<usize>,
-    split_axes: Vec<usize>,
+    points: Vec<kdsize>,
+    split_axes: Vec<u16>,
     split_values: Vec<C>,
-    dims: usize,
 }
 
 impl<C> KdTree<C>
 where
     C: Float,
 {
-    /// Build a new tree from the given point set using the supplied split heuristic.
-    pub fn new<P, S>(data: &P, strategy: S) -> Self
-    where
-        P: VectorData<C> + ?Sized,
-        S: SplitStrategy<C, P>,
-    {
-        let size = data.size();
-        let dims = data.dims();
-        assert!(size == 0 || dims > 0, "cannot index zero-dimensional points");
-
-        let mut tree = Self {
-            points: vec![0; size],
-            split_axes: vec![0; size],
-            split_values: vec![C::zero(); size],
-            dims,
-        };
-
-        if size > 0 {
-            let mut indices: Vec<usize> = (0..size).collect();
-            tree.build_recursive(data, &mut indices, 0, size, 0, &strategy);
-        }
-
-        tree
-    }
-
     /// Number of points stored in the tree.
     pub const fn len(&self) -> usize { self.points.len() }
 
     /// True if the tree is empty.
     pub fn is_empty(&self) -> bool { self.points.is_empty() }
-
-    /// Dimensionality of the indexed space.
-    pub const fn dims(&self) -> usize { self.dims }
-
-    fn build_recursive<P, S>(
-        &mut self, data: &P, indices: &mut [usize], left: usize, right: usize, depth: usize,
-        strategy: &S,
-    ) where
-        P: VectorData<C> + ?Sized,
-        S: SplitStrategy<C, P>,
-    {
-        if left >= right {
-            return;
-        }
-
-        let node_idx = usize::midpoint(left, right);
-        let axis = strategy.choose_axis(data, &indices[left..right], depth);
-        assert!(axis < self.dims, "split axis must be in bounds");
-
-        let range = &mut indices[left..right];
-        let median = node_idx - left;
-        range.select_nth_unstable_by(median, |a, b| {
-            data.point(*a)[axis].partial_cmp(&data.point(*b)[axis]).unwrap_or(Ordering::Equal)
-        });
-
-        let median_idx = indices[node_idx];
-        self.points[node_idx] = median_idx;
-        self.split_axes[node_idx] = axis;
-        self.split_values[node_idx] = data.point(median_idx)[axis];
-
-        self.build_recursive(data, indices, left, node_idx, depth + 1, strategy);
-        self.build_recursive(data, indices, node_idx + 1, right, depth + 1, strategy);
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::api::DistanceData;
+    use crate::api::{ApproxKnnSearch, DistanceData};
     use crate::distance::SquaredEuclidean;
     use crate::kd::{AxisCycleSplit, KdTree, LargestSpreadSplit, MaxVarianceSplit};
     use crate::{CoordinateQuery, DistPair, KnnSearch, RangeSearch, TableWithDistance};
@@ -178,7 +122,24 @@ mod tests {
         let tree = KdTree::new(&data, AxisCycleSplit);
         assert_eq!(tree.len(), points.len());
     }
+    #[test]
+    fn search_aknn_budget_is_respected() {
+        let points = sample_points();
+        let data = TableWithDistance::with_distance(&points, SquaredEuclidean);
+        let tree = KdTree::new(&data, MaxVarianceSplit);
+        let query = data.query().with_coordinates(&points[0]);
 
+        let exact: Vec<DistPair<f64>> = tree.search_knn(&query, 3);
+        let approx_full: Vec<DistPair<f64>> = tree.search_aknn(&query, 3, 1.0);
+        assert_eq!(exact, approx_full);
+
+        let approx_small = tree.search_aknn(&query, 3, 0.2);
+        assert!(!approx_small.is_empty());
+        assert!(approx_small.len() <= 3);
+
+        let zero = tree.search_aknn(&query, 3, 0.0);
+        assert!(zero.is_empty());
+    }
     #[test]
     fn largest_spread_strategy_is_available() {
         let points = sample_points();

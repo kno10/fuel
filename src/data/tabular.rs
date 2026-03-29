@@ -3,7 +3,13 @@ use crate::distance::{DistanceFunction, PartialDistance};
 use crate::{CoordinateQuery, CoordinateSearch, Float, IndexQuery};
 
 // List of points with a distance function.
-pub struct TableWithDistance<'a, C: Float, T: AsRef<[C]>, DF: DistanceFunction<[C], F>, F: Float> {
+pub struct TableWithDistance<
+    'a,
+    C: Float,
+    T: AsRef<[C]>,
+    DF: DistanceFunction<[C], F>,
+    F: Float = C,
+> {
     data: &'a [T],
     distance_fn: DF,
     _coordinate_type: std::marker::PhantomData<C>,
@@ -142,12 +148,24 @@ where
     DF: DistanceFunction<[C], F> + PartialDistance<C, F>,
     F: Float,
 {
+    fn dims(&self) -> usize { self.data.dims() }
+
     fn query_coordinate(&self, axis: usize) -> C { self.query_coords()[axis] }
 
     fn delta_to_distance(&self, delta: C) -> F { self.data.distance_fn.axis_distance(delta) }
 
-    fn combine_axis_distances(&self, a: F, b: F) -> F {
-        self.data.distance_fn.combine_axis_distances(a, b)
+    fn distance_to_range_bound(&self, distance: F) -> F {
+        self.data.distance_fn.distance_to_range_bound(distance)
+    }
+
+    fn range_bound_to_distance(&self, bound: F) -> F {
+        self.data.distance_fn.range_bound_to_distance(bound)
+    }
+
+    fn replace_axis_distance(
+        &self, current: F, axis: usize, old_axis: F, new_axis: F, axis_bounds: &[F],
+    ) -> F {
+        self.data.distance_fn.replace_axis_distance(current, axis, old_axis, new_axis, axis_bounds)
     }
 }
 

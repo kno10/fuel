@@ -117,14 +117,25 @@ pub trait DistanceSearch<F: Float> {
 
 /// Coordinate-base search interface, for k-d-tree etc.
 pub trait CoordinateSearch<C: Float, F: Float> {
+    /// Number of dimensions in the query embedding space.
+    fn dims(&self) -> usize;
+
     /// Get the query coordinate for a single axis.
     fn query_coordinate(&self, axis: usize) -> C;
 
     /// Distance bound from a coordinate delta.
     fn delta_to_distance(&self, delta: C) -> F;
 
-    /// Combine two axis bound distances.
-    fn combine_axis_distances(&self, a: F, b: F) -> F;
+    /// Convert a full distance to this partial bound space.
+    fn distance_to_range_bound(&self, distance: F) -> F { distance }
+
+    /// Convert a bound value back into regular distance units.
+    fn range_bound_to_distance(&self, bound: F) -> F { bound }
+
+    /// Update lower bound when one axis contribution is replaced.
+    fn replace_axis_distance(
+        &self, current: F, axis: usize, old_axis: F, new_axis: F, axis_bounds: &[F],
+    ) -> F;
 }
 
 /// Simple pair of (distance, index) returned by search operations.
@@ -291,6 +302,16 @@ pub trait KnnSearch<F: Float, Q: DistanceSearch<F> + ?Sized> {
     fn search_knn(&self, query: &Q, k: usize) -> Vec<DistPair<F>>;
 }
 
+/// Generic approximate kNN search capability.
+///
+/// The `rate` controls the maximum fraction of dataset distance computations
+/// the search may perform, where 1.0 corresponds to up to `size` distance
+/// computations. The method is allowed to terminate early once the budget is
+/// spent.
+pub trait ApproxKnnSearch<F: Float, Q: DistanceSearch<F> + ?Sized> {
+    fn search_aknn(&self, query: &Q, k: usize, rate: f32) -> Vec<DistPair<F>>;
+}
+
 /// Generic range search capability.
 pub trait RangeSearch<F: Float, Q: DistanceSearch<F> + ?Sized> {
     fn search_range(&self, query: &Q, radius: F) -> Vec<DistPair<F>>;
@@ -430,11 +451,17 @@ where
     D: CoordinateSearch<C, F>,
     F: Float,
 {
+    fn dims(&self) -> usize { (*self).dims() }
+
     fn query_coordinate(&self, axis: usize) -> C { (*self).query_coordinate(axis) }
 
     fn delta_to_distance(&self, delta: C) -> F { (*self).delta_to_distance(delta) }
 
-    fn combine_axis_distances(&self, a: F, b: F) -> F { (*self).combine_axis_distances(a, b) }
+    fn replace_axis_distance(
+        &self, current: F, axis: usize, old_axis: F, new_axis: F, axis_bounds: &[F],
+    ) -> F {
+        (*self).replace_axis_distance(current, axis, old_axis, new_axis, axis_bounds)
+    }
 }
 
 // Allow boxed `DistanceSearch` trait objects to satisfy the trait itself.
@@ -443,11 +470,17 @@ impl<'a, F: Float> DistanceSearch<F> for Box<dyn DistanceSearch<F> + 'a> {
 }
 
 impl<'a, C: Float, F: Float> CoordinateSearch<C, F> for Box<dyn CoordinateSearch<C, F> + 'a> {
+    fn dims(&self) -> usize { (**self).dims() }
+
     fn query_coordinate(&self, axis: usize) -> C { (**self).query_coordinate(axis) }
 
     fn delta_to_distance(&self, delta: C) -> F { (**self).delta_to_distance(delta) }
 
-    fn combine_axis_distances(&self, a: F, b: F) -> F { (**self).combine_axis_distances(a, b) }
+    fn replace_axis_distance(
+        &self, current: F, axis: usize, old_axis: F, new_axis: F, axis_bounds: &[F],
+    ) -> F {
+        (**self).replace_axis_distance(current, axis, old_axis, new_axis, axis_bounds)
+    }
 }
 
 impl<C, D, F> PointSearchData<C, F> for D

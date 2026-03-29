@@ -2,15 +2,26 @@ use crate::Float;
 
 /// Distance bounds per axis, as used for the k-d-tree.
 ///
-/// Partial distances can support different coordinate type and distance type
-/// (e.g. `f32` input, `f64` output). Implementers are expected to provide a
-/// full distance implementation via `DistanceFunction` in addition to partial
-/// distance bounds.
+/// In addition, this allows operating in two different domains:
+/// regular distance, and a bounds domain. For Euclidean distance,
+/// using the squared distances as bounds allows saving computations
+/// from going back and forth between the two domains.
 pub trait PartialDistance<N: Float, F: Float> {
     /// Distance penalty incurred when moving `delta` along one axis.
     fn axis_distance(&self, delta: N) -> F;
 
-    /// Combine two per-axis distance contributions into a (lower) bound on the
-    /// full distance.
-    fn combine_axis_distances(&self, a: F, b: F) -> F;
+    /// Convert a full distance value into this partial bound space.
+    ///
+    /// For Euclidean raw-bounds, this is squared distance; otherwise identity.
+    fn distance_to_range_bound(&self, distance: F) -> F { distance }
+
+    /// Convert a bound value back into regular distance units.
+    ///
+    /// For Euclidean raw-bounds, this is sqrt; otherwise identity.
+    fn range_bound_to_distance(&self, bound: F) -> F { bound }
+
+    /// Update lower bound when one axis contribution is replaced, ideally O(1).
+    fn replace_axis_distance(
+        &self, current: F, axis: usize, old_axis: F, new_axis: F, axis_bounds: &[F],
+    ) -> F;
 }

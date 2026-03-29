@@ -2,19 +2,14 @@ use crate::covertree::CoverTree;
 use crate::{DistPair, DistanceSearch, Float};
 
 impl<F: Float> CoverTree<F> {
-    /// Find all points within radius of the query point (unsorted order).
     pub fn search_range_unsorted<Q: DistanceSearch<F> + ?Sized>(
         &self, query: &Q, radius: F, mut callback: impl FnMut(DistPair<F>),
     ) {
-        let root = match self.root.as_deref() {
-            Some(root) => root,
-            None => return,
-        };
-
         let mut stack = Vec::new();
-        stack.push((root, true));
+        stack.push((0, true));
 
-        while let Some((node, emit_center)) = stack.pop() {
+        while let Some((node_idx, emit_center)) = stack.pop() {
+            let node = &self.nodes[node_idx as usize];
             let d_center = query.query_distance(node.center);
             if d_center - node.max_dist > radius {
                 continue;
@@ -24,15 +19,18 @@ impl<F: Float> CoverTree<F> {
                 callback(DistPair::new(d_center, node.center));
             }
 
-            for child in &node.children {
+            for &child_idx in &node.children {
+                let child = &self.nodes[child_idx as usize];
                 let dist = (d_center - child.parent_dist).abs();
                 if dist - child.max_dist <= radius {
-                    stack.push((child, child.center != node.center));
+                    stack.push((child_idx, child.center != node.center));
                 }
             }
 
-            for &(idx, s_dist) in node.singletons.iter() {
-                if (d_center - s_dist).abs() <= radius {
+            for singleton in &node.singletons {
+                let idx = singleton.index;
+                let stored_dist = singleton.distance;
+                if (d_center - stored_dist).abs() <= radius {
                     let d = query.query_distance(idx);
                     if d <= radius {
                         callback(DistPair::new(d, idx));
@@ -42,7 +40,6 @@ impl<F: Float> CoverTree<F> {
         }
     }
 
-    /// Range search with result sorting by distance.
     pub fn search_range<Q: DistanceSearch<F> + ?Sized>(
         &self, query: &Q, radius: F, mut callback: impl FnMut(DistPair<F>),
     ) {

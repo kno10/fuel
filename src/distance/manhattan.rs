@@ -136,5 +136,13 @@ impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for Manhattan {
 impl<F: Float + Copy> PartialDistance<F, F> for Manhattan {
     fn axis_distance(&self, delta: F) -> F { delta.abs() }
 
-    fn combine_axis_distances(&self, a: F, b: F) -> F { a + b }
+    fn distance_to_range_bound(&self, distance: F) -> F { distance }
+
+    fn range_bound_to_distance(&self, bound: F) -> F { bound }
+
+    fn replace_axis_distance(
+        &self, current: F, _axis: usize, old_axis: F, new_axis: F, _axis_bounds: &[F],
+    ) -> F {
+        current - old_axis + new_axis
+    }
 }

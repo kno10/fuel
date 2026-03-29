@@ -1,13 +1,11 @@
-mod counting_euclidean_distance;
-mod data_loading;
+mod common;
 
 use std::error::Error;
-use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use counting_euclidean_distance::CountingEuclideanDistance;
-use data_loading::read_numeric_data;
+use common::{CountingDistance, read_numeric_data};
 use fuel::TableWithDistance;
+use fuel::distance::Euclidean;
 use fuel::outlier::local_outlier_probabilities;
 use fuel::vptree::VPTree;
 use rand::SeedableRng;
@@ -48,17 +46,17 @@ fn run() -> Result<(), Box<dyn Error>> {
         return Err("CSV must contain at least two rows".into());
     }
 
-    let distance = CountingEuclideanDistance::new();
-    let distance_count = distance.counter();
-    let data = TableWithDistance::with_distance(&rows, distance);
+    let distance = CountingDistance::new(Euclidean);
+    let data: TableWithDistance<f64, Vec<f64>, CountingDistance<Euclidean>, f64> =
+        TableWithDistance::with_distance(&rows, distance.clone());
     let mut rng = StdRng::seed_from_u64(RNG_SEED);
     let sample_size = rows.len();
 
     let start = Instant::now();
     let tree = VPTree::new(&data, sample_size, &mut rng);
-    let distance_count_after_index = distance_count.load(Ordering::Relaxed);
+    let distance_count_after_index = distance.count();
     let scores = local_outlier_probabilities(&tree, &data, k, n_lambda);
-    let dist_count = distance_count.load(Ordering::Relaxed);
+    let dist_count = distance.count();
     let elapsed = start.elapsed();
 
     let avg_score = scores.scores.iter().copied().sum::<f64>() / scores.scores.len() as f64;

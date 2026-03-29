@@ -60,8 +60,7 @@ where
         if let Some(best) = nn.peek().filter(|b| b.distance <= top.distance) {
             nn.pop();
             let b = best.index;
-            if builder.merge_points(a, b, best.distance).is_some()
-                && builder.merge_count() == n - 1
+            if builder.merge_points(a, b, best.distance).is_some() && builder.merge_count() == n - 1
             {
                 break;
             }

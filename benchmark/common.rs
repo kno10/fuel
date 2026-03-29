@@ -4,10 +4,20 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use csv::ReaderBuilder;
+use fuel::Float;
+use fuel::distance::{DistanceFunction, PartialDistance};
+use rand::Rng;
+use rand::distributions::Standard;
+use rand::rngs::StdRng;
 
 #[allow(dead_code)]
 pub fn read_numeric_data(path: &str) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
     read_numeric_data_with_limit(path, None)
+}
+
+#[allow(dead_code)]
+pub fn load_points_from_csv(path: &str) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
+    read_numeric_data(path)
 }
 
 pub fn read_numeric_data_with_limit(
@@ -97,6 +107,19 @@ fn read_comma_separated(path: &str, limit: Option<usize>) -> Result<Vec<Vec<f64>
     Ok(rows)
 }
 
+#[allow(dead_code)]
+pub fn generate_points(n: usize, dims: usize, rng: &mut StdRng) -> Vec<Vec<f64>> {
+    let mut points = Vec::with_capacity(n);
+    for _ in 0..n {
+        let mut point = Vec::with_capacity(dims);
+        for _ in 0..dims {
+            point.push(rng.sample(Standard));
+        }
+        points.push(point);
+    }
+    points
+}
+
 fn read_whitespace_separated(
     path: &str, limit: Option<usize>,
 ) -> Result<Vec<Vec<f64>>, Box<dyn Error>> {
@@ -159,6 +182,56 @@ fn parse_value(value: &str, line_no: usize) -> Result<f64, Box<dyn Error>> {
         .trim()
         .parse::<f64>()
         .map_err(|_| format!("failed to parse numeric value '{value}' at row {line_no}").into())
+}
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[derive(Debug)]
+pub struct CountingDistance<D> {
+    pub inner: D,
+    pub counter: std::sync::Arc<AtomicUsize>,
+}
+
+impl<D> CountingDistance<D> {
+    pub fn new(inner: D) -> Self {
+        Self { inner, counter: std::sync::Arc::new(AtomicUsize::new(0)) }
+    }
+
+    pub fn count(&self) -> usize { self.counter.load(Ordering::Relaxed) }
+}
+
+impl<D: Clone> Clone for CountingDistance<D> {
+    fn clone(&self) -> Self { Self { inner: self.inner.clone(), counter: self.counter.clone() } }
+}
+
+impl<D, T: ?Sized, F> DistanceFunction<T, F> for CountingDistance<D>
+where
+    D: DistanceFunction<T, F>,
+    F: Float,
+{
+    fn distance(&self, a: &T, b: &T) -> F {
+        self.counter.fetch_add(1, Ordering::Relaxed);
+        self.inner.distance(a, b)
+    }
+}
+
+impl<D, N, F> PartialDistance<N, F> for CountingDistance<D>
+where
+    D: PartialDistance<N, F>,
+    N: Float,
+    F: Float,
+{
+    fn axis_distance(&self, delta: N) -> F { self.inner.axis_distance(delta) }
+
+    fn distance_to_range_bound(&self, distance: F) -> F {
+        self.inner.distance_to_range_bound(distance)
+    }
+
+    fn replace_axis_distance(
+        &self, current: F, axis: usize, old_axis: F, new_axis: F, axis_bounds: &[F],
+    ) -> F {
+        self.inner.replace_axis_distance(current, axis, old_axis, new_axis, axis_bounds)
+    }
 }
 
 #[cfg(test)]

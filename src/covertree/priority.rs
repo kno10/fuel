@@ -1,31 +1,21 @@
-//! Incremental best-first cover tree searcher for distance-sorted iteration.
-//!
-//! Key behaviors:
-//! - Node queue stores subtree lower bounds, not actual distances.
-//! - Candidate queue stores exact point distances discovered so far.
-//! - `all_lower_bound()` provides monotonic lower bound across nodes+candidates.
-//! - `decrease_cutoff()` prunes both queues consistently.
-//!
-//! `skip_threshold` allows efficient selective filtering while still preserving ordered expansion.
-
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 use crate::covertree::CoverTree;
-use crate::covertree::construct::CoverTreeNode;
 use crate::{CandidateHeap, DistPair, DistanceSearch, Float, PrioritySearcher};
 
 #[derive(Debug, Clone, Copy)]
-struct NodeEntry<'a, F>
+struct NodeEntry<F>
 where
     F: Float,
 {
     lower_bound: F,
-    node: &'a CoverTreeNode<F>,
+    node_idx: u32,
     emit_center: bool,
+    center_dist: F,
 }
 
-impl<'a, F: Float> PartialEq for NodeEntry<'a, F> {
+impl<F: Float> PartialEq for NodeEntry<F> {
     fn eq(&self, other: &Self) -> bool {
         self.lower_bound
             .partial_cmp(&other.lower_bound)
@@ -34,32 +24,24 @@ impl<'a, F: Float> PartialEq for NodeEntry<'a, F> {
     }
 }
 
-impl<'a, F: Float> Eq for NodeEntry<'a, F> {}
+impl<F: Float> Eq for NodeEntry<F> {}
 
-impl<'a, F: Float> PartialOrd for NodeEntry<'a, F> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        // We want smallest lower bound first.
-        Some(self.cmp(other))
-    }
+impl<F: Float> PartialOrd for NodeEntry<F> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
-impl<'a, F: Float> Ord for NodeEntry<'a, F> {
+impl<F: Float> Ord for NodeEntry<F> {
     fn cmp(&self, other: &Self) -> Ordering {
         other.lower_bound.partial_cmp(&self.lower_bound).unwrap_or(Ordering::Equal)
     }
 }
 
-/// Priority searcher for CoverTree using best-first traversal.
-///
-/// Traversal is incremental: children are expanded lazily based on lower
-/// bounds, and points are emitted in increasing distance order without
-/// collecting all nodes at once.
 pub struct CoverTreePrioritySearcher<'a, F>
 where
     F: Float,
 {
     tree: &'a CoverTree<F>,
-    node_queue: BinaryHeap<NodeEntry<'a, F>>,
+    node_queue: BinaryHeap<NodeEntry<F>>,
     candidate_queue: CandidateHeap<F>,
     threshold: F,
     skip_threshold: F,
@@ -87,13 +69,12 @@ where
         self.threshold = F::infinity();
         self.skip_threshold = F::zero();
 
-        if let Some(root) = self.tree.root.as_deref() {
-            self.node_queue.push(NodeEntry {
-                lower_bound: F::zero(),
-                node: root,
-                emit_center: true,
-            });
-        }
+        self.node_queue.push(NodeEntry {
+            lower_bound: F::zero(),
+            node_idx: 0,
+            emit_center: true,
+            center_dist: F::infinity(),
+        });
     }
 
     pub fn reset_with_limits(&mut self, cutoff: F, skip: F) {
@@ -106,7 +87,6 @@ where
         debug_assert!(threshold <= self.threshold, "Thresholds must only decrease.");
         self.threshold = threshold;
 
-        // Prune nodes that cannot contribute.
         while let Some(top) = self.node_queue.peek() {
             if top.lower_bound <= threshold {
                 break;
@@ -129,28 +109,19 @@ where
         node_bound.min(candidate_bound)
     }
 
-    fn push_node_children(&mut self, node: &'a CoverTreeNode<F>, node_center_dist: F) {
-        for child in &node.children {
-            let child_lower = (node_center_dist - child.parent_dist).abs() - child.max_dist;
-            if child_lower <= self.threshold {
-                self.node_queue.push(NodeEntry {
-                    lower_bound: child_lower,
-                    node: child,
-                    emit_center: child.center != node.center,
-                });
-            }
-        }
-    }
-
     fn expand_next_node<Q: DistanceSearch<F> + ?Sized>(&mut self, query: &Q) {
         if let Some(entry) = self.node_queue.pop() {
             if entry.lower_bound > self.threshold {
                 return;
             }
 
-            let node = entry.node;
+            let node = &self.tree.nodes[entry.node_idx as usize];
+            let d_center = if entry.center_dist.is_infinite() {
+                query.query_distance(node.center)
+            } else {
+                entry.center_dist
+            };
 
-            let d_center = query.query_distance(node.center);
             if entry.emit_center
                 && d_center <= self.threshold
                 && (self.skip_threshold == F::zero() || d_center >= self.skip_threshold)
@@ -158,7 +129,8 @@ where
                 self.candidate_queue.push(DistPair::new(d_center, node.center));
             }
 
-            for &(idx, _) in node.singletons.iter() {
+            for singleton in node.singletons.iter() {
+                let idx = singleton.index;
                 let d = query.query_distance(idx);
                 if d <= self.threshold
                     && (self.skip_threshold == F::zero() || d >= self.skip_threshold)
@@ -167,7 +139,26 @@ where
                 }
             }
 
-            self.push_node_children(node, d_center);
+            for &child_idx in &node.children {
+                let child = &self.tree.nodes[child_idx as usize];
+
+                // Parent-child pruning check, same as range query.
+                let parent_child_bound = (d_center - child.parent_dist).abs();
+                if parent_child_bound - child.max_dist > self.threshold {
+                    continue;
+                }
+
+                let d_child = query.query_distance(child.center);
+                let child_lower = d_child - child.max_dist;
+                if child_lower <= self.threshold {
+                    self.node_queue.push(NodeEntry {
+                        lower_bound: child_lower,
+                        node_idx: child_idx,
+                        emit_center: child.center != node.center,
+                        center_dist: d_child,
+                    });
+                }
+            }
         }
     }
 
@@ -195,7 +186,8 @@ where
                     if candidate.distance > self.threshold {
                         return None;
                     }
-                    if self.skip_threshold != F::zero() && candidate.distance < self.skip_threshold {
+                    if self.skip_threshold != F::zero() && candidate.distance < self.skip_threshold
+                    {
                         continue;
                     }
                     return Some(candidate);
