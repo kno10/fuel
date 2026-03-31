@@ -12,8 +12,8 @@ pub fn histogram_intersection_distance<N: Float, F: Float + 'static>(a: &[N], b:
         unsafe {
             let left: F = (*a.get_unchecked(i)).to_float::<F>();
             let right: F = (*b.get_unchecked(i)).to_float::<F>();
-            intersection = intersection + left.min(right);
-            union = union + left.max(right);
+            intersection += left.min(right);
+            union += left.max(right);
         }
     }
 

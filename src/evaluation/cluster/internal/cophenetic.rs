@@ -92,6 +92,7 @@ fn pearson_correlation(x: &[f64], y: &[f64]) -> f64 {
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
     use crate::cluster::hierarchical::Merge;

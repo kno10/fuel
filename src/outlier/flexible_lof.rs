@@ -66,8 +66,8 @@ where
         for (neighbor_idx, distance) in neigh.iter().take(kreach_effective) {
             let neighbor_kreach = neighbor_kreach_distance[*neighbor_idx];
             let reach_dist = if neighbor_kreach > *distance { neighbor_kreach } else { *distance };
-            sum = sum + reach_dist;
-            count = count + F::one();
+            sum += reach_dist;
+            count += F::one();
         }
 
         lrd[i] = if sum > F::zero() { count / sum } else { F::infinity() };

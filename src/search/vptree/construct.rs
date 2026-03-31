@@ -39,6 +39,7 @@ impl<T: Float> VPTree<T> {
     ///
     /// The returned searcher can be reused across queries with `reset` to avoid
     /// repeated internal reallocations.
+    #[must_use]
     pub fn priority_searcher(&self) -> PrioritySearcher<'_, T> { PrioritySearcher::new(self) }
 
     /// Recursively build the VP-Tree with sampling for vantage point selection

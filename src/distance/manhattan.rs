@@ -116,7 +116,7 @@ fn manhattan_distance_fallback<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -
         unsafe {
             let left: F = (*a.get_unchecked(i)).to_float::<F>();
             let right: F = (*b.get_unchecked(i)).to_float::<F>();
-            sum = sum + (left - right).abs();
+            sum += (left - right).abs();
         }
     }
 

@@ -201,14 +201,14 @@ mod tests {
             counter: &'a Cell<usize>,
         }
 
-        impl<'a> DistanceFunction<Vec<f64>, f64> for CountingDist<'a> {
+        impl DistanceFunction<Vec<f64>, f64> for CountingDist<'_> {
             fn distance(&self, a: &Vec<f64>, b: &Vec<f64>) -> f64 {
                 self.counter.set(self.counter.get() + 1);
                 Euclidean.distance(a, b)
             }
         }
 
-        impl<'a> DistanceFunction<[f64], f64> for CountingDist<'a> {
+        impl DistanceFunction<[f64], f64> for CountingDist<'_> {
             fn distance(&self, a: &[f64], b: &[f64]) -> f64 {
                 self.counter.set(self.counter.get() + 1);
                 Euclidean.distance(a, b)
@@ -236,9 +236,7 @@ mod tests {
 
         assert!(
             dist_hssl <= dist_rssl,
-            "HSSL used {} distances but RSSL used {}",
-            dist_hssl,
-            dist_rssl
+            "HSSL used {dist_hssl} distances but RSSL used {dist_rssl}"
         );
     }
 }

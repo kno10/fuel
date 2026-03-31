@@ -33,7 +33,7 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for MinimumVarianceLinka
         let mut count = 0usize;
         for &i in a {
             for &j in b {
-                sum = sum + F::from(data.distance(i, j)).unwrap();
+                sum += F::from(data.distance(i, j)).unwrap();
                 count += 1;
             }
         }
@@ -42,6 +42,7 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for MinimumVarianceLinka
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
     use crate::cluster::hierarchical::agnes;
@@ -65,8 +66,8 @@ mod tests {
     fn minimum_variance_f32_compile() {
         let m = MinimumVarianceLinkage;
         let r: f32 = m.initial(2.0_f32, false);
-        assert_eq!(r, 1.0_f32);
+        assert!((r - 1.0_f32).abs() <= f32::EPSILON);
         let restored: f32 = m.restore(1.0_f32, false);
-        assert_eq!(restored, 2.0_f32);
+        assert!((restored - 2.0_f32).abs() <= f32::EPSILON);
     }
 }

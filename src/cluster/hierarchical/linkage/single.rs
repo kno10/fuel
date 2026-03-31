@@ -32,6 +32,7 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for SingleLinkage {
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
     use crate::cluster::hierarchical::agnes;

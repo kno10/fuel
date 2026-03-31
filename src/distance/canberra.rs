@@ -147,7 +147,7 @@ fn canberra_distance_fallback<N: Float, F: Float + 'static>(a: &[N], b: &[N]) ->
             let numerator = (left - right).abs();
             let denominator = left.abs() + right.abs();
             if denominator != F::zero() {
-                sum = sum + numerator / denominator;
+                sum += numerator / denominator;
             }
         }
     }

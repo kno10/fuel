@@ -42,7 +42,7 @@ impl<F: Float> GeometricLinkage<F> for WardLinkage {
             let mut sum = F::zero();
             for (xi, yi) in x.iter().zip(y.iter()) {
                 let diff = *xi - *yi;
-                sum = sum + diff * diff;
+                sum += diff * diff;
             }
             sum
         }
@@ -63,7 +63,7 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for WardLinkage {
         let mut count = 0usize;
         for &i in a {
             for &j in b {
-                sum = sum + F::from(data.distance(i, j)).unwrap();
+                sum += F::from(data.distance(i, j)).unwrap();
                 count += 1;
             }
         }
@@ -72,6 +72,7 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for WardLinkage {
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
     use crate::cluster::hierarchical::agnes;

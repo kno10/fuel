@@ -11,7 +11,7 @@ pub fn jeffrey_divergence<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
             let right: F = (*b.get_unchecked(i)).to_float::<F>();
 
             if left > F::zero() && right > F::zero() {
-                sum = sum + left * (left / right).ln() + right * (right / left).ln();
+                sum += left * (left / right).ln() + right * (right / left).ln();
             }
         }
     }

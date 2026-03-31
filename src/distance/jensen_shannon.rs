@@ -13,11 +13,11 @@ pub fn jensen_shannon_divergence<N: Float, F: Float + 'static>(a: &[N], b: &[N])
             let mean = (left + right) * half;
 
             if left > F::zero() && mean > F::zero() {
-                sum = sum + left * (left / mean).ln();
+                sum += left * (left / mean).ln();
             }
 
             if right > F::zero() && mean > F::zero() {
-                sum = sum + right * (right / mean).ln();
+                sum += right * (right / mean).ln();
             }
         }
     }

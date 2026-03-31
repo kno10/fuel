@@ -21,7 +21,7 @@ impl<F: Float> GeometricLinkage<F> for MedianLinkage {
         let mut total = F::zero();
         for (xi, yi) in x.iter().zip(y.iter()) {
             let d = *xi - *yi;
-            total = total + d * d;
+            total += d * d;
         }
         total
     }

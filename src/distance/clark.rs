@@ -158,7 +158,7 @@ fn clark_distance_fallback<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F 
             let denominator = left.abs() + right.abs();
             if denominator != F::zero() {
                 let ratio = numerator / denominator;
-                sum = sum + ratio * ratio;
+                sum += ratio * ratio;
             }
         }
     }

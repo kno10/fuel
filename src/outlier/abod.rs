@@ -56,15 +56,15 @@ where
             let div = F::one() / (d_ab * d_ac);
             let value = dot * div;
             let weight = (div).sqrt();
-            total_weight = total_weight + weight;
+            total_weight += weight;
             if total_weight.partial_cmp(&F::zero()) != Some(std::cmp::Ordering::Greater) {
                 continue;
             }
             let delta = value - mean;
             let mult = weight / total_weight;
-            mean = mean + delta * mult;
+            mean += delta * mult;
             let delta2 = value - mean;
-            m2 = m2 + (weight * delta * delta2);
+            m2 += weight * delta * delta2;
         }
     }
 
@@ -160,15 +160,15 @@ where
             let div = F::one() / (n_a.sqd_ab * sqd_ac);
             let value = numerator * div;
             let weight = div.sqrt();
-            total_weight = total_weight + weight;
+            total_weight += weight;
             if total_weight.partial_cmp(&F::zero()) != Some(std::cmp::Ordering::Greater) {
                 continue;
             }
             let delta = value - mean;
             let mult = weight / total_weight;
-            mean = mean + delta * mult;
+            mean += delta * mult;
             let delta2 = value - mean;
-            m2 = m2 + (weight * delta * delta2);
+            m2 += weight * delta * delta2;
         }
     }
 

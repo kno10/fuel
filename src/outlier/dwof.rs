@@ -88,7 +88,7 @@ where
 
     while count_unmerged > 0 {
         for radius in radii.iter_mut().take(size) {
-            *radius = *radius * delta_f;
+            *radius *= delta_f;
         }
 
         let mut labels: Vec<u32> = vec![u32::MAX; size];

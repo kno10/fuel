@@ -9,7 +9,7 @@ pub fn minkowski_distance<F: Float>(a: &[F], b: &[F], p: F) -> F {
 
     let mut accum = F::zero();
     for (&x, &y) in a.iter().zip(b.iter()) {
-        accum = accum + (x - y).abs().powf(p);
+        accum += (x - y).abs().powf(p);
     }
     accum.powf(F::one() / p)
 }

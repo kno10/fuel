@@ -223,13 +223,18 @@ impl<'a, F: Float> PrioritySearcher<'a, F> {
     }
 }
 
-impl<'a, F: Float> PrioritySearcher<'a, F> {
+impl<F: Float> PrioritySearcher<'_, F> {
     /// Like `next_candidate`, but consults a filter before evaluating a node.
     ///
     /// `skip_node` can prune an entire subtree before any exact distance is
     /// computed. `skip_point` can reject just the pivot while still exploring
     /// the node's children.
     /// Like `next_candidate`, but consults a filter before evaluating a node.
+    ///
+    /// # Panics
+    ///
+    /// - if the internal state is corrupted and `current_node_left` is not set when
+    ///   `has_current_candidate` is true.
     pub fn next_with_filter<D: DistanceSearch<F> + ?Sized, S>(
         &mut self, query: &D, filter: &mut S,
     ) -> Option<DistPair<F>>

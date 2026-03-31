@@ -132,9 +132,9 @@ fn cosine_similarity_fallback<N: Float, F: Float + 'static>(a: &[N], b: &[N]) ->
         unsafe {
             let left: F = (*a.get_unchecked(i)).to_float::<F>();
             let right: F = (*b.get_unchecked(i)).to_float::<F>();
-            dot = dot + left * right;
-            norm_a = norm_a + left * left;
-            norm_b = norm_b + right * right;
+            dot += left * right;
+            norm_a += left * left;
+            norm_b += right * right;
         }
     }
 

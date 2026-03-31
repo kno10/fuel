@@ -15,7 +15,7 @@ pub fn chi_squared_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F
 
             if denominator != F::zero() {
                 let diff = left - right;
-                sum = sum + (diff * diff) / denominator;
+                sum += (diff * diff) / denominator;
             }
         }
     }

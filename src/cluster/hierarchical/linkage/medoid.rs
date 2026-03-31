@@ -43,7 +43,7 @@ fn find_medoid<D: DistanceData<F>, F: Float>(data: &D, cluster: &[usize]) -> usi
         let mut sum = F::zero();
         for &other in cluster {
             if cand != other {
-                sum = sum + F::from(data.distance(cand, other)).unwrap();
+                sum += F::from(data.distance(cand, other)).unwrap();
                 if sum >= min_sum {
                     break;
                 }

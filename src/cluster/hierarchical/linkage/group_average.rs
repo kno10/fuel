@@ -26,7 +26,7 @@ impl<F: Float> GeometricLinkage<F> for GroupAverageLinkage {
         let mut total = F::zero();
         for (xi, yi) in x.iter().zip(y.iter()) {
             let d = *xi - *yi;
-            total = total + d * d;
+            total += d * d;
         }
         total
     }
@@ -42,7 +42,7 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for GroupAverageLinkage 
         let mut count = 0usize;
         for &i in a {
             for &j in b {
-                sum = sum + F::from(data.distance(i, j)).unwrap();
+                sum += F::from(data.distance(i, j)).unwrap();
                 count += 1;
             }
         }

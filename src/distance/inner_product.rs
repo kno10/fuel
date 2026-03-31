@@ -64,7 +64,7 @@ fn dot_fallback<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     for i in 0..d {
         let left: F = a[i].to_float::<F>();
         let right: F = b[i].to_float::<F>();
-        sum = sum + left * right;
+        sum += left * right;
     }
     sum
 }

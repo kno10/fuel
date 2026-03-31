@@ -154,12 +154,13 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
+    use crate::cluster::dbscan::dbscan;
     use crate::distance::Euclidean;
     use crate::search::vptree::VPTree;
 
-    fn build_tree<'a>(
-        points: &'a [Vec<f64>],
-    ) -> (TableWithDistance<'a, f64, Vec<f64>, Euclidean, f64>, VPTree<f64>) {
+    fn build_tree(
+        points: &[Vec<f64>],
+    ) -> (TableWithDistance<'_, f64, Vec<f64>, Euclidean, f64>, VPTree<f64>) {
         let data = TableWithDistance::with_distance(points, Euclidean);
         let mut rng = StdRng::seed_from_u64(7);
         let tree = VPTree::new(&data, 2, &mut rng);
@@ -179,7 +180,6 @@ mod tests {
         ];
         let (data, tree) = build_tree(&points);
         let parallel_labels = parallel_dbscan(&tree, &data, 0.25, 3);
-        use crate::cluster::dbscan::dbscan;
         let sequential_labels = dbscan(&tree, &data, 0.25, 3);
         assert_eq!(parallel_labels, sequential_labels);
     }

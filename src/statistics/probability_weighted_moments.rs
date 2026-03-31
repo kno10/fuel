@@ -20,7 +20,7 @@ where
         if !val.is_finite() {
             continue;
         }
-        let mut term = val.to_f64().unwrap_or(f64::NAN);
+        let mut term = val.to_f64().unwrap();
         if !term.is_finite() {
             continue;
         }

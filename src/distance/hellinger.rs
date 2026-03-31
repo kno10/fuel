@@ -15,7 +15,7 @@ pub fn hellinger_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
             let left_sqrt = left.max(F::zero()).sqrt();
             let right_sqrt = right.max(F::zero()).sqrt();
             let diff = left_sqrt - right_sqrt;
-            sum = sum + diff * diff;
+            sum += diff * diff;
         }
     }
 
