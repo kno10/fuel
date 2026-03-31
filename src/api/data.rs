@@ -31,11 +31,26 @@ pub trait DistanceData<F: Float>: Data {
 
 /// Access into individual points when coordinate data is available.
 pub trait VectorData<C>: Data {
+    /// Number of input points.
+    fn nrows(&self) -> usize { self.len() }
+
+    /// Number of dimensions for every point.
+    fn ncols(&self) -> usize { self.dims() }
+
     /// Number of dimensions for every point.
     fn dims(&self) -> usize;
 
     /// Returns a slice covering the point at `idx`.
     fn point(&self, idx: usize) -> &[C];
+
+    /// Copy a point into a caller-provided scratch buffer.
+    fn load_into(&self, idx: usize, out: &mut [C], d: usize)
+    where
+        C: Copy,
+    {
+        debug_assert_eq!(d, self.dims());
+        out[..d].copy_from_slice(self.point(idx));
+    }
 
     // TODO: also allow direct access to single coordinates?
 }

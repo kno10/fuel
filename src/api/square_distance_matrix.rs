@@ -79,7 +79,9 @@ impl<F: Float> SquareDistanceMatrix<F> {
         assert_eq!(shape.len(), 2);
         let n = shape[0];
         assert_eq!(shape[1], n);
-        Self { data: matrix.into_raw_vec(), n }
+        let (data, offset) = matrix.into_raw_vec_and_offset();
+        assert_eq!(offset, Some(0));
+        Self { data, n }
     }
 
     pub fn new_from_data<D>(data: &D) -> Self

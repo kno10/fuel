@@ -124,7 +124,7 @@ pub(crate) fn refill_neighbors<F: Float, Q, S>(
 #[cfg(test)]
 mod tests {
     use rand::rngs::StdRng;
-    use rand::{Rng, SeedableRng};
+    use rand::{RngExt, SeedableRng};
 
     use super::restarting_search_hdbscan;
     use crate::TableWithDistance;
@@ -158,7 +158,7 @@ mod tests {
         // RNG-based regression: ensure both variants produce the same *clustering*.
         let mut rng = StdRng::seed_from_u64(42);
         let points: Vec<Vec<f64>> =
-            (0..30).map(|_| vec![rng.r#gen::<f64>(), rng.r#gen::<f64>()]).collect();
+            (0..30).map(|_| vec![rng.random::<f64>(), rng.random::<f64>()]).collect();
 
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree = VPTree::<f64>::new(&data, 3, &mut rng);

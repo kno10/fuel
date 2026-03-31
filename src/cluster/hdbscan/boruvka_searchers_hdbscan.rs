@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 
+
 use super::hdbscan_common::{
     HdbscanHierarchy, SameComponentFilter, compute_core_distances_tree,
     mutual_reachability_distance,
@@ -273,12 +274,13 @@ mod tests {
 
     #[test]
     fn boruvka_searchers_hdbscan_matches_prim_random_200() {
-        use rand::Rng;
+        
+        use rand::RngExt;
         let mut rng = StdRng::seed_from_u64(42);
         let n = 200;
         let dim = 5;
         let points: Vec<Vec<f64>> =
-            (0..n).map(|_| (0..dim).map(|_| rng.gen_range(0.0..1.0)).collect()).collect();
+            (0..n).map(|_| (0..dim).map(|_| rng.random_range(0.0..1.0)).collect()).collect();
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree = VPTree::<f64>::new(&data, n, &mut rng);
 
@@ -318,12 +320,12 @@ mod tests {
 
     #[test]
     fn boruvka_searchers_hdbscan_matches_prim_random_2000() {
-        use rand::Rng;
+        use rand::RngExt;
         let mut rng = StdRng::seed_from_u64(42);
         let n = 5000;
         let dim = 8;
         let points: Vec<Vec<f64>> =
-            (0..n).map(|_| (0..dim).map(|_| rng.gen_range(0.0..1.0)).collect()).collect();
+            (0..n).map(|_| (0..dim).map(|_| rng.random_range(0.0..1.0)).collect()).collect();
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree = VPTree::<f64>::new(&data, n, &mut rng);
 

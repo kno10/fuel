@@ -92,7 +92,8 @@ where
             let mut eigen_pairs: Vec<(f64, Vec<f64>)> = (0..dim)
                 .map(|i| {
                     let val = pca_res.0[i];
-                    let vec = pca_res.1.column(i).to_owned().into_raw_vec();
+                    let (vec, offset) = pca_res.1.column(i).to_owned().into_raw_vec_and_offset();
+                    assert_eq!(offset, Some(0));
                     (val, vec)
                 })
                 .collect();

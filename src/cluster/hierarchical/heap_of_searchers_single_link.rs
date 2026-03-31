@@ -195,7 +195,7 @@ mod tests {
     fn hssl_distance_count_not_worse_than_rssl() {
         use std::cell::Cell;
 
-        use rand::Rng;
+        
 
         struct CountingDist<'a> {
             counter: &'a Cell<usize>,
@@ -215,9 +215,11 @@ mod tests {
             }
         }
 
+        use rand::RngExt;
+
         let mut rng = StdRng::seed_from_u64(42);
         let points: Vec<Vec<f64>> =
-            (0..30).map(|_| vec![rng.r#gen::<f64>(), rng.r#gen::<f64>()]).collect();
+            (0..30).map(|_| vec![rng.random::<f64>(), rng.random::<f64>()]).collect();
         let counter1 = Cell::new(0);
         let data1: TableWithDistance<f64, Vec<f64>, CountingDist, f64> =
             TableWithDistance::with_distance(&points, CountingDist { counter: &counter1 });

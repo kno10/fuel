@@ -1,6 +1,7 @@
 use rand::prelude::SliceRandom;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
+use rand::RngExt;
 
 use crate::outlier::common::{OutlierResult, make_outlier_result};
 use crate::{DistanceData, Float, VectorData};
@@ -64,8 +65,8 @@ where
         return IsolationTreeNode::External(size);
     }
 
-    let axis = active[rng.gen_range(0..active.len())];
-    let split = minv[axis] + (maxv[axis] - minv[axis]) * rng.gen_range(0.0..1.0);
+    let axis = active[rng.random_range(0..active.len())];
+    let split = minv[axis] + (maxv[axis] - minv[axis]) * rng.random_range(0.0..1.0);
 
     let mut left = Vec::new();
     let mut right = Vec::new();

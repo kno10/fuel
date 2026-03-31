@@ -1,7 +1,8 @@
 use std::cmp::Ordering;
 
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
+use rand::RngExt;
 
 use super::super::VPTree;
 use super::shared::brute_force_knn;
@@ -266,7 +267,7 @@ fn test_knn_random_fixed_seed_top5_matches_bruteforce() {
 
     let mut points = Vec::with_capacity(200);
     for _ in 0..200 {
-        points.push(vec![rng.gen_range(-500.0..500.0), rng.gen_range(-500.0..500.0)]);
+        points.push(vec![rng.random_range(-500.0..500.0), rng.random_range(-500.0..500.0)]);
     }
 
     let dataset = TableWithDistance::with_distance(&points, Euclidean);
@@ -274,7 +275,7 @@ fn test_knn_random_fixed_seed_top5_matches_bruteforce() {
     let tree: VPTree<f64> = VPTree::new(&dataset, 8, tree_rng);
 
     for _ in 0..20 {
-        let query_idx = rng.gen_range(0..dataset.len());
+        let query_idx = rng.random_range(0..dataset.len());
         let query = dataset.query().with_index(query_idx);
         let knn = tree.search_knn(&query, 5);
 

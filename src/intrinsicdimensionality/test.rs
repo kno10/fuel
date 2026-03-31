@@ -1,5 +1,7 @@
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
+use rand::RngExt;
+use rand_distr::Uniform;
 
 use crate::intrinsicdimensionality::DistanceIDEstimator;
 
@@ -7,8 +9,8 @@ const ZERO_PADDING: usize = 100;
 
 pub fn make_intrinsic_subspace_data(n: usize, seed: u64) -> Vec<Vec<f64>> {
     let mut rng = StdRng::seed_from_u64(seed);
-    let uniform_large = rand::distributions::Uniform::new(-1.0, 1.0);
-    let uniform_small = rand::distributions::Uniform::new(-0.05, 0.05);
+    let uniform_large = Uniform::new(-1.0, 1.0).unwrap();
+    let uniform_small = Uniform::new(-0.05, 0.05).unwrap();
 
     let mut data = Vec::with_capacity(n);
     data.push(vec![0.0; 10]);
@@ -30,7 +32,7 @@ where
     let mut rng = StdRng::seed_from_u64(seed);
     let mut data = Vec::with_capacity(size + ZERO_PADDING);
     for _ in 0..size {
-        let r = rng.r#gen::<f64>();
+        let r = rng.random::<f64>();
         data.push(r.powf(1.0 / (dim as f64)));
     }
     data.extend(std::iter::repeat_n(0.0, ZERO_PADDING));

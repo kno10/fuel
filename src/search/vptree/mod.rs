@@ -34,14 +34,14 @@ where
     inner: PrioritySearcher<'a, F>,
 }
 
-impl<F> VPTreePrioritySearcher<'_, F>
+impl<'a, F> VPTreePrioritySearcher<'a, F>
 where
     F: Float,
 {
     pub fn new(tree: &'a VPTree<F>) -> Self { Self { inner: PrioritySearcher::new(tree) } }
 }
 
-impl<F, Q> crate::PrioritySearcher<F, Q> for VPTreePrioritySearcher<'_, F>
+impl<'a, F, Q> crate::PrioritySearcher<F, Q> for VPTreePrioritySearcher<'a, F>
 where
     F: Float,
     Q: DistanceSearch<F> + ?Sized,

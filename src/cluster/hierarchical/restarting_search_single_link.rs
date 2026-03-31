@@ -122,7 +122,8 @@ pub(crate) fn refill_neighbors<F: Float, Q, S>(
 mod tests {
     use num_traits::ToPrimitive;
     use rand::rngs::StdRng;
-    use rand::{Rng, SeedableRng};
+    use rand::RngExt;
+    use rand::SeedableRng;
 
     use super::*;
     use crate::TableWithDistance;
@@ -137,7 +138,7 @@ mod tests {
     fn restarting_equals_buffered_random() {
         let mut rng = StdRng::seed_from_u64(42);
         let points: Vec<Vec<f64>> =
-            (0..20).map(|_| vec![rng.r#gen::<f64>(), rng.r#gen::<f64>()]).collect();
+            (0..20).map(|_| vec![rng.random::<f64>(), rng.random::<f64>()]).collect();
 
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree = VPTree::<f64>::new(&data, 3, &mut rng);

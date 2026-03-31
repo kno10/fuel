@@ -1,5 +1,6 @@
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
+use rand::RngExt;
 
 use crate::api::VectorData; // needed for MatrixDataAccess.point/dims in this file
 use crate::outlier::common::{OutlierResult, make_outlier_result};
@@ -46,12 +47,7 @@ pub fn distance_from_origin<D: VectorData<F> + Sync, F: Float>(data: D) -> Outli
 ///
 /// The centre is computed by averaging each coordinate.  For an empty
 /// dataset this function will panic when trying to divide by zero.
-pub fn distance_from_center<
-    D: VectorData<F> + Sync,
-    F: Float,
->(
-    data: D,
-) -> OutlierResult<F> {
+pub fn distance_from_center<D: VectorData<F> + Sync, F: Float>(data: D) -> OutlierResult<F> {
     let size = data.len();
     if size == 0 {
         return make_outlier_result(
@@ -102,7 +98,7 @@ pub fn random<D: DistanceData<F>, F: Float>(data: D, seed: u64) -> OutlierResult
     let mut rng = StdRng::seed_from_u64(seed);
 
     let scores: Vec<F> =
-        data.iter().map(|_idx| F::from_f64(rng.r#gen::<f64>()).unwrap_or(F::one())).collect();
+        data.iter().map(|_idx| F::from_f64(rng.random::<f64>()).unwrap_or(F::one())).collect();
 
     make_outlier_result(scores, "Random outlier score", false, F::zero(), F::zero(), F::infinity())
 }

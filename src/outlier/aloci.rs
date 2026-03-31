@@ -1,4 +1,5 @@
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
+use rand::RngExt;
 
 use crate::outlier::common::{OutlierResult, make_outlier_result};
 use crate::{DistanceData, Float, VectorData};
@@ -394,7 +395,7 @@ where
         let shift: Vec<f64> = if grid == 0 {
             vec![0.0; dims]
         } else {
-            (0..dims).map(|d| rng.gen_range(0.0..(max[d] - min[d]))).collect()
+            (0..dims).map(|d| rng.random_range(0.0..(max[d] - min[d]))).collect()
         };
 
         let root = ALOCIQuadTree::build_tree(&min, &max, &shift, nmin, &points);
