@@ -95,8 +95,8 @@ fn uf_find(parent: &mut [usize], x: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::pointer_to_merge_history;
+    use crate::CondensedDistanceMatrix;
     use crate::cluster::hierarchical::slink::slink_pointer;
-    use crate::data::CondensedDistanceMatrix;
 
     #[test]
     fn pointer_conversion_builds_full_history() {

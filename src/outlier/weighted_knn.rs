@@ -19,7 +19,7 @@ where
 {
     assert!(k > 0, "k must be greater than 0");
 
-    let k_effective = k.min(data.size().saturating_sub(1));
+    let k_effective = k.min(data.len().saturating_sub(1));
 
     let scores: Vec<F> =
         crate::outlier::common::for_each_knn(tree, data, k_effective, false, |_idx, neighbors| {
@@ -38,7 +38,7 @@ mod tests {
     use crate::TableWithDistance;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn weighted_knn_outlier_ranks_remote_point_highest() {

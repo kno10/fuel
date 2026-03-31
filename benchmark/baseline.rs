@@ -45,7 +45,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let sample_size = rows.len();
 
     let start = Instant::now();
-    let _tree = fuel::vptree::VPTree::new(&data, sample_size, &mut rng);
+    let _tree = fuel::search::vptree::VPTree::new(&data, sample_size, &mut rng);
     let distance_count_after_index = distance.count();
 
     let scores = match mode.as_str() {

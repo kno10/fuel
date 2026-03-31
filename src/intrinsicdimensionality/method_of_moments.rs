@@ -1,4 +1,5 @@
-use crate::intrinsicdimensionality::DistanceIDEstimator;
+use crate::Float;
+use crate::intrinsicdimensionality::{DistanceIDEstimator, positive_f64};
 
 /// Method-of-moments intrinsic dimensionality estimator.
 ///
@@ -11,20 +12,24 @@ use crate::intrinsicdimensionality::DistanceIDEstimator;
 /// \(\hat{m} = \frac{v_1}{1-v_1} \).
 ///
 /// Returns `NaN` for invalid / insufficient data.
-pub fn method_of_moments_id(distances: &[f64]) -> f64 {
+pub fn method_of_moments_id<F: Float>(distances: &[F]) -> f64 {
     let len = distances.len();
     if len < 2 {
         return f64::NAN;
     }
 
-    let w = distances[len - 1];
+    let w = positive_f64(distances[len - 1]);
+    if w.is_nan() {
+        return f64::NAN;
+    }
 
     let (mut v1, mut valid) = (0.0, 0);
     for &d in &distances[..len - 1] {
-        if !d.is_finite() || d <= 0.0 {
+        let d64 = positive_f64(d);
+        if d64.is_nan() {
             continue;
         }
-        v1 += d;
+        v1 += d64;
         valid += 1;
     }
 
@@ -39,16 +44,19 @@ pub fn method_of_moments_id(distances: &[f64]) -> f64 {
 pub struct MethodOfMoments;
 
 impl DistanceIDEstimator for MethodOfMoments {
-    fn estimate_from_distances(distances: &[f64]) -> f64 { method_of_moments_id(distances) }
+    fn estimate_from_distances<F: Float>(distances: &[F]) -> f64 { method_of_moments_id(distances) }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TableWithDistance;
+    use crate::distance::Euclidean;
     use crate::intrinsicdimensionality::KNNIDEstimator;
     use crate::intrinsicdimensionality::test::{
         make_intrinsic_subspace_data, regression_test, test_zeros,
     };
+    use crate::search::kdtree::{AxisCycleSplit, KdTree};
 
     #[test]
     fn method_of_moments_regression() {
@@ -69,9 +77,8 @@ mod tests {
     #[test]
     fn mom_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(10000, 0);
-        let table =
-            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
-        let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
+        let table = TableWithDistance::with_distance(&data, Euclidean);
+        let tree = KdTree::new(&table, AxisCycleSplit);
 
         let estimate = MethodOfMoments::estimate_from_knn(&tree, &table, 0, 100);
         let expected = 5.285970290371168;

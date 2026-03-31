@@ -11,7 +11,7 @@ where
     S: KnnSearch<F, D::Query<'a>> + Sync,
     E: KNNIDEstimator,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(Vec::new(), "LID", false, F::zero(), F::zero(), F::infinity());
     }
@@ -31,12 +31,12 @@ mod tests {
     use rand::SeedableRng;
 
     use super::*;
-    use crate::data::TableWithDistance;
+    use crate::TableWithDistance;
     use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::intrinsicdimensionality::HillID;
     use crate::outlier::common::*;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn lid_10_matches_reference_outlier_score() {

@@ -19,7 +19,7 @@ where
 {
     assert!(eps >= F::zero(), "eps must be non-negative");
 
-    let size = data.size();
+    let size = data.len();
     let mut labels = vec![UNVISITED; size];
     let mut cluster_id: isize = 0;
     let mut frontier = HashSet::new();
@@ -89,7 +89,7 @@ mod tests {
     use super::*;
     use crate::TableWithDistance;
     use crate::distance::Euclidean;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn dbscan_finds_two_clusters_and_noise() {

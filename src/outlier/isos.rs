@@ -53,7 +53,7 @@ where
     S: KnnSearch<F, D::Query<'a>> + Sync,
     E: crate::intrinsicdimensionality::KNNIDEstimator,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(Vec::new(), "ISOS", false, F::zero(), F::zero(), F::infinity());
     }
@@ -137,7 +137,8 @@ mod tests {
         let points = load_gaussian4d_points();
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-        let tree: crate::vptree::VPTree<f64> = crate::vptree::VPTree::new(&data, 2, &mut rng);
+        let tree: crate::search::vptree::VPTree<f64> =
+            crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
         let result = intrinsic_stochastic_outlier_selection::<_, _, _, HillID>(&tree, &data, 20);
         let reference = load_reference_scores();
@@ -158,7 +159,8 @@ mod tests {
         let points = load_gaussian4d_points();
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-        let tree: crate::vptree::VPTree<f64> = crate::vptree::VPTree::new(&data, 2, &mut rng);
+        let tree: crate::search::vptree::VPTree<f64> =
+            crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
         let result = intrinsic_stochastic_outlier_selection::<
             _,

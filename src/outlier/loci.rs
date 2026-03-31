@@ -67,7 +67,7 @@ where
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
     S: RangeSearch<F, D::Query<'a>> + Sync,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(Vec::new(), "LOCI", false, F::zero(), F::zero(), F::infinity());
     }
@@ -178,7 +178,7 @@ mod tests {
     use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn loci_remote_outlier_lowest() {

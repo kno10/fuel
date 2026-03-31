@@ -13,8 +13,8 @@ use fuel::cluster::hierarchical::{
     muellner, nn_chain, restarting_search_single_link, slink,
 };
 use fuel::distance::Euclidean;
-use fuel::kd::{KdTree, MaxVarianceSplit};
-use fuel::vptree::VPTree;
+use fuel::search::kdtree::{KdTree, MaxVarianceSplit};
+use fuel::search::vptree::VPTree;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 

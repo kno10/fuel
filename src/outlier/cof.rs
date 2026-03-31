@@ -10,7 +10,7 @@ where
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(Vec::new(), "COF", false, F::one(), F::zero(), F::infinity());
     }
@@ -123,7 +123,7 @@ mod tests {
     use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn cof_remote_outlier_highest() {
@@ -147,7 +147,8 @@ mod tests {
         let points = load_gaussian4d_points();
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-        let tree: crate::vptree::VPTree<f64> = crate::vptree::VPTree::new(&data, 2, &mut rng);
+        let tree: crate::search::vptree::VPTree<f64> =
+            crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
         let result = connectivity_outlier_factor(&tree, &data, 10);
         let reference = load_reference_scores();

@@ -28,7 +28,7 @@ where
     L: SetLinkage<D, F, S>,
     C: FnMut(usize, usize, &[usize]) -> bool,
 {
-    let n = data.size();
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
     if n == 1 {
         return Vec::new();

@@ -11,7 +11,7 @@ where
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(
             Vec::new(),
@@ -57,7 +57,7 @@ where
     D: DistanceData<F> + VectorData<F> + Sync,
     K: Fn(&[F], &[F]) -> F + Sync,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(
             Vec::new(),
@@ -119,7 +119,7 @@ mod tests {
     use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn fast_abod_matches_reference_outlier_score() {

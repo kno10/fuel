@@ -1,4 +1,5 @@
-use crate::intrinsicdimensionality::DistanceIDEstimator;
+use crate::Float;
+use crate::intrinsicdimensionality::{DistanceIDEstimator, find_begin, positive_f64};
 
 /// Aggregated Hill intrinsic dimensionality estimator.
 ///
@@ -12,20 +13,25 @@ use crate::intrinsicdimensionality::DistanceIDEstimator;
 /// \(\hat{m}_{agg} = -\frac{k}{\sum_{i=1}^{k-1} [\frac{1}{i} \sum_{j=1}^{i} \ln x_j - \ln x_{i+1}]}\)
 ///
 /// Returns `NaN` if fewer than two positive finite distances exist.
-pub fn aggregated_hill_id(distances: &[f64]) -> f64 {
-    let begin = crate::intrinsicdimensionality::find_begin(distances);
+pub fn aggregated_hill_id<F: Float>(distances: &[F]) -> f64 {
+    let begin = find_begin(distances);
     let n = distances.len();
     if n - begin < 2 {
         return f64::NAN;
     }
 
-    let (mut sum, mut hsum, mut valid) = (distances[begin].ln(), 0.0, 1);
+    let x0 = positive_f64(distances[begin]);
+    if x0.is_nan() {
+        return f64::NAN;
+    }
+    let (mut sum, mut hsum, mut valid) = (x0.ln(), 0.0, 1);
 
-    for &v in distances[begin + 1..].iter() {
-        if !v.is_finite() || v <= 0.0 {
+    for &v in &distances[begin + 1..] {
+        let v64 = positive_f64(v);
+        if v64.is_nan() {
             continue;
         }
-        let logv = v.ln();
+        let logv = v64.ln();
         hsum += sum / (valid as f64) - logv;
         sum += logv;
         valid += 1;
@@ -40,16 +46,19 @@ pub fn aggregated_hill_id(distances: &[f64]) -> f64 {
 pub struct AggregatedHillID;
 
 impl DistanceIDEstimator for AggregatedHillID {
-    fn estimate_from_distances(distances: &[f64]) -> f64 { aggregated_hill_id(distances) }
+    fn estimate_from_distances<F: Float>(distances: &[F]) -> f64 { aggregated_hill_id(distances) }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TableWithDistance;
+    use crate::distance::Euclidean;
     use crate::intrinsicdimensionality::KNNIDEstimator;
     use crate::intrinsicdimensionality::test::{
         make_intrinsic_subspace_data, regression_test, test_zeros,
     };
+    use crate::search::kdtree::{AxisCycleSplit, KdTree};
 
     #[test]
     fn aggregated_hill_estimator_regression() {
@@ -63,9 +72,8 @@ mod tests {
     #[test]
     fn aggregated_hill_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(1000, 0);
-        let table =
-            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
-        let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
+        let table = TableWithDistance::with_distance(&data, Euclidean);
+        let tree = KdTree::new(&table, AxisCycleSplit);
 
         let estimate = AggregatedHillID::estimate_from_knn(&tree, &table, 0, 100);
         let expected = 4.9471075219107155;

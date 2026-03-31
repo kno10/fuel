@@ -4,7 +4,7 @@ use crate::{DistanceData, Float};
 
 // Original CLINK uses the same pointer format as SLINK.
 pub fn clink_pointer<F: Float, D: DistanceData<F>>(data: &D) -> PointerRepresentation<F> {
-    let n = data.size();
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
 
     let mut pi: Vec<usize> = (0..n).collect();
@@ -83,9 +83,9 @@ pub fn clink<F: Float, D: DistanceData<F>>(data: &D) -> MergeHistory<F> {
 #[cfg(test)]
 mod tests {
     use super::clink_pointer;
+    use crate::CondensedDistanceMatrix;
     use crate::cluster::hierarchical::pointer::pointer_to_merge_history;
     use crate::cluster::hierarchical::{CompleteLinkage, agnes};
-    use crate::data::CondensedDistanceMatrix;
 
     #[test]
     fn clink_runs_and_merges_all_points() {

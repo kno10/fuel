@@ -21,7 +21,7 @@ where
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(Vec::new(), "COP", false, F::zero(), F::zero(), F::one());
     }
@@ -201,7 +201,7 @@ mod tests {
     use super::*;
     use crate::TableWithDistance;
     use crate::distance::Euclidean;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn cop_remote_outlier_lowest() {

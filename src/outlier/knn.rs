@@ -19,7 +19,7 @@ where
 {
     assert!(k > 0, "k must be greater than 0");
 
-    let size = data.size();
+    let size = data.len();
     let k_effective = k.min(size.saturating_sub(1));
 
     let scores: Vec<F> = for_each_knn(tree, data, k_effective, false, |_, neighbors| {
@@ -37,9 +37,9 @@ mod tests {
     use super::*;
     use crate::TableWithDistance;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
-    use crate::kd::{KdTree, MaxVarianceSplit};
     use crate::outlier::common::*;
-    use crate::vptree::VPTree;
+    use crate::search::kdtree::{KdTree, MaxVarianceSplit};
+    use crate::search::vptree::VPTree;
 
     fn sample_points() -> Vec<Vec<f64>> {
         vec![vec![0.0, 0.0], vec![0.1, 0.0], vec![0.0, 0.1], vec![0.1, 0.1], vec![6.0, 6.0]]

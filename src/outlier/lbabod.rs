@@ -14,7 +14,7 @@ where
     D: DistanceData<F> + VectorData<F>,
     K: Fn(&[F], &[F]) -> F,
 {
-    let size = data.size();
+    let size = data.len();
     let xi = data.point(center);
     let sim_ii = kernel(xi, xi);
 
@@ -111,7 +111,7 @@ where
     D: DistanceData<F> + VectorData<F> + Sync,
     K: Fn(&[F], &[F]) -> F,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(
             Vec::new(),

@@ -1,10 +1,13 @@
+use crate::Float;
+
 /// Probability-Weighted Moment and L-moment utilities.
 /// Compute sample L-moments from sorted data using the method of probability-weighted moments.
 ///
 /// The returned vector contains B(0)=L1, B(1)=L2, then tau3... for nmom>=3.
-pub fn sam_lmr<I>(sorted: I, nmom: usize) -> Vec<f64>
+pub fn sam_lmr<F, I>(sorted: I, nmom: usize) -> Vec<f64>
 where
-    I: ExactSizeIterator<Item = f64>,
+    F: Float,
+    I: ExactSizeIterator<Item = F>,
 {
     let n = sorted.len();
     let nmom = std::cmp::min(n, nmom);
@@ -17,7 +20,10 @@ where
         if !val.is_finite() {
             continue;
         }
-        let mut term = val;
+        let mut term = val.to_f64().unwrap_or(f64::NAN);
+        if !term.is_finite() {
+            continue;
+        }
         sum[0] += term;
         let mut z = i as f64;
         for value in sum.iter_mut().take(nmom).skip(1) {

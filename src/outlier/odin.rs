@@ -24,7 +24,7 @@ where
 {
     assert!(k > 0, "k must be greater than 0");
 
-    let size = data.size();
+    let size = data.len();
     let k_effective = k.min(size.saturating_sub(1));
 
     if k_effective == 0 {
@@ -69,7 +69,7 @@ mod tests {
     use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn odin_ranks_remote_point_highest() {

@@ -7,7 +7,7 @@ use super::WardLinkage;
 use super::common::{Builder, MergeHistory};
 use super::linkage::GeometricLinkage;
 use crate::distance::SquaredEuclidean;
-use crate::vptree::VPTree;
+use crate::search::vptree::VPTree;
 use crate::{CoordinateQuery, DistanceData, Float, TableWithDistance};
 
 struct UnionFind {
@@ -84,7 +84,7 @@ fn center<F: Float>(centers: &[Option<Vec<F>>], cid: usize) -> &[F] {
 fn grow_chain<F: Float, L: GeometricLinkage<F> + Copy>(
     data: &TableWithDistance<'_, F, Vec<F>, SquaredEuclidean, F>, linkage: L, builder: &Builder<F>,
     centers: &[Option<Vec<F>>], uf: &mut UnionFind, chain: &mut Vec<usize>, visited: &mut [bool],
-    searcher: &mut crate::vptree::PrioritySearcher<F>, is_ward: bool,
+    searcher: &mut crate::search::vptree::PrioritySearcher<F>, is_ward: bool,
 ) -> bool {
     let mut query = data.query();
     let mut a_root;

@@ -1,4 +1,5 @@
-use crate::intrinsicdimensionality::DistanceIDEstimator;
+use crate::Float;
+use crate::intrinsicdimensionality::{DistanceIDEstimator, find_begin, positive_f64};
 
 /// Hill estimator of intrinsic dimensionality (maximum likelihood for tail).
 ///
@@ -14,21 +15,25 @@ use crate::intrinsicdimensionality::DistanceIDEstimator;
 /// If there are fewer than 2 valid distances, returns `f64::NAN`.
 pub struct HillID;
 
-pub fn hill_id(distances: &[f64]) -> f64 {
-    let begin = crate::intrinsicdimensionality::find_begin(distances);
+pub fn hill_id<F: Float>(distances: &[F]) -> f64 {
+    let begin = find_begin(distances);
     let n = distances.len();
     if n - begin < 2 {
         return f64::NAN;
     }
-    let w = distances[n - 1];
-    let halfw = 0.5 * w;
+    let w64 = positive_f64(distances[n - 1]);
+    if w64.is_nan() {
+        return f64::NAN;
+    }
+    let halfw = 0.5 * w64;
 
     let (mut sum, mut valid) = (0.0, 0);
     for &v in &distances[begin..n - 1] {
-        if !v.is_finite() || v <= 0.0 {
+        let v64 = positive_f64(v);
+        if v64.is_nan() {
             continue;
         }
-        sum += if v < halfw { (v / w).ln() } else { ((v - w) / w).ln_1p() };
+        sum += if v64 < halfw { (v64 / w64).ln() } else { ((v64 - w64) / w64).ln_1p() };
         valid += 1;
     }
 
@@ -40,7 +45,7 @@ pub fn hill_id(distances: &[f64]) -> f64 {
 }
 
 impl DistanceIDEstimator for HillID {
-    fn estimate_from_distances(distances: &[f64]) -> f64 { hill_id(distances) }
+    fn estimate_from_distances<F: Float>(distances: &[F]) -> f64 { hill_id(distances) }
 }
 
 #[cfg(test)]
@@ -63,9 +68,9 @@ mod tests {
     #[test]
     fn hill_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(1000, 0);
-        let table =
-            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
-        let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
+        let table = crate::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
+        let tree =
+            crate::search::kdtree::KdTree::new(&table, crate::search::kdtree::AxisCycleSplit);
 
         let estimate = HillID::estimate_from_knn(&tree, &table, 0, 100);
         let expected = 4.922556491645347;
@@ -80,9 +85,9 @@ mod tests {
     #[test]
     fn hill_estimator_k_small() {
         let data = make_intrinsic_subspace_data(1000, 0);
-        let table =
-            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
-        let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
+        let table = crate::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
+        let tree =
+            crate::search::kdtree::KdTree::new(&table, crate::search::kdtree::AxisCycleSplit);
 
         let estimate = HillID::estimate_from_knn(&tree, &table, 0, 11);
         eprintln!("Hill k=11 estimate {}", estimate);

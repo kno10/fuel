@@ -320,7 +320,7 @@ where
     F: Float,
     L: SetLinkage<D, F, S>,
 {
-    let n = data.size();
+    let n = data.len();
     let members: Vec<Vec<usize>> = (0..n).map(|i| vec![i]).collect();
     let summaries: Vec<Option<S>> = members.iter().map(|m| Some(L::summarize(data, m))).collect();
 

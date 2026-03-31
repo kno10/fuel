@@ -68,7 +68,7 @@ pub trait KNNIDEstimator {
 /// Distance-list intrinsic dimensionality estimator API.
 pub trait DistanceIDEstimator {
     /// Estimate from a sorted set of nearest-neighbor distances (excluding the query point).
-    fn estimate_from_distances(distances: &[f64]) -> f64;
+    fn estimate_from_distances<F: crate::Float>(distances: &[F]) -> f64;
 }
 
 impl<T> KNNIDEstimator for T
@@ -84,27 +84,31 @@ where
         S: crate::KnnSearch<F, D::Query<'a>> + Sync,
     {
         let query = data.query().with_index(query_idx);
-        let neighbors = tree
-            .search_knn(&query, k)
-            .into_iter()
-            .take(k)
-            .map(|n| n.distance.to_f64().unwrap_or(f64::INFINITY))
-            .collect::<Vec<_>>();
+        let neighbors =
+            tree.search_knn(&query, k).into_iter().take(k).map(|n| n.distance).collect::<Vec<_>>();
         Self::estimate_from_distances(&neighbors)
     }
 }
 
 /// Find first finite positive distance or len.
-pub(crate) fn find_begin(distances: &[f64]) -> usize {
+pub(crate) fn find_begin<F: crate::Float>(distances: &[F]) -> usize {
     if cfg!(debug_assertions) {
         for window in distances.windows(2) {
-            let a = window[0];
-            let b = window[1];
+            let (a, b) = (window[0], window[1]);
             debug_assert!(a.is_finite(), "distance contains non-finite value");
             debug_assert!(b.is_finite(), "distance contains non-finite value");
             debug_assert!(a <= b, "distance array must be sorted ascending");
         }
     }
 
-    distances.iter().position(|&d| d.is_finite() && d > 0.0).unwrap_or(distances.len())
+    distances.iter().position(|&d| d.is_finite() && d > F::zero()).unwrap_or(distances.len())
+}
+
+/// Convert a value to positive finite f64, or return `f64::NAN`.
+pub(crate) fn positive_f64<F: crate::Float>(value: F) -> f64 {
+    if !value.is_finite() || value <= F::zero() {
+        return f64::NAN;
+    }
+    let value64 = value.to_f64().unwrap_or(f64::NAN);
+    if !value64.is_finite() { f64::NAN } else { value64 }
 }

@@ -10,7 +10,7 @@ where
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(Vec::new(), "INFLO", false, F::one(), F::zero(), F::infinity());
     }
@@ -103,8 +103,8 @@ mod tests {
     fn inflo_test() {
         let points = vec![vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 1.0], vec![10.0, 10.0]];
         let data = TableWithDistance::with_distance(&points, Euclidean);
-        let tree: crate::vptree::VPTree<f64> =
-            crate::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
+        let tree: crate::search::vptree::VPTree<f64> =
+            crate::search::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
 
         let results = influence_outlier(&tree, &data, 2, 1.0);
         assert_eq!(results.scores.len(), 4);
@@ -116,7 +116,8 @@ mod tests {
         let points = load_gaussian4d_points();
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-        let tree: crate::vptree::VPTree<f64> = crate::vptree::VPTree::new(&data, 2, &mut rng);
+        let tree: crate::search::vptree::VPTree<f64> =
+            crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
         let result = influence_outlier(&tree, &data, 10, 1.0);
         let reference = load_reference_scores();

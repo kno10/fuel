@@ -23,7 +23,7 @@ where
     assert!(eps >= F::zero(), "eps must be non-negative");
     assert!(min_points > 0, "min_points must be greater than 0");
 
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return Vec::new();
     }
@@ -155,7 +155,7 @@ mod tests {
     use super::*;
     use crate::TableWithDistance;
     use crate::distance::Euclidean;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     fn build_tree<'a>(
         points: &'a [Vec<f64>],

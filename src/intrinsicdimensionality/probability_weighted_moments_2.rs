@@ -1,4 +1,5 @@
-use crate::intrinsicdimensionality::DistanceIDEstimator;
+use crate::Float;
+use crate::intrinsicdimensionality::{DistanceIDEstimator, find_begin, positive_f64};
 
 /// Second variant of probability weighted moments intrinsic dimensionality estimator.
 ///
@@ -23,35 +24,50 @@ use crate::intrinsicdimensionality::DistanceIDEstimator;
 /// and \(\hat{m} = v_2/(1-3v_2)\).
 ///
 /// Returns `NaN` for insufficient or invalid data.
-pub fn probability_weighted_moments_2_id(distances: &[f64]) -> f64 {
-    let begin = crate::intrinsicdimensionality::find_begin(distances);
+pub fn probability_weighted_moments_2_id<F: Float>(distances: &[F]) -> f64 {
+    let begin = find_begin(distances);
 
     let k = distances.len() - begin;
     if k < 2 {
         return f64::NAN;
     }
     if k == 2 {
-        let v1 = distances[begin] / distances[begin + 1];
-        return v1 / (1.0 - v1);
+        let v1 = positive_f64(distances[begin]);
+        let v2 = positive_f64(distances[begin + 1]);
+        if v1.is_nan() || v2.is_nan() {
+            return f64::NAN;
+        }
+        let ratio = v1 / v2;
+        return ratio / (1.0 - ratio);
     }
     if k == 3 {
-        let v1 = distances[begin + 1] * 0.5 / distances[begin + 2];
-        return v1 / (1.0 - 2.0 * v1);
+        let x = positive_f64(distances[begin + 1]);
+        let y = positive_f64(distances[begin + 2]);
+        if x.is_nan() || y.is_nan() {
+            return f64::NAN;
+        }
+        let ratio = x * 0.5 / y;
+        return ratio / (1.0 - 2.0 * ratio);
     }
 
     let last = begin + k - 1;
     let mut v2 = 0.0;
     let mut valid = 0.0;
     for d in distances[begin..last].iter().copied() {
-        if !d.is_finite() || d <= 0.0 {
+        let d64 = positive_f64(d);
+        if d64.is_nan() {
             continue;
         }
         valid += 1.0;
-        v2 += d * (valid + 1.0) * valid;
+        v2 += d64 * (valid + 1.0) * valid;
     }
 
     let w = distances[last];
-    if !w.is_finite() || w <= 0.0 || valid <= 0.0 {
+    if !w.is_finite() || w <= F::zero() || valid <= 0.0 {
+        return f64::NAN;
+    }
+    let w = w.to_f64().unwrap_or(f64::NAN);
+    if !w.is_finite() {
         return f64::NAN;
     }
 
@@ -62,7 +78,7 @@ pub fn probability_weighted_moments_2_id(distances: &[f64]) -> f64 {
 pub struct ProbabilityWeightedMoments2;
 
 impl DistanceIDEstimator for ProbabilityWeightedMoments2 {
-    fn estimate_from_distances(distances: &[f64]) -> f64 {
+    fn estimate_from_distances<F: Float>(distances: &[F]) -> f64 {
         probability_weighted_moments_2_id(distances)
     }
 }
@@ -70,10 +86,13 @@ impl DistanceIDEstimator for ProbabilityWeightedMoments2 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TableWithDistance;
+    use crate::distance::Euclidean;
     use crate::intrinsicdimensionality::KNNIDEstimator;
     use crate::intrinsicdimensionality::test::{
         make_intrinsic_subspace_data, regression_test, test_zeros,
     };
+    use crate::search::kdtree::{AxisCycleSplit, KdTree};
 
     #[test]
     fn probability_weighted_moments_2_function_regression() {
@@ -94,9 +113,8 @@ mod tests {
     #[test]
     fn pwm2_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(10000, 0);
-        let table =
-            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
-        let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
+        let table = TableWithDistance::with_distance(&data, Euclidean);
+        let tree = KdTree::new(&table, AxisCycleSplit);
 
         let estimate = ProbabilityWeightedMoments2::estimate_from_knn(&tree, &table, 0, 100);
         let expected = 5.669889575177945;

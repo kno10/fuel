@@ -35,7 +35,7 @@ pub(crate) fn compute_core_distances<D: DistanceData<F>, F: Float>(
     // fallback brute-force version used by non-tree algorithms (prim, slink)
     assert!(min_points > 0, "min_points must be greater than 0");
 
-    let n = data.size();
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
 
     if min_points > n {
@@ -71,7 +71,7 @@ where
 {
     assert!(min_points > 0, "min_points must be greater than 0");
 
-    let n = data.size();
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
 
     if min_points > n {
@@ -215,7 +215,7 @@ mod tests {
     use super::*;
     use crate::TableWithDistance;
     use crate::distance::Euclidean;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn core_distances_tree_matches_bruteforce() {

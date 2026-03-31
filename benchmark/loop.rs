@@ -7,7 +7,7 @@ use common::{CountingDistance, read_numeric_data};
 use fuel::TableWithDistance;
 use fuel::distance::Euclidean;
 use fuel::outlier::local_outlier_probabilities;
-use fuel::vptree::VPTree;
+use fuel::search::vptree::VPTree;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 

@@ -31,7 +31,7 @@ where
     F: Float,
     L: SetLinkage<D, F, S>,
 {
-    let n = data.size();
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
     if n == 1 {
         return Vec::new();

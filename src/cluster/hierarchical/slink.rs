@@ -4,7 +4,7 @@ use crate::{DistanceData, Float};
 
 // Version using the original "pointer" representation
 pub fn slink_pointer<F: Float, D: DistanceData<F>>(data: &D) -> PointerRepresentation<F> {
-    let n = data.size();
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
 
     let mut pi: Vec<usize> = (0..n).collect();
@@ -56,8 +56,8 @@ pub fn slink<F: Float, D: DistanceData<F>>(data: &D) -> MergeHistory<F> {
 mod tests {
     use super::super::pointer::pointer_to_merge_history;
     use super::slink_pointer;
+    use crate::CondensedDistanceMatrix;
     use crate::cluster::hierarchical::{SingleLinkage, agnes};
-    use crate::data::CondensedDistanceMatrix;
 
     #[test]
     fn slink_matches_agnes_single_on_unique_distances() {

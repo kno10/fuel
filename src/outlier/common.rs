@@ -23,7 +23,7 @@ where
     use rayon::prelude::*;
 
     let k_query = k_effective + if include_self { 0 } else { 1 };
-    (0..data.size())
+    (0..data.len())
         .into_par_iter()
         .map(|idx| {
             let mut query = data.query();
@@ -85,7 +85,7 @@ where
 {
     use rayon::prelude::*;
 
-    (0..data.size())
+    (0..data.len())
         .into_par_iter()
         .map(|idx| {
             let mut query = data.query();

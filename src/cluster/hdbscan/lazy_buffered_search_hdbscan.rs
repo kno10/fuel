@@ -22,7 +22,7 @@ where
     S: PrioritySearcherFactory<F, D::Query<'a>>,
     S: KnnSearch<F, D::Query<'a>>,
 {
-    let n = data.size();
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
     assert!(min_points > 0, "min_points must be greater than 0");
 
@@ -177,7 +177,7 @@ mod tests {
     use super::lazy_buffered_search_hdbscan;
     use crate::TableWithDistance;
     use crate::distance::Euclidean;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn buffered_search_matches_linear_mst() {

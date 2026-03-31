@@ -15,7 +15,7 @@ where
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + RangeSearch<F, D::Query<'a>> + Sync,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(Vec::new(), "DWOF", false, F::zero(), F::zero(), F::infinity());
     }
@@ -172,7 +172,7 @@ mod tests {
     use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn dwof_remote_outlier_lowest() {
@@ -200,7 +200,7 @@ mod tests {
         let points = load_gaussian4d_points();
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-        let tree: crate::vptree::VPTree<f64> = VPTree::new(&data, 2, &mut rng);
+        let tree: crate::search::vptree::VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
         let result = dynamic_window_outlier_factor(&tree, &data, 10, 1.1);
         let reference = load_reference_scores();

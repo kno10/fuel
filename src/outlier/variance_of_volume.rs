@@ -9,7 +9,7 @@ where
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(
             Vec::new(),
@@ -97,8 +97,8 @@ mod tests {
     fn variance_of_volume_remote_outlier() {
         let points = vec![vec![0.0], vec![0.1], vec![0.2], vec![10.0]];
         let data = TableWithDistance::with_distance(&points, Euclidean);
-        let tree: crate::vptree::VPTree<f64> =
-            crate::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
+        let tree: crate::search::vptree::VPTree<f64> =
+            crate::search::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
         let results = variance_of_volume(&tree, &data, 2);
         let (best_index, _) = results
             .scores
@@ -114,7 +114,8 @@ mod tests {
         let points = load_gaussian4d_points();
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-        let tree: crate::vptree::VPTree<f64> = crate::vptree::VPTree::new(&data, 2, &mut rng);
+        let tree: crate::search::vptree::VPTree<f64> =
+            crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
         let result = variance_of_volume(&tree, &data, 10);
         let reference = load_reference_scores();

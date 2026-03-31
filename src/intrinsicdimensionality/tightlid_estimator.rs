@@ -123,10 +123,10 @@ impl KNNIDEstimator for TightLID {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::TableWithDistance;
+    use crate::TableWithDistance;
     use crate::distance::Euclidean;
     use crate::intrinsicdimensionality::test::make_intrinsic_subspace_data;
-    use crate::kd::{KdTree, LargestSpreadSplit};
+    use crate::search::kdtree::{KdTree, LargestSpreadSplit};
 
     #[test]
     fn tightlid_estimator_basic() {

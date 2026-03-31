@@ -1,4 +1,5 @@
-use crate::intrinsicdimensionality::DistanceIDEstimator;
+use crate::Float;
+use crate::intrinsicdimensionality::{DistanceIDEstimator, find_begin};
 
 /// Regularly varying functions estimator of intrinsic dimensionality.
 ///
@@ -12,8 +13,8 @@ use crate::intrinsicdimensionality::DistanceIDEstimator;
 /// three quantile points (n/2, 3n/4, n), then derives the ID from log-ratios in the tail.
 ///
 /// Returns `NaN` if data are invalid or too few points are available.
-pub fn regularly_varying_id(distances: &[f64]) -> f64 {
-    let begin = crate::intrinsicdimensionality::find_begin(distances);
+pub fn regularly_varying_id<F: Float>(distances: &[F]) -> f64 {
+    let begin = find_begin(distances);
 
     let k = distances.len() - begin;
     if k < 2 {
@@ -28,9 +29,22 @@ pub fn regularly_varying_id(distances: &[f64]) -> f64 {
     let r1 = distances[begin + n1 - 1];
     let r2 = distances[begin + n2 - 1];
     let r3 = distances[begin + n3 - 1];
-    if r1.is_nan() || r2.is_nan() || r3.is_nan() || r1 <= 0.0 || r2 <= 0.0 || r3 <= 0.0 {
+    if r1.is_nan()
+        || r2.is_nan()
+        || r3.is_nan()
+        || r1 <= F::zero()
+        || r2 <= F::zero()
+        || r3 <= F::zero()
+    {
         return f64::NAN;
     }
+    let r1 = r1.to_f64().unwrap_or(f64::NAN);
+    let r2 = r2.to_f64().unwrap_or(f64::NAN);
+    let r3 = r3.to_f64().unwrap_or(f64::NAN);
+    if !r1.is_finite() || !r2.is_finite() || !r3.is_finite() {
+        return f64::NAN;
+    }
+
     let denom = r1 - 2.0 * r2 + r3;
     if denom == 0.0 {
         return f64::NAN;
@@ -53,7 +67,7 @@ pub fn regularly_varying_id(distances: &[f64]) -> f64 {
 pub struct RVEstimator;
 
 impl DistanceIDEstimator for RVEstimator {
-    fn estimate_from_distances(distances: &[f64]) -> f64 { regularly_varying_id(distances) }
+    fn estimate_from_distances<F: Float>(distances: &[F]) -> f64 { regularly_varying_id(distances) }
 }
 
 #[cfg(test)]
@@ -76,9 +90,9 @@ mod tests {
     #[test]
     fn rv_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(10000, 0);
-        let table =
-            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
-        let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
+        let table = crate::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
+        let tree =
+            crate::search::kdtree::KdTree::new(&table, crate::search::kdtree::AxisCycleSplit);
 
         let estimate = RVEstimator::estimate_from_knn(&tree, &table, 0, 100);
         let expected = 5.456020902839396;

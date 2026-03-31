@@ -1,5 +1,6 @@
-use crate::intrinsicdimensionality::DistanceIDEstimator;
+use crate::Float;
 use crate::intrinsicdimensionality::method_of_moments::method_of_moments_id;
+use crate::intrinsicdimensionality::{DistanceIDEstimator, positive_f64};
 use crate::statistics::probability_weighted_moments::sam_lmr;
 
 /// L-moments estimator of intrinsic dimensionality.
@@ -21,41 +22,44 @@ use crate::statistics::probability_weighted_moments::sam_lmr;
 /// For stability, if \(\lambda_2=0\), uses first L-moment fallback.
 pub struct LMomentsEstimator;
 
-pub fn lmoments_id(distances: &[f64]) -> f64 {
-    LMomentsEstimator::estimate_from_distances(distances)
+pub fn lmoments_id<F: Float>(distances: &[F]) -> f64 {
+    let n = distances.len();
+    let mut begin = 0;
+    while begin < n {
+        let d = distances[begin];
+        if !d.is_finite() || d <= F::zero() {
+            begin += 1;
+            continue;
+        }
+        break;
+    }
+    let len = n - begin;
+    if len < 2 {
+        return f64::NAN;
+    }
+
+    if len == 2 {
+        return method_of_moments_id(&distances[begin..]);
+    }
+
+    let w = positive_f64(distances[n - 1]);
+    if w.is_nan() {
+        return f64::NAN;
+    }
+
+    let lmom = sam_lmr(distances[begin..].iter().copied().rev(), 2);
+    if lmom.len() < 2 || lmom[1] == 0.0 {
+        // fallback to first moment only
+        let l1 = lmom.first().copied().unwrap_or(0.0);
+        return -0.5 * (l1 * 2.0) / w * ((len as f64) + 0.5) * (len as f64);
+    }
+
+    let (l1, l2) = (lmom[0], lmom[1]);
+    -0.5 * ((l1 * l1 / l2) - l1) / w
 }
 
 impl DistanceIDEstimator for LMomentsEstimator {
-    fn estimate_from_distances(distances: &[f64]) -> f64 {
-        let n = distances.len();
-        let mut begin = 0;
-        while begin < n && distances[begin] <= 0.0 {
-            begin += 1;
-        }
-        let len = n - begin;
-        if len < 2 {
-            return f64::NAN;
-        }
-
-        if len == 2 {
-            return method_of_moments_id(&distances[begin..]);
-        }
-
-        let w = distances[n - 1];
-        if w.is_nan() || w <= 0.0 {
-            return f64::NAN;
-        }
-
-        let lmom = sam_lmr(distances[begin..].iter().copied().rev(), 2);
-        if lmom.len() < 2 || lmom[1] == 0.0 {
-            // fallback to first moment only
-            let l1 = lmom.first().copied().unwrap_or(0.0);
-            return -0.5 * (l1 * 2.0) / w * ((len as f64) + 0.5) * (len as f64);
-        }
-
-        let (l1, l2) = (lmom[0], lmom[1]);
-        -0.5 * ((l1 * l1 / l2) - l1) / w
-    }
+    fn estimate_from_distances<F: Float>(distances: &[F]) -> f64 { lmoments_id(distances) }
 }
 
 #[cfg(test)]
@@ -78,9 +82,9 @@ mod tests {
     #[test]
     fn lmoments_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(1000, 0);
-        let table =
-            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
-        let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
+        let table = crate::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
+        let tree =
+            crate::search::kdtree::KdTree::new(&table, crate::search::kdtree::AxisCycleSplit);
 
         let estimate = LMomentsEstimator::estimate_from_knn(&tree, &table, 0, 100);
         let expected = 5.138352302606048;

@@ -14,7 +14,7 @@ use fuel::cluster::hdbscan::{
 };
 use fuel::cluster::hierarchical::Merge;
 use fuel::distance::Euclidean;
-use fuel::vptree::VPTree;
+use fuel::search::vptree::VPTree;
 use fuel::{Data, TableWithDistance};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -126,7 +126,7 @@ fn benchmark_variant(
 
     let mst_weight: f64 = hierarchy.merges.iter().map(|m| m.distance).sum();
 
-    let labels = extract_labels(&hierarchy.merges, data.size(), min_points);
+    let labels = extract_labels(&hierarchy.merges, data.len(), min_points);
     let (cluster_sizes, noise_count) = summarize_cluster_sizes(&labels);
 
     BenchmarkResult {

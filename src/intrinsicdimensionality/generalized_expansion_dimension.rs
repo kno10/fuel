@@ -1,4 +1,5 @@
-use crate::intrinsicdimensionality::DistanceIDEstimator;
+use crate::Float;
+use crate::intrinsicdimensionality::{DistanceIDEstimator, find_begin, positive_f64};
 
 /// Generalized Expansion Dimension estimator.
 ///
@@ -13,8 +14,8 @@ use crate::intrinsicdimensionality::DistanceIDEstimator;
 /// then \(m = \mathrm{median}_k(\mathrm{median}_{i>k} a_{k,i})\).
 ///
 /// Returns `NaN` on insufficient data (fewer than 2 valid distances).
-pub fn generalized_expansion_dimension(distances: &[f64]) -> f64 {
-    let begin = crate::intrinsicdimensionality::find_begin(distances);
+pub fn generalized_expansion_dimension<F: Float>(distances: &[F]) -> f64 {
+    let begin = find_begin(distances);
     let k = distances.len() - begin;
     if k < 2 {
         return f64::NAN;
@@ -24,13 +25,21 @@ pub fn generalized_expansion_dimension(distances: &[f64]) -> f64 {
     let mut meds = Vec::with_capacity(last);
 
     for kk in 0..last {
-        let logdk = distances[begin + kk].ln();
+        let dk = positive_f64(distances[begin + kk]);
+        if dk.is_nan() {
+            continue;
+        }
+        let logdk = dk.ln();
         let log1pk = (kk as f64).ln_1p();
 
         let mut values = (kk + 1..=last)
             .filter_map(|i| {
-                let logdi = distances[begin + i].ln();
-                if (logdk - logdi).abs() > 0.0 {
+                let di = positive_f64(distances[begin + i]);
+                if di.is_nan() {
+                    return None;
+                }
+                let logdi = di.ln();
+                if (logdk - logdi).abs() > f64::EPSILON {
                     let log1pi = (i as f64).ln_1p();
                     Some((log1pk - log1pi) / (logdk - logdi))
                 } else {
@@ -63,7 +72,7 @@ fn median(data: &mut [f64]) -> f64 {
 }
 
 impl DistanceIDEstimator for GeneralizedExpansionDimension {
-    fn estimate_from_distances(distances: &[f64]) -> f64 {
+    fn estimate_from_distances<F: Float>(distances: &[F]) -> f64 {
         generalized_expansion_dimension(distances)
     }
 }
@@ -88,9 +97,9 @@ mod tests {
     #[test]
     fn generalized_expansion_dimension_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(10000, 0);
-        let table =
-            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
-        let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
+        let table = crate::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
+        let tree =
+            crate::search::kdtree::KdTree::new(&table, crate::search::kdtree::AxisCycleSplit);
 
         let estimate = GeneralizedExpansionDimension::estimate_from_knn(&tree, &table, 0, 100);
         let expected = 5.294440321159763;

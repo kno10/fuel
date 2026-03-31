@@ -140,10 +140,10 @@ impl LocalPCAID {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::TableWithDistance;
+    use crate::TableWithDistance;
     use crate::distance::Euclidean;
     use crate::intrinsicdimensionality::test::make_intrinsic_subspace_data;
-    use crate::kd::{AxisCycleSplit, KdTree};
+    use crate::search::kdtree::{AxisCycleSplit, KdTree};
 
     #[test]
     fn local_pca_estimator_linspace() {
@@ -170,13 +170,11 @@ mod tests {
     #[test]
     fn local_pca_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(1000, 0);
-        let table =
-            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
-        let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
+        let table = TableWithDistance::with_distance(&data, Euclidean);
+        let tree = KdTree::new(&table, AxisCycleSplit);
 
         let estimate = LocalPCAID::estimate_from_knn(&tree, &table, 0, 100, 0.95);
         let expected = 5.0;
-
         assert!(
             (estimate - expected).abs() < 1e-6,
             "local PCA estimate {} deviates from hypersphere expected {}",

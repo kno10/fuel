@@ -18,7 +18,7 @@ where
     D: DistanceData<F> + ?Sized + 'a,
     S: PrioritySearcherFactory<F, D::Query<'a>>,
 {
-    let n = data.size();
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
 
     let mut builder = ClusterBuilder::new(n);
@@ -158,10 +158,9 @@ mod tests {
     use rand::rngs::StdRng;
 
     use super::*;
-    use crate::TableWithDistance;
-    use crate::data::CondensedDistanceMatrix;
     use crate::distance::Euclidean;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
+    use crate::{CondensedDistanceMatrix, TableWithDistance};
 
     fn condensed_abs_1d(points: &[Vec<f64>]) -> Vec<f64> {
         let mut out = Vec::new();

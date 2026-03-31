@@ -9,8 +9,8 @@ use fuel::TableWithDistance;
 use fuel::cluster::dbscan::NOISE;
 use fuel::cluster::optics::{extract_xi_labels, optics};
 use fuel::distance::Euclidean;
-use fuel::kd::{KdTree, MaxVarianceSplit};
-use fuel::vptree::VPTree;
+use fuel::search::kdtree::{KdTree, MaxVarianceSplit};
+use fuel::search::vptree::VPTree;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 

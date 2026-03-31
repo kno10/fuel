@@ -119,7 +119,7 @@ where
     F: Float + Send + Sync,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
 {
-    let n = data.size();
+    let n = data.len();
     if n == 0 || subsample_size < 2 {
         return make_outlier_result(
             Vec::new(),
@@ -189,7 +189,7 @@ mod tests {
         let points = load_gaussian4d_points();
         let data = TableWithDistance::with_distance(&points, Euclidean);
 
-        let results = isolation_forest(&data, 100, data.size(), 42);
+        let results = isolation_forest(&data, 100, data.len(), 42);
         let reference = load_reference_scores();
         let expected = reference.get("IForest-full").expect("No reference for IForest-full");
         let labels: Vec<u8> = label_from_reference(&reference);

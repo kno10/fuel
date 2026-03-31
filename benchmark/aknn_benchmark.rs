@@ -8,7 +8,7 @@ mod common;
 use common::{CountingDistance, generate_points, load_points_from_csv};
 use fuel::api::ApproxKnnSearch;
 use fuel::distance::Euclidean;
-use fuel::kd::{KdTree, MaxVarianceSplit};
+use fuel::search::kdtree::{KdTree, MaxVarianceSplit};
 use fuel::{DistanceData, IndexQuery, KnnSearch, TableWithDistance};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};

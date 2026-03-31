@@ -351,7 +351,7 @@ where
     F: Float + Send + Sync,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(
             Vec::new(),
@@ -487,7 +487,7 @@ mod tests {
     use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn aloci_remote_outlier_lowest() {

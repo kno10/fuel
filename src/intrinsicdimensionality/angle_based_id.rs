@@ -137,23 +137,26 @@ mod tests {
     use rand::SeedableRng;
 
     use super::*;
+    use crate::TableWithDistance;
+    use crate::distance::Euclidean;
     use crate::intrinsicdimensionality::test::make_intrinsic_subspace_data;
+    use crate::search::kdtree::{AxisCycleSplit, KdTree};
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn rabid_estimator_query_graph_non_panic() {
         let points = vec![vec![0.0, 0.0], vec![1.0, 1.0]];
         let data = crate::TableWithDistance::with_distance(&points, crate::distance::Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(0);
-        let tree: crate::vptree::VPTree<f64> = crate::vptree::VPTree::new(&data, 2, &mut rng);
+        let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
         let _ = RABID::estimate_from_knn(&tree, &data, 0, 1);
     }
 
     #[test]
     fn rabid_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(1000, 0);
-        let table =
-            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
-        let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
+        let table = TableWithDistance::with_distance(&data, Euclidean);
+        let tree = KdTree::new(&table, AxisCycleSplit);
 
         let estimate = RABID::estimate_from_knn(&tree, &table, 0, 100);
         let expected = 5.13903234155527;
@@ -168,18 +171,17 @@ mod tests {
     #[test]
     fn abid_estimator_query_graph_non_panic() {
         let points = vec![vec![0.0, 0.0], vec![1.0, 1.0]];
-        let data = crate::TableWithDistance::with_distance(&points, crate::distance::Euclidean);
+        let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(0);
-        let tree: crate::vptree::VPTree<f64> = crate::vptree::VPTree::new(&data, 2, &mut rng);
+        let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
         let _ = ABID::estimate_from_knn(&tree, &data, 0, 1);
     }
 
     #[test]
     fn abid_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(1000, 0);
-        let table =
-            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
-        let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
+        let table = TableWithDistance::with_distance(&data, Euclidean);
+        let tree = KdTree::new(&table, AxisCycleSplit);
 
         let estimate = ABID::estimate_from_knn(&tree, &table, 0, 100);
         let expected = 4.8854323914334685;

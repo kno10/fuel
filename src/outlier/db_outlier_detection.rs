@@ -7,7 +7,7 @@ where
     D: DistanceData<F> + Sync + 'a,
     S: RangeSearch<F, D::Query<'a>> + Sync,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(
             Vec::new(),
@@ -52,7 +52,7 @@ mod tests {
         ];
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(0);
-        let tree = crate::vptree::VPTree::new(&data, 2, &mut rng);
+        let tree = crate::search::vptree::VPTree::new(&data, 2, &mut rng);
         let results = db_outlier_detection(&tree, &data, 0.2, 0.2);
         let (best_index, _) = results
             .scores
@@ -68,7 +68,7 @@ mod tests {
         let points = load_gaussian4d_points();
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-        let tree = crate::vptree::VPTree::new(&data, 2, &mut rng);
+        let tree = crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
         let result = db_outlier_detection(&tree, &data, 0.25, 0.95);
         let reference = load_reference_scores();
@@ -89,7 +89,7 @@ mod tests {
         let points = vec![vec![0.0], vec![0.1], vec![100.0]];
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-        let tree = crate::vptree::VPTree::new(&data, 2, &mut rng);
+        let tree = crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
         // p=0.1 => m = floor(3*(1-0.1)) = 2
         // point 0: count=2 (self+point1) -> inlier

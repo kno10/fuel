@@ -62,7 +62,7 @@ where
     assert!(eps >= F::zero(), "eps must be non-negative");
     assert!(min_points > 0, "min_points must be greater than 0");
 
-    let size = data.size();
+    let size = data.len();
     let mut processed = vec![false; size];
     let mut reachability = vec![F::infinity(); size];
     let mut core_distance = vec![None; size];
@@ -447,7 +447,7 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn optics_finds_two_clusters_and_noise() {

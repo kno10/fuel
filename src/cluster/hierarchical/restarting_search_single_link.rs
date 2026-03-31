@@ -11,7 +11,7 @@ where
     D: DistanceData<F> + ?Sized + 'a,
     S: PrioritySearcherFactory<F, D::Query<'a>>,
 {
-    let n = data.size();
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
 
     let mut builder = ClusterBuilder::new(n);
@@ -128,7 +128,7 @@ mod tests {
     use crate::TableWithDistance;
     use crate::cluster::hierarchical::buffered_search_single_link;
     use crate::distance::Euclidean;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     /// Ensure that restarting search produces the same merge history as a
     /// buffered search with slack=1.  This also serves as a regression test

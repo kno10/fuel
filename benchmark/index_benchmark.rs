@@ -6,10 +6,10 @@ use std::time::Instant;
 mod common;
 use common::{CountingDistance, generate_points, load_points_from_csv};
 use fuel::api::{Data, DistanceData, DistanceSearch};
-use fuel::covertree::{CoverTree, expansion_heuristic_from_id};
 use fuel::distance::{DistanceFunction, Euclidean};
-use fuel::kd::{KdTree, MaxVarianceSplit};
-use fuel::vptree::VPTree;
+use fuel::search::covertree::{CoverTree, expansion_heuristic_from_id};
+use fuel::search::kdtree::{KdTree, MaxVarianceSplit};
+use fuel::search::vptree::VPTree;
 use fuel::{
     CoordinateQuery, DistPair, IndexQuery, KNNHeap, KnnSearch, PrioritySearcher,
     PrioritySearcherFactory, RangeSearch, TableWithDistance, VectorData,

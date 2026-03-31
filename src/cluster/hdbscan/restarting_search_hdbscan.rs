@@ -17,7 +17,7 @@ where
     S: PrioritySearcherFactory<F, D::Query<'a>>,
     S: KnnSearch<F, D::Query<'a>>,
 {
-    let n = data.size();
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
     assert!(min_points > 0, "min_points must be greater than 0");
 
@@ -132,7 +132,7 @@ mod tests {
     use crate::cluster::hdbscan::extraction::extract_clusters_with_noise;
     use crate::cluster::hdbscan::{buffered_search_hdbscan, hdbscan_prim};
     use crate::distance::Euclidean;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn restarting_search_hdbscan_matches_linear_mst() {
@@ -166,8 +166,8 @@ mod tests {
         let hist_r = restarting_search_hdbscan(&tree, &data, 2);
         let hist_b = buffered_search_hdbscan(&tree, &data, 2, 1);
 
-        let labels_r = extract_clusters_with_noise(&hist_r.merges, data.size(), 2);
-        let labels_b = extract_clusters_with_noise(&hist_b.merges, data.size(), 2);
+        let labels_r = extract_clusters_with_noise(&hist_r.merges, data.len(), 2);
+        let labels_b = extract_clusters_with_noise(&hist_b.merges, data.len(), 2);
         assert_eq!(labels_r, labels_b);
     }
 }

@@ -87,7 +87,7 @@ where
     D: DistanceData<F> + VectorData<F> + Sync,
     K: Fn(&[F], &[F]) -> F + Sync,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(Vec::new(), "ABOD", false, F::zero(), F::zero(), F::infinity());
     }
@@ -190,7 +190,7 @@ where
     F: Float + Send + Sync,
     D: DistanceData<F> + VectorData<F> + Sync,
 {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(Vec::new(), "ABOD", false, F::zero(), F::zero(), F::infinity());
     }

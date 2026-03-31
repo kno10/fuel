@@ -12,7 +12,7 @@ use crate::{DistanceData, Float};
 pub fn slink_hdbscan_pointer<F: Float, D: DistanceData<F>>(
     data: &D, min_points: usize,
 ) -> (PointerRepresentation<F>, Vec<F>) {
-    let n = data.size();
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
     assert!(min_points > 0, "min_points must be greater than 0");
 

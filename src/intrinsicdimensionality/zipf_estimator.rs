@@ -1,4 +1,5 @@
-use crate::intrinsicdimensionality::DistanceIDEstimator;
+use crate::Float;
+use crate::intrinsicdimensionality::{DistanceIDEstimator, find_begin};
 
 /// Zipf estimator (qq-estimator) of intrinsic dimensionality.
 ///
@@ -19,8 +20,8 @@ use crate::intrinsicdimensionality::DistanceIDEstimator;
 /// Uses weighted least-squares regression on \(\ln(r_i)\) vs \(\ln(d_i)\) with bias-corrected rank weights.
 ///
 /// Returns `NaN` for insufficient or invalid data.
-pub fn zipf_id(distances: &[f64]) -> f64 {
-    let begin = crate::intrinsicdimensionality::find_begin(distances);
+pub fn zipf_id<F: Float>(distances: &[F]) -> f64 {
+    let begin = find_begin(distances);
     let len_d = distances.len() - begin;
     if len_d < 2 {
         return f64::NAN;
@@ -31,10 +32,11 @@ pub fn zipf_id(distances: &[f64]) -> f64 {
 
     let (mut wls, mut ws, mut ls, mut wws) = (0.0, 0.0, 0.0, 0.0);
     for (i, &v) in distances[begin..].iter().enumerate() {
-        if !v.is_finite() || v <= 0.0 {
+        let v64 = crate::intrinsicdimensionality::positive_f64(v);
+        if v64.is_nan() {
             continue;
         }
-        let logv = v.ln();
+        let logv = v64.ln();
         let weight = (nplus1 / ((i as f64) + bias)).ln();
         wls += weight * logv;
         ws += weight;
@@ -49,7 +51,7 @@ pub fn zipf_id(distances: &[f64]) -> f64 {
 pub struct ZipfID;
 
 impl DistanceIDEstimator for ZipfID {
-    fn estimate_from_distances(distances: &[f64]) -> f64 { zipf_id(distances) }
+    fn estimate_from_distances<F: Float>(distances: &[F]) -> f64 { zipf_id(distances) }
 }
 
 #[cfg(test)]
@@ -72,9 +74,9 @@ mod tests {
     #[test]
     fn zipf_estimator_hypersphere_close_to_5() {
         let data = make_intrinsic_subspace_data(1000, 0);
-        let table =
-            crate::data::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
-        let tree = crate::kd::KdTree::new(&table, crate::kd::AxisCycleSplit);
+        let table = crate::TableWithDistance::with_distance(&data, crate::distance::Euclidean);
+        let tree =
+            crate::search::kdtree::KdTree::new(&table, crate::search::kdtree::AxisCycleSplit);
 
         let estimate = ZipfID::estimate_from_knn(&tree, &table, 0, 100);
         let expected = 4.873777675926932;

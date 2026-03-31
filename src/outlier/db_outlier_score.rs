@@ -7,7 +7,7 @@ where
     D: DistanceData<F> + Sync + 'a,
     S: RangeSearch<F, D::Query<'a>> + Sync,
 {
-    let size = data.size();
+    let size = data.len();
     let scores: Vec<F> = for_each_range(tree, data, d, true, |_idx, neighbors| {
         let count = neighbors.len();
         let n = (count as f64) / (size as f64);
@@ -39,7 +39,8 @@ mod tests {
             vec![5.0, 5.0],
         ];
         let data = TableWithDistance::with_distance(&points, Euclidean);
-        let tree = crate::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
+        let tree =
+            crate::search::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
         let results = db_outlier_score(&tree, &data, 0.2);
         let (best_index, _) = results
             .scores
@@ -55,7 +56,7 @@ mod tests {
         let points = load_gaussian4d_points();
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-        let tree = crate::vptree::VPTree::new(&data, 2, &mut rng);
+        let tree = crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
         let result = db_outlier_score(&tree, &data, 0.25);
         let reference = load_reference_scores();

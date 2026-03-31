@@ -49,7 +49,7 @@ where
     S: PrioritySearcherFactory<F, D::Query<'a>>,
     S: KnnSearch<F, D::Query<'a>>,
 {
-    let n = data.size();
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
     assert!(min_points > 0, "min_points must be greater than 0");
 
@@ -250,7 +250,7 @@ mod tests {
     use crate::TableWithDistance;
     use crate::cluster::hdbscan::hdbscan_prim;
     use crate::distance::Euclidean;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     #[test]
     fn boruvka_searchers_hdbscan_matches_prim_mst() {

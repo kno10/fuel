@@ -6,9 +6,9 @@ use std::time::Instant;
 use common::{CountingDistance, read_numeric_data};
 use fuel::TableWithDistance;
 use fuel::distance::Euclidean;
-use fuel::kd::{KdTree, MaxVarianceSplit};
 use fuel::outlier::{k_nearest_neighbors_outlier as knn, outlier_detection_independence_neighbor};
-use fuel::vptree::VPTree;
+use fuel::search::kdtree::{KdTree, MaxVarianceSplit};
+use fuel::search::vptree::VPTree;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 

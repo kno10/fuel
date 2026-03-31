@@ -22,7 +22,7 @@ pub fn distance_from_origin<D: VectorData<F> + Sync, F: Float + Send + Sync + st
 ) -> OutlierResult<F> {
     let scores: Vec<F> = if cfg!(feature = "parallel") {
         use rayon::prelude::*;
-        (0..data.size())
+        (0..data.len())
             .into_par_iter()
             .map(|idx| {
                 let coords = data.point(idx);
@@ -54,7 +54,7 @@ pub fn distance_from_center<
 >(
     data: D,
 ) -> OutlierResult<F> {
-    let size = data.size();
+    let size = data.len();
     if size == 0 {
         return make_outlier_result(
             Vec::new(),
@@ -115,7 +115,7 @@ pub fn random<D: DistanceData<F>, F: Float>(data: D, seed: u64) -> OutlierResult
 pub fn zero<D: DistanceData<F> + Sync, F: Float + Send + Sync>(data: D) -> OutlierResult<F> {
     let scores: Vec<F> = if cfg!(feature = "parallel") {
         use rayon::prelude::*;
-        (0..data.size()).into_par_iter().map(|_| F::zero()).collect()
+        (0..data.len()).into_par_iter().map(|_| F::zero()).collect()
     } else {
         data.iter().map(|_| F::zero()).collect()
     };
@@ -132,7 +132,7 @@ mod tests {
     use crate::TableWithDistance;
     use crate::api::Data;
     use crate::distance::Euclidean;
-    use crate::vptree::VPTree;
+    use crate::search::vptree::VPTree;
 
     fn make_simple_data() -> (TableWithDistance<'static, f64, Vec<f64>, Euclidean, f64>, VPTree<f64>)
     {
@@ -194,6 +194,6 @@ mod tests {
         let (data, _tree) = make_simple_data();
         let scores = zero(&data);
         assert!(scores.scores.iter().all(|&e| e == 0.0));
-        assert_eq!(scores.scores.len(), data.size());
+        assert_eq!(scores.scores.len(), data.len());
     }
 }
