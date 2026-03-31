@@ -1,5 +1,3 @@
-#[cfg(test)]
-use crate::distance::Euclidean;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
 use crate::{DistanceData, Float, KnnSearch};
 
@@ -13,7 +11,7 @@ use crate::{DistanceData, Float, KnnSearch};
 /// Panics if `k == 0`.
 pub fn weighted_knn<'a, S, D, F>(tree: &S, data: &'a D, k: usize) -> OutlierResult<F>
 where
-    F: Float + std::iter::Sum + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {
@@ -36,6 +34,7 @@ mod tests {
 
     use super::*;
     use crate::TableWithDistance;
+    use crate::distance::Euclidean;
     use crate::evaluation::outlier::receiver_operating_curve::auc;
     use crate::outlier::common::*;
     use crate::search::vptree::VPTree;

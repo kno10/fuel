@@ -18,7 +18,7 @@ pub fn outlier_detection_independence_neighbor<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {

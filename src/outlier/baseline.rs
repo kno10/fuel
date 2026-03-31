@@ -17,9 +17,7 @@ use crate::{DistanceData, Float};
 /// # Panics
 ///
 /// Panics if the data set is empty (division by zero when computing the mean).
-pub fn distance_from_origin<D: VectorData<F> + Sync, F: Float + Send + Sync + std::iter::Sum>(
-    data: D,
-) -> OutlierResult<F> {
+pub fn distance_from_origin<D: VectorData<F> + Sync, F: Float>(data: D) -> OutlierResult<F> {
     let scores: Vec<F> = if cfg!(feature = "parallel") {
         use rayon::prelude::*;
         (0..data.len())
@@ -50,7 +48,7 @@ pub fn distance_from_origin<D: VectorData<F> + Sync, F: Float + Send + Sync + st
 /// dataset this function will panic when trying to divide by zero.
 pub fn distance_from_center<
     D: VectorData<F> + Sync,
-    F: Float + Send + Sync + std::ops::AddAssign + std::ops::DivAssign + std::iter::Sum,
+    F: Float,
 >(
     data: D,
 ) -> OutlierResult<F> {
@@ -112,7 +110,7 @@ pub fn random<D: DistanceData<F>, F: Float>(data: D, seed: u64) -> OutlierResult
 /// A completely non-informative detector that assigns a score of zero to every
 /// point.  It still returns a sorted list so that the caller observes a
 /// deterministic order (indices in ascending order).
-pub fn zero<D: DistanceData<F> + Sync, F: Float + Send + Sync>(data: D) -> OutlierResult<F> {
+pub fn zero<D: DistanceData<F> + Sync, F: Float>(data: D) -> OutlierResult<F> {
     let scores: Vec<F> = if cfg!(feature = "parallel") {
         use rayon::prelude::*;
         (0..data.len()).into_par_iter().map(|_| F::zero()).collect()

@@ -15,7 +15,7 @@ use crate::{Float, IndexQuery};
 /// nearby core point or `NOISE`.
 pub fn parallel_dbscan<'a, S, D, F>(tree: &S, data: &'a D, eps: F, min_points: usize) -> Vec<isize>
 where
-    F: Float + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     D::Query<'a>: Send,
     S: RangeSearch<F, D::Query<'a>> + Sync,

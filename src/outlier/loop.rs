@@ -17,7 +17,7 @@ pub fn local_outlier_probabilities<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize, n_lambda: f64,
 ) -> OutlierResult<F>
 where
-    F: Float + std::iter::Sum + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {

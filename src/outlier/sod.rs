@@ -9,7 +9,7 @@ pub fn subspace_outlier_degree<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize, alpha: f64,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {

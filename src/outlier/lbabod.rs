@@ -10,7 +10,7 @@ fn dot_product<F: Float>(left: &[F], right: &[F]) -> F {
 
 fn compute_lbabof_kernel<D, F, K>(data: &D, center: usize, k: usize, kernel: &K) -> F
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F>,
     K: Fn(&[F], &[F]) -> F,
 {
@@ -96,7 +96,7 @@ fn max_value<F: Float>(values: &[F]) -> Option<F> {
 /// LB-ABOD: lower-bound ABOD (approximate + refinement).
 pub fn locality_based_abod<D, F>(data: &D, k: usize, l: usize) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F> + Sync,
 {
     locality_based_abod_kernel(data, k, l, |x, y| dot_product(x, y))
@@ -107,7 +107,7 @@ pub fn locality_based_abod_kernel<D, F, K>(
     data: &D, k: usize, l: usize, kernel: K,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F> + Sync,
     K: Fn(&[F], &[F]) -> F,
 {

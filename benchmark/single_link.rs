@@ -5,7 +5,7 @@ use std::error::Error;
 use std::time::Instant;
 
 use common::{CountingDistance, read_numeric_data_with_limit};
-use fuel::TableWithDistance;
+use fuel::{TableWithDistance, condensed_distance_matrix::CondensedDistanceMatrix};
 use fuel::cluster::hdbscan::extraction::{ExtractedHierarchy, extract_simplified_hierarchy};
 use fuel::cluster::hierarchical::{
     Merge, MergeHistory, SingleLinkage, agnes, anderberg, boruvka_searchers_single_link,
@@ -167,19 +167,19 @@ fn main() -> Result<(), Box<dyn Error>> {
         let start = Instant::now();
         let history: MergeHistory<f64> = match algorithm {
             SingleLinkAlgorithm::Agnes => {
-                let condensed = fuel::distance_matrix::lower_triangular_matrix(&data);
+                let condensed = CondensedDistanceMatrix::new_from_data(&data).into_vec();
                 agnes(&condensed, used_rows, SingleLinkage, false)
             }
             SingleLinkAlgorithm::Anderberg => {
-                let condensed = fuel::distance_matrix::lower_triangular_matrix(&data);
+                let condensed = CondensedDistanceMatrix::new_from_data(&data).into_vec();
                 anderberg(&condensed, used_rows, SingleLinkage, false)
             }
             SingleLinkAlgorithm::Muellner => {
-                let condensed = fuel::distance_matrix::lower_triangular_matrix(&data);
+                let condensed = CondensedDistanceMatrix::new_from_data(&data).into_vec();
                 muellner(&condensed, used_rows, SingleLinkage, false)
             }
             SingleLinkAlgorithm::NNChain => {
-                let condensed = fuel::distance_matrix::lower_triangular_matrix(&data);
+                let condensed = CondensedDistanceMatrix::new_from_data(&data).into_vec();
                 nn_chain(&condensed, used_rows, SingleLinkage, false)
             }
             SingleLinkAlgorithm::Boruvka => {

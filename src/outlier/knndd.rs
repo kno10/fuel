@@ -5,7 +5,7 @@ pub fn k_nearest_neighbors_distance_deviation<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {

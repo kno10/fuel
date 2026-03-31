@@ -20,8 +20,6 @@ pub mod sigmoid;
 
 // `rayon` is only required when the `parallel` feature is enabled.  The
 // benchmark disables this feature to measure single-threaded performance.
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 
 use crate::Float;
 
@@ -44,70 +42,9 @@ where
 /// same function (i == j). The result is a square matrix of size n x n, where n = points.len().
 ///
 /// This implementation computes the upper triangle in parallel and mirrors it.
-#[cfg(feature = "parallel")]
-pub fn compute_kernel_matrix<D, F, K>(points: &[D], kernel: K) -> Vec<Vec<F>>
-where
-    D: Send + Sync,
-    F: Float + Send + Sync + Copy + Default,
-    K: Fn(&D, &D) -> F + Sync,
-{
-    let n = points.len();
-    if n == 0 {
-        return Vec::new();
-    }
-
-    let mut matrix: Vec<Vec<F>> = vec![vec![F::default(); n]; n];
-    matrix.par_iter_mut().enumerate().for_each(|(i, row)| {
-        for j in i..n {
-            row[j] = kernel(&points[i], &points[j]);
-        }
-    });
-
-    // Mirror upper triangle into lower triangle in parallel by writing rows and reading columns.
-    let matrix_ptr_addr = matrix.as_mut_ptr() as usize;
-    rayon::scope(|s| {
-        for i in 0..n {
-            s.spawn(move |_| {
-                let matrix_ptr = matrix_ptr_addr as *mut Vec<F>;
-                let row_i = unsafe { &mut *matrix_ptr.add(i) };
-                #[allow(clippy::needless_range_loop)]
-                for j in 0..i {
-                    let row_j = unsafe { &*matrix_ptr.add(j) };
-                    row_i[j] = row_j[i];
-                }
-            });
-        }
-    });
-
-    matrix
-}
-
-#[cfg(not(feature = "parallel"))]
-pub fn compute_kernel_matrix<D, F, K>(points: &[D], kernel: K) -> Vec<Vec<F>>
-where
-    D: Send + Sync,
-    F: Float + Send + Sync + Copy + Default,
-    K: Fn(&D, &D) -> F + Sync,
-{
-    let n = points.len();
-    if n == 0 {
-        return Vec::new();
-    }
-
-    let mut matrix: Vec<Vec<F>> = vec![vec![F::default(); n]; n];
-    for i in 0..n {
-        for j in i..n {
-            let val = kernel(&points[i], &points[j]);
-            matrix[i][j] = val;
-            matrix[j][i] = val;
-        }
-    }
-    matrix
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::compute_pairwise_dense;
     use crate::kernel::laplace::LaplaceKernel;
     use crate::kernel::linear::LinearKernel;
     use crate::kernel::polynomial::PolynomialKernel;
@@ -121,31 +58,30 @@ mod tests {
         let kernel =
             |x: &Vec<f64>, y: &Vec<f64>| x.iter().zip(y.iter()).map(|(a, b)| a * b).sum::<f64>();
 
-        let km = compute_kernel_matrix(&points, kernel);
+        let km = compute_pairwise_dense(&points, &kernel);
 
-        assert_eq!(km.len(), 3);
-        assert_eq!(km[0].len(), 3);
-        for (i, row) in km.iter().enumerate().take(3) {
-            for (j, value) in row.iter().enumerate().take(3) {
-                assert!(*value == km[j][i]);
+        assert_eq!(km.shape(), [3, 3]);
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_eq!(km[[i, j]], km[[j, i]]);
             }
         }
-        assert_eq!(km[0][0], 5.0);
-        assert_eq!(km[1][1], 25.0);
+        assert_eq!(km[[0, 0]], 5.0);
+        assert_eq!(km[[1, 1]], 25.0);
     }
 
     #[test]
     fn compute_kernel_matrix_polynomial_degree2() {
         let points = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
         let poly = PolynomialKernel::new(2, 1.0, 0.0);
-        let km = compute_kernel_matrix(&points, |x: &Vec<f64>, y: &Vec<f64>| {
+        let km = compute_pairwise_dense(&points, &|x: &Vec<f64>, y: &Vec<f64>| {
             poly.similarity(x.as_slice(), y.as_slice())
         });
 
-        assert_eq!(km[0][0], 1.0);
-        assert_eq!(km[0][1], 0.0);
-        assert_eq!(km[1][0], 0.0);
-        assert_eq!(km[1][1], 1.0);
+        assert_eq!(km[[0, 0]], 1.0);
+        assert_eq!(km[[0, 1]], 0.0);
+        assert_eq!(km[[1, 0]], 0.0);
+        assert_eq!(km[[1, 1]], 1.0);
     }
 
     #[test]

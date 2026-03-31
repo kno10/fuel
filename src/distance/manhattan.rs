@@ -133,7 +133,7 @@ impl<N: Float, F: Float + 'static> DistanceFunction<[N], F> for Manhattan {
     fn is_metric(&self) -> bool { true }
 }
 
-impl<F: Float + Copy> PartialDistance<F, F> for Manhattan {
+impl<F: Float> PartialDistance<F, F> for Manhattan {
     fn axis_distance(&self, delta: F) -> F { delta.abs() }
 
     fn distance_to_range_bound(&self, distance: F) -> F { distance }

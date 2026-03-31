@@ -116,7 +116,7 @@ pub fn isolation_forest<'a, D, F>(
     data: &'a D, num_trees: usize, subsample_size: usize, seed: u64,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
 {
     let n = data.len();

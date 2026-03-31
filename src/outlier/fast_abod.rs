@@ -7,7 +7,7 @@ pub fn fast_angle_based_outlier_detection<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {
@@ -53,7 +53,7 @@ pub fn fast_angle_based_outlier_detection_kernel<D, F, K>(
     data: &D, k: usize, kernel: K,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F> + Sync,
     K: Fn(&[F], &[F]) -> F + Sync,
 {

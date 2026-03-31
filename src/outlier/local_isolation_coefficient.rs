@@ -8,7 +8,7 @@ use crate::{DistanceData, Float, KnnSearch};
 /// Reference: B. Yu, M. Song, L. Wang (2009).
 pub fn local_isolation_coefficient<'a, S, D, F>(tree: &S, data: &'a D, k: usize) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {

@@ -12,7 +12,7 @@ pub fn intrinsic_dimensionality_outlier_score<'a, S, D, F, E>(
     tree: &S, data: &'a D, k_c: usize, k_r: usize,
 ) -> OutlierResult<f64>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
     E: KNNIDEstimator,

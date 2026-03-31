@@ -5,7 +5,7 @@ pub fn flexible_lof<'a, S, D, F>(
     tree: &S, data: &'a D, krefer: usize, kreach: usize,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {

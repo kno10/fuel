@@ -3,7 +3,7 @@ use crate::{DistanceData, Float, RangeSearch};
 
 pub fn db_outlier_detection<'a, S, D, F>(tree: &S, data: &'a D, d: F, p: f64) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: RangeSearch<F, D::Query<'a>> + Sync,
 {

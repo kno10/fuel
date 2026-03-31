@@ -6,7 +6,7 @@ use crate::{DistanceData, Float, KnnSearch};
 /// Scores around 1.0 are expected for inliers; higher values indicate stronger outliers.
 pub fn connectivity_outlier_factor<'a, S, D, F>(tree: &S, data: &'a D, k: usize) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {

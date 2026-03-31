@@ -14,7 +14,7 @@ pub fn for_each_knn<'a, S, D, F, R, Op>(
     tree: &S, data: &'a D, k_effective: usize, include_self: bool, op: Op,
 ) -> Vec<R>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
     Op: Fn(usize, Vec<(usize, F)>) -> R + Send + Sync,
@@ -77,7 +77,7 @@ pub fn for_each_range<'a, S, D, F, R, Op>(
     tree: &S, data: &'a D, d: F, include_self: bool, op: Op,
 ) -> Vec<R>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: RangeSearch<F, D::Query<'a>> + Sync,
     Op: Fn(usize, Vec<(usize, F)>) -> R + Send + Sync,

@@ -13,7 +13,7 @@ pub fn kdeos<'a, S, D, F>(
     min_bandwidth: f64, scale: f64, idim: Option<usize>,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {

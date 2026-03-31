@@ -348,7 +348,7 @@ pub fn approximate_local_correlation_integral<'a, D, F>(
     data: &'a D, nmin: usize, alpha: usize, g: usize, seed: u64,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
 {
     let size = data.len();

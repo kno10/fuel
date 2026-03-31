@@ -11,7 +11,7 @@ pub fn dynamic_window_outlier_factor<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize, delta: f64,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + RangeSearch<F, D::Query<'a>> + Sync,
 {

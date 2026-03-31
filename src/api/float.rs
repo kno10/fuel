@@ -4,15 +4,22 @@ pub trait Float:
     + Default
     + Copy
     + num_traits::AsPrimitive<Self>
-    + num_traits::ToPrimitive
+    + num_traits::FromPrimitive
+    + num_traits::NumCast
+    + std::ops::AddAssign<Self>
+    + std::ops::MulAssign<Self>
+    + std::ops::SubAssign<Self>
+    + std::ops::DivAssign<Self>
     + for<'a> std::ops::AddAssign<&'a Self>
     + for<'a> std::ops::MulAssign<&'a Self>
     + for<'a> std::ops::SubAssign<&'a Self>
     + for<'a> std::ops::DivAssign<&'a Self>
     + num_traits::MulAdd<Output = Self>
     + std::iter::Sum
-    + num_traits::FromPrimitive
+    + std::iter::Product
     + std::marker::Unpin
+    + std::marker::Send
+    + std::marker::Sync
 {
     fn cast<T: num_traits::NumCast>(x: T) -> Self { num_traits::NumCast::from(x).unwrap() }
 
@@ -27,15 +34,22 @@ impl<
         + Default
         + Copy
         + num_traits::AsPrimitive<T>
-        + num_traits::ToPrimitive
+        + num_traits::FromPrimitive
+        + num_traits::NumCast
+        + std::ops::AddAssign<Self>
+        + std::ops::MulAssign<Self>
+        + std::ops::SubAssign<Self>
+        + std::ops::DivAssign<Self>
         + for<'a> std::ops::AddAssign<&'a Self>
         + for<'a> std::ops::MulAssign<&'a Self>
         + for<'a> std::ops::SubAssign<&'a Self>
         + for<'a> std::ops::DivAssign<&'a Self>
         + num_traits::MulAdd<Output = Self>
         + std::iter::Sum
-        + num_traits::FromPrimitive
-        + std::marker::Unpin,
+        + std::iter::Product
+        + std::marker::Unpin
+        + std::marker::Send
+        + std::marker::Sync,
 > Float for T
 {
 }

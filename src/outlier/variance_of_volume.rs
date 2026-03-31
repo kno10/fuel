@@ -5,7 +5,7 @@ use crate::{DistanceData, Float, KnnSearch, VectorData};
 
 pub fn variance_of_volume<'a, S, D, F>(tree: &S, data: &'a D, k: usize) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {

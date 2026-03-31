@@ -1,6 +1,4 @@
 use std::collections::{BTreeMap, HashMap};
-use std::iter::Sum;
-use std::ops::{AddAssign, Div};
 
 use crate::Float;
 use crate::cluster::dbscan::NOISE;
@@ -257,7 +255,7 @@ pub fn extract_simplified_hierarchy_hdbscan<F: Float>(
 
 /// Port of ELKI's `HDBSCANHierarchyExtraction`, including GLOSH scores.
 #[must_use]
-pub fn extract_hdbscan_hierarchy<F: Float + Sum + AddAssign + Div<F>>(
+pub fn extract_hdbscan_hierarchy<F: Float>(
     history: &[Merge<F>], core_distances: Option<&[F]>, min_cluster_size: usize, hierarchical: bool,
 ) -> HdbscanHierarchyExtractionResult<F> {
     assert!(min_cluster_size > 0, "min_cluster_size must be positive");
@@ -341,7 +339,7 @@ pub fn extract_hdbscan_hierarchy<F: Float + Sum + AddAssign + Div<F>>(
 
 /// Convenience wrapper for ELKI-style HDBSCAN extraction on `HdbscanHierarchy`.
 #[must_use]
-pub fn extract_hdbscan_hierarchy_hdbscan<F: Float + Sum + AddAssign + Div<F>>(
+pub fn extract_hdbscan_hierarchy_hdbscan<F: Float>(
     hierarchy: &HdbscanHierarchy<F>, min_cluster_size: usize, hierarchical: bool,
 ) -> HdbscanHierarchyExtractionResult<F> {
     extract_hdbscan_hierarchy(
@@ -426,7 +424,7 @@ struct HdbscanTempCluster<F: Float> {
     children: Vec<HdbscanTempCluster<F>>,
 }
 
-impl<F: Float + Sum + AddAssign + Div<F>> HdbscanTempCluster<F> {
+impl<F: Float> HdbscanTempCluster<F> {
     fn new_leaf(dist: F, point: usize) -> Self {
         Self {
             members: vec![point],
@@ -491,7 +489,7 @@ impl<F: Float + Sum + AddAssign + Div<F>> HdbscanTempCluster<F> {
 }
 
 #[inline]
-fn hdbscan_is_spurious<F: Float + Sum + AddAssign + Div<F>>(
+fn hdbscan_is_spurious<F: Float>(
     clus: Option<&HdbscanTempCluster<F>>, min_cluster_size: usize, is_core: bool,
 ) -> bool {
     match clus {
@@ -500,7 +498,7 @@ fn hdbscan_is_spurious<F: Float + Sum + AddAssign + Div<F>>(
     }
 }
 
-fn finalize_hdbscan_cluster<F: Float + Sum + AddAssign + Div<F>>(
+fn finalize_hdbscan_cluster<F: Float>(
     mut temp: HdbscanTempCluster<F>, out: &mut HdbscanHierarchyExtractionResult<F>,
     core_distances: Option<&[F]>, parent: Option<usize>, flatten: bool, hierarchical: bool,
 ) -> F {
@@ -537,7 +535,7 @@ fn finalize_hdbscan_cluster<F: Float + Sum + AddAssign + Div<F>>(
     dmin
 }
 
-fn collect_hdbscan_children<F: Float + Sum + AddAssign + Div<F>>(
+fn collect_hdbscan_children<F: Float>(
     cur: HdbscanTempCluster<F>, out: &mut HdbscanHierarchyExtractionResult<F>,
     core_distances: Option<&[F]>, parent: usize, flatten: bool, hierarchical: bool,
 ) -> F {

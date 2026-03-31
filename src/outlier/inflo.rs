@@ -6,7 +6,7 @@ use crate::{DistanceData, Float, KnnSearch};
 /// Influence Outlierness Factor.
 pub fn influence_outlier<'a, S, D, F>(tree: &S, data: &'a D, k: usize, m: f64) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {

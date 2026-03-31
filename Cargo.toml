@@ -66,6 +66,7 @@ path = "benchmark/aknn_benchmark.rs"
 required-features = ["benchmark"]
 
 [features]
+default = ["parallel"]
 benchmark = ["dep:csv"]
 parallel = []
 

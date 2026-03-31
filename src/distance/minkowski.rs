@@ -43,7 +43,7 @@ impl<F: Float> DistanceFunction<Vec<F>, F> for Minkowski<F> {
     fn is_metric(&self) -> bool { self.p >= F::one() }
 }
 
-impl<F: Float + Copy> PartialDistance<F, F> for Minkowski<F> {
+impl<F: Float> PartialDistance<F, F> for Minkowski<F> {
     fn axis_distance(&self, delta: F) -> F { delta.abs().powf(self.p) }
 
     fn distance_to_range_bound(&self, distance: F) -> F { distance }

@@ -6,7 +6,7 @@ pub fn local_intrinsic_dimensionality<'a, S, D, F, E>(
     tree: &S, data: &'a D, k: usize,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
     E: KNNIDEstimator,

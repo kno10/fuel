@@ -9,7 +9,7 @@ fn squared_norm<F: Float>(vector: &[F]) -> F { vector.iter().map(|&x| x * x).sum
 
 pub(crate) fn abod_score_for_neighbor_set<D, F>(data: &D, center: usize, neighbors: &[usize]) -> F
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F>,
 {
     let xi = data.point(center);
@@ -83,7 +83,7 @@ where
 /// Exact ABOD (angle-based outlier factor) using a kernel similarity function.
 pub fn angle_based_outlier_detection_kernel<D, F, K>(data: &D, kernel: K) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F> + Sync,
     K: Fn(&[F], &[F]) -> F + Sync,
 {
@@ -106,7 +106,7 @@ pub fn abod_kernel_score_for_neighbor_set<D, F, K>(
     data: &D, center: usize, neighbors: &[usize], kernel: &K,
 ) -> F
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F>,
     K: Fn(&[F], &[F]) -> F,
 {
@@ -187,7 +187,7 @@ where
 /// Exact ABOD (angle-based outlier factor) with all points.
 pub fn angle_based_outlier_detection<D, F>(data: &D) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F> + Sync,
 {
     let size = data.len();

@@ -48,7 +48,7 @@ pub fn intrinsic_stochastic_outlier_selection<'a, S, D, F, E>(
     tree: &S, data: &'a D, k: usize,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
     E: crate::intrinsicdimensionality::KNNIDEstimator,

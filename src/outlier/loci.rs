@@ -63,7 +63,7 @@ pub fn local_correlation_integral<'a, S, D, F>(
     tree: &S, data: &'a D, rmax: F, nmin: usize, alpha: F,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
     S: RangeSearch<F, D::Query<'a>> + Sync,
 {

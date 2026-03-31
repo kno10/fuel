@@ -75,7 +75,7 @@ pub fn stochastic_outlier_selection<'a, S, D, F>(
     tree: &S, data: &'a D, perplexity: f64,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {

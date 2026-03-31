@@ -6,7 +6,7 @@ pub fn simple_kd_lof<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize, _h: f64, kernel: KernelDensityFunction,
 ) -> OutlierResult<F>
 where
-    F: Float + Send + Sync,
+    F: Float,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {

@@ -20,7 +20,7 @@ pub fn get_all_neighbors<F: Float, D: DistanceSearch<F>>(
 pub fn brute_force_knn<T, S>(dataset: &T, query_idx: usize, k: usize) -> Vec<DistPair<S>>
 where
     T: DistanceData<S>,
-    S: Float + PartialOrd,
+    S: Float,
 {
     if k == 0 || dataset.len() == 0 {
         return Vec::new();

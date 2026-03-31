@@ -180,7 +180,7 @@ mod tests {
         let tree = VPTree::new(&data, 3, &mut rng);
 
         let vec = condensed_abs_1d(&points);
-        let cm = CondensedDistanceMatrix::new(&vec, points.len());
+        let cm = CondensedDistanceMatrix::new_from_condensed(vec, points.len());
         let expected = crate::cluster::hierarchical::slink(&cm);
         let got = lazy_buffered_search_single_link(&tree, &data, 2);
         assert_eq!(got, expected);
