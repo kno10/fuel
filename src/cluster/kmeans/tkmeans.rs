@@ -2,11 +2,9 @@ use std::cmp::Ordering;
 use std::iter::Sum;
 use std::ops::*;
 
-
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// Truncated k-means (t-kmeans) clustering aka k-means--.
 ///
@@ -73,9 +71,9 @@ where
         for i in 0..n {
             data.load_into(i, &mut scratch, d);
             let mut best = 0;
-            let mut best_d = DefaultMath::<N>::sqdist(cent.center(0), &scratch, d);
+            let mut best_d = math::sqdist(cent.center(0), &scratch, d);
             for j in 1..k {
-                let tmp = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+                let tmp = math::sqdist(cent.center(j), &scratch, d);
                 if tmp < best_d {
                     (best, best_d) = (j, tmp);
                 }
@@ -117,13 +115,13 @@ where
             let a = assign[i];
             counts[a] += 1;
             data.load_into(i, &mut scratch, d);
-            DefaultMath::<N>::add_assign(sums.center_mut(a), &scratch, d);
+            math::add_assign(sums.center_mut(a), &scratch, d);
         }
 
         for j in 0..k {
             if counts[j] > 0 {
                 let inv = N::from(counts[j]).unwrap().recip();
-                DefaultMath::<N>::mul(cent.center_mut(j), sums.center(j), inv, d);
+                math::mul(cent.center_mut(j), sums.center(j), inv, d);
             } else {
                 // if a cluster is empty (after trimming), set it to zero
                 for v in cent.center_mut(j).iter_mut() {

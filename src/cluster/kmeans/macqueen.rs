@@ -3,8 +3,7 @@ use std::ops::*;
 
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// Historic MacQueen k-means (sequential update)
 #[inline(always)]
@@ -44,9 +43,9 @@ where
         for i in 0..n {
             data.load_into(i, &mut scratch, d);
             let aa = assign[i];
-            let (mut a, mut s) = (0, DefaultMath::<N>::sqdist(cent.center(0), &scratch, d));
+            let (mut a, mut s) = (0, math::sqdist(cent.center(0), &scratch, d));
             for j in 1..k {
-                let tmp = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+                let tmp = math::sqdist(cent.center(j), &scratch, d);
                 if tmp < s {
                     (a, s) = (j, tmp);
                 }
@@ -55,10 +54,10 @@ where
                 // remove from old cluster
                 if csize[aa] > 1 {
                     csize[aa] -= 1;
-                    DefaultMath::<N>::sub_assign(sums.center_mut(aa), &scratch, d);
+                    math::sub_assign(sums.center_mut(aa), &scratch, d);
                     let recip = N::from(csize[aa]).unwrap().recip();
-                    DefaultMath::<N>::mul(&mut scratch, sums.center(aa), recip, d);
-                    DefaultMath::<N>::copy(cent.center_mut(aa), &scratch, d);
+                    math::mul(&mut scratch, sums.center(aa), recip, d);
+                    math::copy(cent.center_mut(aa), &scratch, d);
                 } else {
                     // cluster becomes empty
                     csize[aa] = 0;
@@ -72,10 +71,10 @@ where
 
                 // add to new cluster
                 csize[a] += 1;
-                DefaultMath::<N>::add_assign(sums.center_mut(a), &scratch, d);
+                math::add_assign(sums.center_mut(a), &scratch, d);
                 let recip = N::from(csize[a]).unwrap().recip();
-                DefaultMath::<N>::mul(&mut scratch, sums.center(a), recip, d);
-                DefaultMath::<N>::copy(cent.center_mut(a), &scratch, d);
+                math::mul(&mut scratch, sums.center(a), recip, d);
+                math::copy(cent.center_mut(a), &scratch, d);
 
                 assign[i] = a;
                 changed += 1;
@@ -86,7 +85,7 @@ where
         let mut sum = N::zero();
         for i in 0..n {
             data.load_into(i, &mut scratch, d);
-            sum += DefaultMath::<N>::sqdist(cent.center(assign[i]), &scratch, d);
+            sum += math::sqdist(cent.center(assign[i]), &scratch, d);
         }
         lastsum = sum;
 

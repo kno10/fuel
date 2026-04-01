@@ -195,8 +195,6 @@ mod tests {
     fn hssl_distance_count_not_worse_than_rssl() {
         use std::cell::Cell;
 
-        
-
         struct CountingDist<'a> {
             counter: &'a Cell<usize>,
         }

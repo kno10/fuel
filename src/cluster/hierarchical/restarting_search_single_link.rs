@@ -122,8 +122,7 @@ pub(crate) fn refill_neighbors<F: Float, Q, S>(
 mod tests {
     use num_traits::ToPrimitive;
     use rand::rngs::StdRng;
-    use rand::RngExt;
-    use rand::SeedableRng;
+    use rand::{RngExt, SeedableRng};
 
     use super::*;
     use crate::TableWithDistance;

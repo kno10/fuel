@@ -22,8 +22,8 @@ pub mod ndarray; // FIXME: retire
 mod selkan;
 mod shallot;
 mod shamerly;
-mod tkmeans;
 mod spherical;
+mod tkmeans;
 pub mod util;
 
 // TODO: re-enable once the port reaches these algorithms:
@@ -53,8 +53,8 @@ pub use self::lloyd_naive::*;
 pub use self::macqueen::*;
 pub use self::ndarray::*;
 pub use self::selkan::*;
-pub use self::spherical::*;
 pub use self::shallot::*;
 pub use self::shamerly::*;
+pub use self::spherical::*;
 pub use self::tkmeans::*;
 pub use self::util::{Centers, KMeansResult, compute_fuzzy_loss, compute_loss};

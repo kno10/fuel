@@ -1,6 +1,5 @@
-use std::iter::Sum;
-use std::marker::PhantomData;
-use std::ops::*;
+// Superseded by scalar.rs + avx2.rs.  The Math<N> trait that UnrollMath
+// implemented has been removed.  Kept for reference only.
 
 use num_traits::Float; //FIXME: use crate::Float instead
 

@@ -3,8 +3,7 @@ use std::ops::*;
 
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// Perform the initial cluster assignment, recompute sums
 // Inline always to allow CPU optimization!
@@ -46,7 +45,7 @@ where
             bounds[i] = (bounds[i].0.sqrt(), bounds[i].1.sqrt());
             csize[a] += 1;
             data.load_into(i, scratch, d);
-            DefaultMath::<N>::add_assign(sums.center_mut(a), scratch, d);
+            math::add_assign(sums.center_mut(a), scratch, d);
         }
     } else {
         init.init::<A>(data, cent, k);
@@ -55,7 +54,7 @@ where
             data.load_into(i, scratch, d);
             let (mut a, mut s, mut s2) = (k, N::infinity(), N::infinity());
             for j in 0..k {
-                let tmp = DefaultMath::<N>::sqdist(cent.center(j), scratch, d);
+                let tmp = math::sqdist(cent.center(j), scratch, d);
                 if tmp < s {
                     (a, s, s2) = (j, tmp, s);
                 } else if tmp < s2 {
@@ -65,7 +64,7 @@ where
             csize[a] += 1;
             assign[i] = a;
             bounds[i] = (s.sqrt(), s2.sqrt());
-            DefaultMath::<N>::add_assign(sums.center_mut(a), scratch, d);
+            math::add_assign(sums.center_mut(a), scratch, d);
         }
     }
     (assign, csize, bounds)
@@ -105,18 +104,13 @@ where
         let mut diff_sq = N::zero();
         for j in 0..k {
             if csize[j] > 0 {
-                DefaultMath::<N>::mul(
-                    &mut scratch,
-                    sums.center(j),
-                    N::from(csize[j]).unwrap().recip(),
-                    d,
-                );
-                let tmp = DefaultMath::<N>::sqdist(&scratch, cent.center(j), d).sqrt();
+                math::mul(&mut scratch, sums.center(j), N::from(csize[j]).unwrap().recip(), d);
+                let tmp = math::sqdist(&scratch, cent.center(j), d).sqrt();
                 if tol > N::zero() {
                     // FIXME: do this before the .sqrt just above, instead of squaring again.
                     diff_sq += tmp * tmp;
                 }
-                DefaultMath::<N>::copy(cent.center_mut(j), &scratch, d);
+                math::copy(cent.center_mut(j), &scratch, d);
                 cmov[j] = tmp;
                 if tmp > cmov1 {
                     (most, cmov1, cmov2) = (j, tmp, cmov1);
@@ -147,8 +141,8 @@ where
             }
             // Make upper bound tight first:
             data.load_into(i, &mut scratch, d);
-            let daa = DefaultMath::<N>::sqdist(cent.center(aa), &scratch, d); // squared
-            upper_i = DefaultMath::<N>::sqdist(&scratch, cent.center(aa), d).sqrt(); // bounds are non-squared
+            let daa = math::sqdist(cent.center(aa), &scratch, d); // squared
+            upper_i = math::sqdist(&scratch, cent.center(aa), d).sqrt(); // bounds are non-squared
             if upper_i <= lower_i {
                 bounds[i] = (upper_i, lower_i); // update
                 continue;
@@ -158,7 +152,7 @@ where
             let (mut a, mut s, mut b, mut s2) = (aa, daa, k, N::infinity());
             for j in 0..k {
                 if j != aa {
-                    let tmp = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+                    let tmp = math::sqdist(cent.center(j), &scratch, d);
                     if tmp < s {
                         (a, s, b, s2) = (j, tmp, a, s);
                     } else if tmp < s2 {
@@ -176,8 +170,8 @@ where
                 assign[i] = a;
                 csize[aa] -= 1;
                 csize[a] += 1;
-                DefaultMath::<N>::sub_assign(sums.center_mut(aa), &scratch, d);
-                DefaultMath::<N>::add_assign(sums.center_mut(a), &scratch, d);
+                math::sub_assign(sums.center_mut(aa), &scratch, d);
+                math::add_assign(sums.center_mut(a), &scratch, d);
                 changed += 1;
             }
         }

@@ -1,9 +1,7 @@
 use crate::cluster::em::optimizer::EmModel;
-use crate::cluster::kmeans::init::Initialization;
 use crate::cluster::kmeans::Centers;
+use crate::cluster::kmeans::init::Initialization;
 use crate::{Float, VectorData as Dataset};
-use std::iter::Sum;
-use std::ops::{AddAssign, MulAssign, SubAssign};
 
 /// Simple approximation of log normalization constant for von Mises–Fisher
 /// distribution.  The full expression involves a modified Bessel function of
@@ -30,10 +28,9 @@ where
 
 /// Directional von Mises–Fisher component for EM on the unit hypersphere.
 #[derive(Clone, Debug)]
-pub struct VonMisesFisherModel<M, N>
+pub struct VonMisesFisherModel<N>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign,
-    M: crate::math::Math<N>,
+    N: Float,
 {
     mu: Vec<N>,   // mean direction, always unit norm
     nsum: Vec<N>, // accumulator for responsibilities
@@ -41,19 +38,10 @@ where
     wsum: N,      // sum of responsibilities
     weight: N,    // mixture weight
     log_norm: N,  // cached log normalization + ln(weight)
-    _math: std::marker::PhantomData<M>,
 }
 
-impl<M, N> VonMisesFisherModel<M, N>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign,
-    M: crate::math::Math<N>,
-{
-    pub fn new(weight: N, mu: Vec<N>, kappa: N) -> Self
-    where
-        N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-        M: crate::math::Math<N>,
-    {
+impl<N: Float> VonMisesFisherModel<N> {
+    pub fn new(weight: N, mu: Vec<N>, kappa: N) -> Self {
         let len = mu.len();
         let mut model = Self {
             mu,
@@ -62,7 +50,6 @@ where
             wsum: N::zero(),
             weight,
             log_norm: N::zero(),
-            _math: std::marker::PhantomData,
         };
         model.update_log_norm();
         model
@@ -73,21 +60,13 @@ where
     }
 
     /// Accessor for mean direction
-    pub fn mean(&self) -> &[N] {
-        &self.mu
-    }
+    pub fn mean(&self) -> &[N] { &self.mu }
 
     /// Current concentration
-    pub fn kappa(&self) -> N {
-        self.kappa
-    }
+    pub fn kappa(&self) -> N { self.kappa }
 }
 
-impl<M, N> EmModel<N> for VonMisesFisherModel<M, N>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign,
-    M: crate::math::Math<N>,
-{
+impl<N: Float> EmModel<N> for VonMisesFisherModel<N> {
     fn begin_estep(&mut self) {
         self.wsum = N::zero();
         for v in &mut self.nsum {
@@ -125,11 +104,7 @@ where
             let r_bar = norm / self.wsum;
             let num = r_bar * d - r_bar * r_bar * r_bar;
             let den = N::one() - r_bar * r_bar;
-            let kappa_new = if den.abs() > N::epsilon() {
-                num / den
-            } else {
-                N::zero()
-            };
+            let kappa_new = if den.abs() > N::epsilon() { num / den } else { N::zero() };
             self.kappa = kappa_new.max(N::zero());
         }
         self.update_log_norm();
@@ -144,9 +119,7 @@ where
         self.kappa * dot + self.log_norm
     }
 
-    fn weight(&self) -> N {
-        self.weight
-    }
+    fn weight(&self) -> N { self.weight }
 
     fn set_weight(&mut self, weight: N) {
         self.weight = weight.max(N::epsilon());
@@ -157,41 +130,26 @@ where
 /// Factory for von Mises–Fisher mixtures.
 /// Initial kappa may be set by the caller.
 #[derive(Debug)]
-pub struct VonMisesFisherModelFactory<M, N, I>
+pub struct VonMisesFisherModelFactory<N, I>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
+    N: Float,
     I: Initialization<N>,
 {
     pub initializer: I,
     pub init_kappa: N,
-    _math: std::marker::PhantomData<M>,
 }
 
-impl<M, N, I> VonMisesFisherModelFactory<M, N, I>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
-    I: Initialization<N>,
-{
-    /// Generic constructor; caller may specify a different math backend `M`.
-    pub fn with_math(initializer: I) -> Self {
-        Self {
-            initializer,
-            init_kappa: N::from(10.0).unwrap(),
-            _math: std::marker::PhantomData,
-        }
-    }
+impl<N: Float, I: Initialization<N>> VonMisesFisherModelFactory<N, I> {
+    pub fn new(initializer: I) -> Self { Self { initializer, init_kappa: N::from(10.0).unwrap() } }
 
     pub fn with_kappa(mut self, kappa: N) -> Self {
         self.init_kappa = kappa.max(N::zero());
         self
     }
 
-    pub fn build_initial_models<A>(&mut self, data: &A, k: usize) -> Vec<VonMisesFisherModel<M, N>>
+    pub fn build_initial_models<A>(&mut self, data: &A, k: usize) -> Vec<VonMisesFisherModel<N>>
     where
         A: Dataset<N>,
-        M: crate::math::Math<N>,
     {
         let d = data.ncols();
         let mut cent = Centers::<N>::new(k, d);
@@ -216,45 +174,31 @@ where
         }
         models
     }
-}
-
-impl<N, I> VonMisesFisherModelFactory<crate::math::DefaultMath<N>, N, I>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    I: Initialization<N>,
-{
-    pub fn new(initializer: I) -> Self {
-        VonMisesFisherModelFactory::with_math(initializer)
-    }
 
     pub fn build_initial_models_dispatch<A>(
-        initializer: I,
-        data: &A,
-        k: usize,
-    ) -> Vec<VonMisesFisherModel<crate::math::DefaultMath<N>, N>>
+        initializer: I, data: &A, k: usize,
+    ) -> Vec<VonMisesFisherModel<N>>
     where
-        N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum + 'static,
         A: Dataset<N>,
     {
-        let mut factory: VonMisesFisherModelFactory<crate::math::DefaultMath<N>, N, I> =
-            VonMisesFisherModelFactory::with_math(initializer);
+        let mut factory = VonMisesFisherModelFactory::new(initializer);
         factory.build_initial_models(data, k)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use ndarray::Array2;
+
     use super::*;
     use crate::cluster::em::optimizer::{EmConfig, expectation_maximization};
     use crate::cluster::kmeans::init::FirstK;
     use crate::cluster::kmeans::ndarray::NdArrayDataset;
-    use ndarray::Array2;
 
     #[test]
     fn test_vmf_model_density() {
         let mu = vec![1.0f64, 0.0, 0.0];
-        let m =
-            VonMisesFisherModel::<crate::math::DefaultMath<f64>, f64>::new(1.0, mu.clone(), 5.0);
+        let m = VonMisesFisherModel::<f64>::new(1.0, mu.clone(), 5.0);
         let ld = m.estimate_log_density(&mu);
         assert!(ld.is_finite());
         // density at the mean should be larger than at the antipode
@@ -292,10 +236,7 @@ mod tests {
         let ds = NdArrayDataset::new(&data);
         let models =
             VonMisesFisherModelFactory::build_initial_models_dispatch(FirstK::<f64>::new(), &ds, 2);
-        let cfg = EmConfig::<f64> {
-            maxiter: 100,
-            ..Default::default()
-        };
+        let cfg = EmConfig::<f64> { maxiter: 100, ..Default::default() };
         let result = expectation_maximization(&ds, 2, models, cfg);
         assert!(result.n_iter > 0);
         assert!(result.log_likelihood.is_finite());

@@ -1,6 +1,5 @@
-use std::iter::Sum;
-use std::marker::PhantomData;
-use std::ops::*;
+// Superseded by scalar.rs (free functions) + avx2.rs (AVX2-accelerated path).
+// This file is no longer compiled; kept for reference only.
 
 use num_traits::Float; //FIXME: use crate::Float instead
 

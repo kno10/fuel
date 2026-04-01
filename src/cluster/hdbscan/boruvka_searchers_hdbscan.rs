@@ -1,6 +1,5 @@
 use std::cmp::Ordering;
 
-
 use super::hdbscan_common::{
     HdbscanHierarchy, SameComponentFilter, compute_core_distances_tree,
     mutual_reachability_distance,
@@ -274,7 +273,6 @@ mod tests {
 
     #[test]
     fn boruvka_searchers_hdbscan_matches_prim_random_200() {
-        
         use rand::RngExt;
         let mut rng = StdRng::seed_from_u64(42);
         let n = 200;

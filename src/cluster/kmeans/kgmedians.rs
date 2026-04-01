@@ -3,8 +3,7 @@ use std::ops::*;
 
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// Stochastic k-medians update step.
 ///
@@ -45,10 +44,10 @@ where
         data.load_into(i, &mut scratch, d);
 
         // assign to nearest centre (Euclidean distance)
-        let mut best = DefaultMath::<N>::sqdist(centers_rm.center(0), &scratch, d).sqrt() / p_sqrt;
+        let mut best = math::sqdist(centers_rm.center(0), &scratch, d).sqrt() / p_sqrt;
         let mut best_j = 0;
         for j in 1..k {
-            let tmp = DefaultMath::<N>::sqdist(centers_rm.center(j), &scratch, d).sqrt() / p_sqrt;
+            let tmp = math::sqdist(centers_rm.center(j), &scratch, d).sqrt() / p_sqrt;
             if tmp < best {
                 best = tmp;
                 best_j = j;
@@ -63,9 +62,9 @@ where
                 let poids = gamma / denom;
                 // delta = (x - centre) * poids
                 let mut delta = scratch.clone();
-                DefaultMath::<N>::sub_assign(&mut delta, centers_rm.center(best_j), d);
-                DefaultMath::<N>::mul_assign(&mut delta, poids, d);
-                DefaultMath::<N>::add_assign(centers_rm.center_mut(best_j), &delta, d);
+                math::sub_assign(&mut delta, centers_rm.center(best_j), d);
+                math::mul_assign(&mut delta, poids, d);
+                math::add_assign(centers_rm.center_mut(best_j), &delta, d);
             }
         }
 
@@ -73,9 +72,9 @@ where
         nc[best_j] += N::one();
         let inv_nc = N::one() / nc[best_j];
         let mut delta = centers_rm.center(best_j).to_vec();
-        DefaultMath::<N>::sub_assign(&mut delta, centers_av.center(best_j), d);
-        DefaultMath::<N>::mul_assign(&mut delta, inv_nc, d);
-        DefaultMath::<N>::add_assign(centers_av.center_mut(best_j), &delta, d);
+        math::sub_assign(&mut delta, centers_av.center(best_j), d);
+        math::mul_assign(&mut delta, inv_nc, d);
+        math::add_assign(centers_av.center_mut(best_j), &delta, d);
     }
 
     // Compute final assignments and within-cluster sums of distances.
@@ -83,10 +82,10 @@ where
     let mut sizes = vec![0_usize; k];
     for i in 0..ntot {
         data_tot.load_into(i, &mut scratch, d);
-        let mut best = DefaultMath::<N>::sqdist(centers_av.center(0), &scratch, d).sqrt() / p_sqrt;
+        let mut best = math::sqdist(centers_av.center(0), &scratch, d).sqrt() / p_sqrt;
         let mut best_j = 0;
         for j in 1..k {
-            let tmp = DefaultMath::<N>::sqdist(centers_av.center(j), &scratch, d).sqrt() / p_sqrt;
+            let tmp = math::sqdist(centers_av.center(j), &scratch, d).sqrt() / p_sqrt;
             if tmp < best {
                 best = tmp;
                 best_j = j;
@@ -136,11 +135,7 @@ where
             let old_norm = centers.frobenius_norm();
             let mut diff_sq = N::zero();
             for j in 0..k {
-                diff_sq += DefaultMath::<N>::sqdist(
-                    centers.center(j),
-                    next_centers.center(j),
-                    data.ncols(),
-                );
+                diff_sq += math::sqdist(centers.center(j), next_centers.center(j), data.ncols());
             }
             let diff = diff_sq.sqrt();
             rel = if old_norm == N::zero() { diff } else { diff / old_norm };
@@ -195,7 +190,7 @@ mod tests {
         for (i, &idx) in assign.iter().enumerate().take(dataset.nrows()) {
             dataset.load_into(i, &mut scratch, dataset.ncols());
             let row = cent.row(idx);
-            let sq = DefaultMath::<f64>::sqdist(&scratch, row.as_slice().unwrap(), dataset.ncols());
+            let sq = math::sqdist(&scratch, row.as_slice().unwrap(), dataset.ncols());
             manual_loss += sq.sqrt() / p_sqrt;
         }
         assert!((manual_loss - loss).abs() < 1e-12);

@@ -1,8 +1,7 @@
 use std::cmp::Ordering;
 
 use rand::rngs::StdRng;
-use rand::SeedableRng;
-use rand::RngExt;
+use rand::{RngExt, SeedableRng};
 
 use super::super::VPTree;
 use super::shared::brute_force_knn;

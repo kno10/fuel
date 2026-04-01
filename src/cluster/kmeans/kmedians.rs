@@ -3,8 +3,7 @@ use std::ops::*;
 
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// Compute initial assignment for k-medians using the provided initializer.
 /// Returns (assignments, cluster_sizes, total_loss).
@@ -29,9 +28,9 @@ where
     for (i, assign_i) in assign.iter_mut().enumerate().take(n) {
         data.load_into(i, scratch, d);
         let mut a = 0;
-        let mut best_l1 = DefaultMath::<N>::l1dist(cent.center(0), scratch, d);
+        let mut best_l1 = math::l1dist(cent.center(0), scratch, d);
         for j in 1..k {
-            let tmp = DefaultMath::<N>::l1dist(cent.center(j), scratch, d);
+            let tmp = math::l1dist(cent.center(j), scratch, d);
             if tmp < best_l1 {
                 best_l1 = tmp;
                 a = j;
@@ -40,7 +39,7 @@ where
         csize[a] += 1;
         *assign_i = a;
         // compute Euclidean distance for reported loss
-        let sq = DefaultMath::<N>::sqdist(cent.center(a), scratch, d);
+        let sq = math::sqdist(cent.center(a), scratch, d);
         lastsum += sq.sqrt();
     }
 
@@ -98,7 +97,7 @@ where
                 }
             } else {
                 // keep old center
-                DefaultMath::<N>::copy(new_cent.center_mut(j), cent.center(j), d);
+                math::copy(new_cent.center_mut(j), cent.center(j), d);
             }
         }
 
@@ -106,7 +105,7 @@ where
         if tol > N::zero() {
             let mut diff_sq = N::zero();
             for j in 0..k {
-                diff_sq += DefaultMath::<N>::sqdist(cent.center(j), new_cent.center(j), d);
+                diff_sq += math::sqdist(cent.center(j), new_cent.center(j), d);
             }
             let diff = diff_sq.sqrt();
             let rel = if old_norm == N::zero() { diff } else { diff / old_norm };
@@ -124,9 +123,9 @@ where
             data.load_into(i, &mut scratch, d);
             // find cluster by L1 distance
             let mut a = 0;
-            let mut best_l1 = DefaultMath::<N>::l1dist(cent.center(0), &scratch, d);
+            let mut best_l1 = math::l1dist(cent.center(0), &scratch, d);
             for j in 1..k {
-                let tmp = DefaultMath::<N>::l1dist(cent.center(j), &scratch, d);
+                let tmp = math::l1dist(cent.center(j), &scratch, d);
                 if tmp < best_l1 || (j == aa && tmp == best_l1) {
                     best_l1 = tmp;
                     a = j;
@@ -139,7 +138,7 @@ where
                 changed += 1;
             }
             // record Euclidean distance for reporting
-            let sq = DefaultMath::<N>::sqdist(cent.center(a), &scratch, d);
+            let sq = math::sqdist(cent.center(a), &scratch, d);
             sum += sq.sqrt();
         }
         lastsum = sum;

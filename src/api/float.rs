@@ -3,6 +3,7 @@ pub trait Float:
     num_traits::Float
     + Default
     + Copy
+    + 'static
     + num_traits::AsPrimitive<Self>
     + num_traits::FromPrimitive
     + num_traits::NumCast
@@ -49,7 +50,8 @@ impl<
         + std::iter::Product
         + std::marker::Unpin
         + std::marker::Send
-        + std::marker::Sync,
+        + std::marker::Sync
+        + 'static,
 > Float for T
 {
 }

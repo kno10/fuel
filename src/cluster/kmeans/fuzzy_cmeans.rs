@@ -6,8 +6,7 @@ use ndarray::Array2;
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::lloyd::lloyd_initial_assignment;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// Internal generic implementation of fuzzy k-means using Lloyd-style iterations.
 #[inline(always)]
@@ -55,12 +54,12 @@ where
                 let weight = u[i * k + j].powf(m);
                 if weight != N::zero() {
                     data.load_into(i, &mut scratch, d);
-                    DefaultMath::<N>::axpy(sums.center_mut(j), weight, &scratch, d);
+                    math::axpy(sums.center_mut(j), weight, &scratch, d);
                     denom += weight;
                 }
             }
             if denom != N::zero() {
-                DefaultMath::<N>::mul(cent.center_mut(j), sums.center(j), denom.recip(), d);
+                math::mul(cent.center_mut(j), sums.center(j), denom.recip(), d);
             }
         }
 
@@ -72,7 +71,7 @@ where
             let mut dists = vec![N::zero(); k];
             let mut zero_idx: Option<usize> = None;
             for (j, dslot) in dists.iter_mut().enumerate().take(k) {
-                let dist = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+                let dist = math::sqdist(cent.center(j), &scratch, d);
                 *dslot = dist;
                 if dist.is_zero() {
                     zero_idx = Some(j);
@@ -137,7 +136,9 @@ mod tests {
         let mut init = RandomSample::new(Box::new(Pcg32::seed_from_u64(123)));
         let m = 2.0_f64;
         let (cent, members, assign, niter, los) = fuzzy_lloyd(&dataset, 5, &mut init, 100, m);
-        let loss2 = crate::cluster::kmeans::util::compute_fuzzy_loss::<_, _, _>(&dataset, &cent, &members, m);
+        let loss2 = crate::cluster::kmeans::util::compute_fuzzy_loss::<_, _, _>(
+            &dataset, &cent, &members, m,
+        );
         assert!((loss2 - los).abs() < 1e-12, "fuzzy loss not correct");
         let mut assign2 = Vec::with_capacity(members.nrows());
         for row in members.rows() {

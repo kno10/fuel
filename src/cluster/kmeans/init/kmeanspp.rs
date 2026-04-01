@@ -2,16 +2,12 @@ use std::iter::Sum;
 use std::marker::PhantomData;
 use std::ops::{AddAssign, MulAssign, SubAssign};
 
-use rand::Rng;
-use rand::RngExt;
-use rand::rng;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 use rand::distr::{Distribution, StandardUniform};
+use rand::rngs::StdRng;
+use rand::{Rng, RngExt, SeedableRng, rng};
 
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// k-means++ initialization
 pub struct KMeansPP<N, R>
@@ -79,7 +75,7 @@ where
             let last = &cent.center(i);
             for (j, dsq_j) in dsq.iter_mut().enumerate().take(n) {
                 data.load_into(j, &mut scratch, d);
-                let dj = DefaultMath::<N>::sqdist(last, &scratch, d);
+                let dj = math::sqdist(last, &scratch, d);
                 *dsq_j = N::min(*dsq_j, dj);
                 sum += *dsq_j;
                 if let Some(cb) = callback.as_mut() {
@@ -104,7 +100,7 @@ where
         for j in 0..n {
             data.load_into(j, &mut scratch, d);
             if let Some(cb) = callback.as_mut() {
-                cb(k - 1, j, DefaultMath::<N>::sqdist(last, &scratch, d));
+                cb(k - 1, j, math::sqdist(last, &scratch, d));
             }
         }
     }

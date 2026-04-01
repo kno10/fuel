@@ -1,14 +1,13 @@
-use crate::{Float, VectorData as Dataset};
 use std::iter::Sum;
 use std::ops::{AddAssign, MulAssign, SubAssign};
 
 use ndarray_linalg::{Cholesky, Scalar};
 
+use crate::{Float, VectorData as Dataset};
+
 /// similar helper utilities shared by multiple Gaussian model implementations
 /// row-major index into a dim x dim square matrix stored as a flat slice
-pub(crate) fn idx(i: usize, j: usize, dim: usize) -> usize {
-    i * dim + j
-}
+pub(crate) fn idx(i: usize, j: usize, dim: usize) -> usize { i * dim + j }
 
 /// makes the matrix symmetric by copying upper to lower triangle
 pub(crate) fn symmetrize<N>(matrix: &mut [N], dim: usize)
@@ -97,12 +96,7 @@ where
 }
 
 pub(crate) fn refresh_cholesky_log_norm_det<N>(
-    covariance: &mut [N],
-    dim: usize,
-    min_variance: N,
-    weight: N,
-    log_norm: N,
-    chol: &mut Vec<N>,
+    covariance: &mut [N], dim: usize, min_variance: N, weight: N, log_norm: N, chol: &mut Vec<N>,
 ) -> N
 where
     N: Float + Copy + Scalar + ndarray_linalg::Lapack,
@@ -145,10 +139,7 @@ where
         delta[i] = x[i] - mean[i];
     }
     let solution = solve_lower(chol, dim, &delta);
-    solution
-        .iter()
-        .copied()
-        .fold(N::zero(), |acc, v| acc + v * v)
+    solution.iter().copied().fold(N::zero(), |acc, v| acc + v * v)
 }
 
 pub(crate) fn log_norm_det_diagonal<N>(weight: N, variance: &[N], min_variance: N) -> N
@@ -174,7 +165,7 @@ where
     weight.ln() - N::from(0.5).unwrap() * (d * log_2pi + log_det)
 }
 
-use crate::math::{DefaultMath as DefaultMath, Math};
+use crate::math;
 
 pub(crate) fn global_mean<N, A>(data: &A) -> Vec<N>
 where
@@ -189,7 +180,7 @@ where
     for i in 0..n {
         data.load_into(i, &mut scratch, d);
         // use math helper to accumulate the row into the mean
-        DefaultMath::<N>::add_assign(&mut mean, &scratch, d);
+        math::add_assign(&mut mean, &scratch, d);
     }
 
     for m in &mut mean {
@@ -200,16 +191,11 @@ where
 }
 
 pub(crate) fn scale_component_covariance<N>(
-    covariance: &mut [N],
-    k: usize,
-    dim: usize,
-    min_variance: N,
+    covariance: &mut [N], k: usize, dim: usize, min_variance: N,
 ) where
     N: Float + Copy,
 {
-    let scale = N::from(k)
-        .unwrap()
-        .powf(-N::from(2.0).unwrap() / N::from(dim).unwrap());
+    let scale = N::from(k).unwrap().powf(-N::from(2.0).unwrap() / N::from(dim).unwrap());
     for value in covariance {
         *value = (*value * scale).max(min_variance);
     }
@@ -219,8 +205,6 @@ pub(crate) fn scale_component_variance<N>(variance: N, k: usize, dim: usize, min
 where
     N: Float + Copy,
 {
-    let scale = N::from(k)
-        .unwrap()
-        .powf(-N::from(2.0).unwrap() / N::from(dim).unwrap());
+    let scale = N::from(k).unwrap().powf(-N::from(2.0).unwrap() / N::from(dim).unwrap());
     (variance * scale).max(min_variance)
 }

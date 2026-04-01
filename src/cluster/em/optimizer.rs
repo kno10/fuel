@@ -1,8 +1,9 @@
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
-use ndarray::Array2;
 use std::iter::Sum; // FIXME: no longer necessary here if we use crate::Float?
-use std::ops::{AddAssign, MulAssign, SubAssign}; // FIXME: no longer necessary here if we use crate::Float?
+use std::ops::{AddAssign, MulAssign, SubAssign};
+
+use ndarray::Array2;
+
+use crate::{Float, VectorData as Dataset, math}; // FIXME: no longer necessary here if we use crate::Float?
 
 /// Pluggable cluster model for expectation-maximization.
 pub trait EmModel<N>
@@ -13,9 +14,7 @@ where
     fn begin_estep(&mut self);
 
     /// Whether this model needs a first pass before the regular update pass.
-    fn needs_two_pass(&self) -> bool {
-        false
-    }
+    fn needs_two_pass(&self) -> bool { false }
 
     /// Optional first-pass update.
     fn first_pass_estep(&mut self, _x: &[N], _responsibility: N) {}
@@ -133,13 +132,8 @@ where
 }
 
 fn assign_probabilities_to_instances<N, A, Mo>(
-    data: &A,
-    models: &[Mo],
-    probs: &mut [N],
-    scratch: &mut [N],
-    min_log_likelihood: N,
-    noise_log_density: Option<N>,
-    mut noise_probs: Option<&mut [N]>,
+    data: &A, models: &[Mo], probs: &mut [N], scratch: &mut [N], min_log_likelihood: N,
+    noise_log_density: Option<N>, mut noise_probs: Option<&mut [N]>,
 ) -> (N, Option<N>)
 where
     N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
@@ -157,11 +151,7 @@ where
         data.load_into(i, scratch, d);
         for j in 0..k {
             let v = models[j].estimate_log_density(scratch);
-            local[j] = if v > min_log_likelihood {
-                v
-            } else {
-                min_log_likelihood
-            };
+            local[j] = if v > min_log_likelihood { v } else { min_log_likelihood };
         }
         if let Some(log_noise) = noise_log_density {
             local[k] = log_noise.max(min_log_likelihood);
@@ -182,20 +172,12 @@ where
 
     (
         em_sum / N::from(n).unwrap(),
-        if noise_log_density.is_some() {
-            Some(noise_sum / N::from(n).unwrap())
-        } else {
-            None
-        },
+        if noise_log_density.is_some() { Some(noise_sum / N::from(n).unwrap()) } else { None },
     )
 }
 
 fn recompute_models_soft<N, A, Mo>(
-    data: &A,
-    probs: &[N],
-    models: &mut [Mo],
-    prior: N,
-    scratch: &mut [N],
+    data: &A, probs: &[N], models: &mut [Mo], prior: N, scratch: &mut [N],
 ) where
     N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
     A: Dataset<N>,
@@ -227,7 +209,7 @@ fn recompute_models_soft<N, A, Mo>(
 
     // accumulate weights; use math backend to clear the buffer
     let mut wsum = vec![N::zero(); k];
-    DefaultMath::<N>::fill(&mut wsum, N::zero(), k);
+    math::fill(&mut wsum, N::zero(), k);
     for i in 0..n {
         data.load_into(i, scratch, d);
         for j in 0..k {
@@ -250,11 +232,7 @@ fn recompute_models_soft<N, A, Mo>(
 }
 
 fn recompute_models_hard<N, A, Mo>(
-    data: &A,
-    probs: &[N],
-    noise_probs: Option<&[N]>,
-    models: &mut [Mo],
-    prior: N,
+    data: &A, probs: &[N], noise_probs: Option<&[N]>, models: &mut [Mo], prior: N,
     scratch: &mut [N],
 ) where
     N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
@@ -292,7 +270,7 @@ fn recompute_models_hard<N, A, Mo>(
     // algorithms can lean on `Math` for basic vector operations.
     // e.g. Math::<N>::fill(&mut wsum, N::zero(), k);
     let mut wsum = vec![N::zero(); k];
-    DefaultMath::<N>::fill(&mut wsum, N::zero(), k);
+    math::fill(&mut wsum, N::zero(), k);
     for i in 0..n {
         data.load_into(i, scratch, d);
         let slice = &probs[i * k..(i + 1) * k];
@@ -320,10 +298,7 @@ fn recompute_models_hard<N, A, Mo>(
 
 /// Generic EM solver for mixture models.
 pub fn expectation_maximization<N, A, Mo>(
-    data: &A,
-    k: usize,
-    mut models: Vec<Mo>,
-    config: EmConfig<N>,
+    data: &A, k: usize, mut models: Vec<Mo>, config: EmConfig<N>,
 ) -> EmResult<N, Mo>
 where
     N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
@@ -339,17 +314,10 @@ where
 
     let mut scratch = vec![N::zero(); d];
     let mut probs = vec![N::zero(); n * k];
-    let mut noise_probs = if config.noise_ratio > N::zero() {
-        Some(vec![N::zero(); n])
-    } else {
-        None
-    };
+    let mut noise_probs =
+        if config.noise_ratio > N::zero() { Some(vec![N::zero(); n]) } else { None };
     let mut log_noise = config.min_log_likelihood;
-    let noise_density = if noise_probs.is_some() {
-        Some(log_noise)
-    } else {
-        None
-    };
+    let noise_density = if noise_probs.is_some() { Some(log_noise) } else { None };
     let mut noise_slice = noise_probs.as_deref_mut();
     let (mut log_likelihood, mut noise_weight) = assign_probabilities_to_instances::<N, A, Mo>(
         data,
@@ -446,11 +414,5 @@ where
         None
     };
 
-    EmResult {
-        models,
-        assignments,
-        responsibilities,
-        n_iter: iter,
-        log_likelihood,
-    }
+    EmResult { models, assignments, responsibilities, n_iter: iter, log_likelihood }
 }

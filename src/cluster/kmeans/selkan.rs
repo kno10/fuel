@@ -3,8 +3,7 @@ use std::ops::*;
 
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// Perform the initial cluster assignment, recompute sums
 // Inline always to allow CPU optimization!
@@ -47,7 +46,7 @@ where
             assign[i] = b;
             csize[b] += 1;
             data.load_into(i, scratch, d);
-            DefaultMath::<N>::add_assign(sums.center_mut(b), scratch, d);
+            math::add_assign(sums.center_mut(b), scratch, d);
         }
     } else {
         init.init::<A>(data, cent, k);
@@ -57,7 +56,7 @@ where
             let bounds_i = &mut bounds[i * k..i * k + k];
             let (mut a, mut s) = (0, N::infinity());
             for (j, bound_j) in bounds_i.iter_mut().enumerate() {
-                let tmp = DefaultMath::<N>::sqdist(cent.center(j), scratch, d).sqrt();
+                let tmp = math::sqdist(cent.center(j), scratch, d).sqrt();
                 *bound_j = tmp;
                 if tmp < s {
                     (a, s) = (j, tmp);
@@ -65,7 +64,7 @@ where
             }
             csize[a] += 1;
             assign[i] = a;
-            DefaultMath::<N>::add_assign(sums.center_mut(a), scratch, d);
+            math::add_assign(sums.center_mut(a), scratch, d);
         }
     }
     (assign, csize, bounds)
@@ -98,13 +97,8 @@ where
         let mut diff_sq = N::zero();
         for j in 0..k {
             if csize[j] > 0 {
-                DefaultMath::<N>::mul(
-                    &mut scratch,
-                    sums.center(j),
-                    N::from(csize[j]).unwrap().recip(),
-                    d,
-                );
-                let movement = DefaultMath::<N>::sqdist(&scratch, cent.center(j), d).sqrt();
+                math::mul(&mut scratch, sums.center(j), N::from(csize[j]).unwrap().recip(), d);
+                let movement = math::sqdist(&scratch, cent.center(j), d).sqrt();
                 if tol > N::zero() {
                     diff_sq += movement * movement;
                 }
@@ -127,7 +121,7 @@ where
             // Update bounds
             let bounds_i = &mut bounds[i * k..i * k + k];
             let mut upper_i = bounds_i[aa] + cmov[aa];
-            DefaultMath::<N>::sub_assign(bounds_i, &cmov, k); // we overwrite [aa] below!
+            math::sub_assign(bounds_i, &cmov, k); // we overwrite [aa] below!
             // Check bounds
             let (mut loaded, mut upper_tight, mut a) = (false, false, aa);
             for j in 0..k {
@@ -140,7 +134,7 @@ where
                         data.load_into(i, &mut scratch, d);
                         loaded = true;
                     }
-                    upper_i = DefaultMath::<N>::sqdist(cent.center(aa), &scratch, d).sqrt();
+                    upper_i = math::sqdist(cent.center(aa), &scratch, d).sqrt();
                     bounds_i[aa] = upper_i;
                     upper_tight = true;
                     if upper_i <= bounds_i[j] {
@@ -148,7 +142,7 @@ where
                     }
                 }
                 // Make lower tight
-                bounds_i[j] = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d).sqrt();
+                bounds_i[j] = math::sqdist(cent.center(j), &scratch, d).sqrt();
                 if bounds_i[j] < upper_i {
                     a = j;
                     upper_i = bounds_i[j];
@@ -159,8 +153,8 @@ where
                 assign[i] = a;
                 csize[aa] -= 1;
                 csize[a] += 1;
-                DefaultMath::<N>::sub_assign(sums.center_mut(aa), &scratch, d);
-                DefaultMath::<N>::add_assign(sums.center_mut(a), &scratch, d);
+                math::sub_assign(sums.center_mut(aa), &scratch, d);
+                math::add_assign(sums.center_mut(a), &scratch, d);
                 changed += 1;
             }
         }

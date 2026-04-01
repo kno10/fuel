@@ -4,8 +4,7 @@ use std::ops::*;
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::kgeometric::weiszfeld_step;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// Initial assignment for the simplified‑Hamerly variant of k‑geometric.
 ///
@@ -66,7 +65,7 @@ where
             data.load_into(i, scratch, d);
             let (mut a, mut s, mut s2) = (k, N::infinity(), N::infinity());
             for j in 0..k {
-                let tmp = DefaultMath::<N>::sqdist(cent.center(j), scratch, d);
+                let tmp = math::sqdist(cent.center(j), scratch, d);
                 if tmp < s {
                     (a, s, s2) = (j, tmp, s);
                 } else if tmp < s2 {
@@ -100,9 +99,9 @@ where
     for i in 0..n {
         data.load_into(i, scratch, d);
         let (mut a, mut s_sq, mut s2_sq) =
-            (0, DefaultMath::<N>::sqdist(cent.center(0), scratch, d), N::infinity());
+            (0, math::sqdist(cent.center(0), scratch, d), N::infinity());
         for j in 1..k {
-            let tmp_sq = DefaultMath::<N>::sqdist(cent.center(j), scratch, d);
+            let tmp_sq = math::sqdist(cent.center(j), scratch, d);
             if tmp_sq < s_sq {
                 (a, s_sq, s2_sq) = (j, tmp_sq, s_sq);
             } else if tmp_sq < s2_sq {
@@ -151,7 +150,7 @@ where
         for j in 0..k {
             if csize[j] > 0 {
                 // start from current center
-                DefaultMath::<N>::copy(&mut current, cent.center(j), d);
+                math::copy(&mut current, cent.center(j), d);
                 for step in 0..steps {
                     let updated = weiszfeld_step::<N, A>(
                         data,
@@ -161,13 +160,13 @@ where
                         if step == 0 { Some(prev_dist.as_slice()) } else { None },
                         false,
                     );
-                    DefaultMath::<N>::copy(&mut current, &updated, d);
+                    math::copy(&mut current, &updated, d);
                 }
-                let tmp = DefaultMath::<N>::sqdist(&current, cent.center(j), d).sqrt();
+                let tmp = math::sqdist(&current, cent.center(j), d).sqrt();
                 if tol > N::zero() {
                     diff_sq += tmp * tmp;
                 }
-                DefaultMath::<N>::copy(cent.center_mut(j), &current, d);
+                math::copy(cent.center_mut(j), &current, d);
                 if tmp > cmov1 {
                     (most, cmov1, cmov2) = (j, tmp, cmov1);
                 } else if tmp > cmov2 {
@@ -196,7 +195,7 @@ where
 
             data.load_into(i, &mut scratch, d);
             // always compute the exact distance to the currently assigned center
-            let actual = DefaultMath::<N>::sqdist(cent.center(aa), &scratch, d).sqrt();
+            let actual = math::sqdist(cent.center(aa), &scratch, d).sqrt();
             prev_dist[i] = actual;
 
             // If the exact distance to the assigned center is at most the lower
@@ -209,7 +208,7 @@ where
             let (mut a, mut s, mut b, mut s2) = (aa, actual, k, N::infinity());
             for j in 0..k {
                 if j != aa {
-                    let tmp = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d).sqrt();
+                    let tmp = math::sqdist(cent.center(j), &scratch, d).sqrt();
                     if tmp < s {
                         (a, s, b, s2) = (j, tmp, a, s);
                     } else if tmp < s2 {
@@ -275,7 +274,7 @@ mod tests {
             for (i, &idx) in assign.iter().enumerate().take(n) {
                 data.load_into(i, &mut scratch, d);
                 let row = centers.row(idx);
-                let sq = DefaultMath::<f64>::sqdist(&scratch, row.as_slice().unwrap(), d);
+                let sq = math::sqdist(&scratch, row.as_slice().unwrap(), d);
                 loss += sq.sqrt();
             }
             loss

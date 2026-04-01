@@ -4,8 +4,7 @@ use std::ops::*;
 use crate::cluster::kmeans::hamerly::hamerly_initial_assignment;
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// Shallot algorithm
 // Inline always to allow CPU optimization!
@@ -52,17 +51,12 @@ where
         let mut diff_sq = N::zero();
         for j in 0..k {
             if csize[j] > 0 {
-                DefaultMath::<N>::mul(
-                    &mut scratch,
-                    sums.center(j),
-                    N::from(csize[j]).unwrap().recip(),
-                    d,
-                );
-                let tmp = DefaultMath::<N>::sqdist(&scratch, cent.center(j), d).sqrt();
+                math::mul(&mut scratch, sums.center(j), N::from(csize[j]).unwrap().recip(), d);
+                let tmp = math::sqdist(&scratch, cent.center(j), d).sqrt();
                 if tol > N::zero() {
                     diff_sq += tmp * tmp;
                 }
-                DefaultMath::<N>::copy(cent.center_mut(j), &scratch, d);
+                math::copy(cent.center_mut(j), &scratch, d);
                 cmov[j] = tmp;
                 if tmp > cmov1 {
                     (most, cmov1, cmov2) = (j, tmp, cmov1);
@@ -87,8 +81,7 @@ where
             let ci = &cent.center(i);
             for j in 0..i {
                 debug_assert!(idx == triindex(i, j));
-                let tmp =
-                    N::from(0.5).unwrap() * DefaultMath::<N>::sqdist(ci, cent.center(j), d).sqrt();
+                let tmp = N::from(0.5).unwrap() * math::sqdist(ci, cent.center(j), d).sqrt();
                 cdist[idx] = tmp;
                 if tmp < cnear[i] {
                     cnear[i] = tmp;
@@ -120,7 +113,7 @@ where
             }
             // Make upper bound tight first:
             data.load_into(i, &mut scratch, d);
-            let daa = DefaultMath::<N>::sqdist(cent.center(aa), &scratch, d); // squared
+            let daa = math::sqdist(cent.center(aa), &scratch, d); // squared
             upper_i = daa.sqrt(); // bounds are non-squared
             if upper_i <= lower_i || upper_i <= cnear[aa] {
                 bounds[i] = (upper_i, lower_i); // update
@@ -133,7 +126,7 @@ where
             }
             // Shallot modification #1: try old second-nearest first:
             let bb = assign2[i];
-            let dbb = DefaultMath::<N>::sqdist(cent.center(bb), &scratch, d); // squared
+            let dbb = math::sqdist(cent.center(bb), &scratch, d); // squared
             // Closest two known centers:
             let (mut ra, mut rb, mut dra2, mut drb2) = (aa, bb, daa, dbb);
             if dbb < daa {
@@ -155,11 +148,7 @@ where
                 if cdist[triindex(ra, j)] > rhalf {
                     break;
                 }
-                let tmp = if j == rb {
-                    drb2
-                } else {
-                    DefaultMath::<N>::sqdist(cent.center(j), &scratch, d)
-                };
+                let tmp = if j == rb { drb2 } else { math::sqdist(cent.center(j), &scratch, d) };
                 if tmp < s {
                     (a, s, b, s2) = (j, tmp, a, s);
                     if s2 < l * l {
@@ -186,8 +175,8 @@ where
                 assign[i] = a;
                 csize[aa] -= 1;
                 csize[a] += 1;
-                DefaultMath::<N>::sub_assign(sums.center_mut(aa), &scratch, d);
-                DefaultMath::<N>::add_assign(sums.center_mut(a), &scratch, d);
+                math::sub_assign(sums.center_mut(aa), &scratch, d);
+                math::add_assign(sums.center_mut(a), &scratch, d);
                 changed += 1;
             }
             if b != bb {

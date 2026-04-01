@@ -1,6 +1,5 @@
 use rand::rngs::StdRng;
-use rand::SeedableRng;
-use rand::RngExt;
+use rand::{RngExt, SeedableRng};
 use rand_distr::Uniform;
 
 use crate::intrinsicdimensionality::DistanceIDEstimator;

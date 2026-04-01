@@ -1,5 +1,4 @@
-use rand::SeedableRng;
-use rand::RngExt;
+use rand::{RngExt, SeedableRng};
 
 use crate::outlier::common::{OutlierResult, make_outlier_result};
 use crate::{DistanceData, Float, VectorData};

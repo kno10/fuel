@@ -1,25 +1,19 @@
-use crate::cluster::em::optimizer::EmModel;
-use crate::cluster::kmeans::init::Initialization;
-use crate::cluster::kmeans::Centers;
-use crate::math::DefaultMath;
-use crate::math::Math;
-use crate::{Float, VectorData as Dataset};
-use std::iter::Sum;
-use std::ops::{AddAssign, MulAssign, SubAssign};
-
 use ndarray_linalg::Scalar;
 
 use crate::cluster::em::models::common::{
     global_mean, idx, mahalanobis_distance_from_cholesky, refresh_cholesky_log_norm_det,
     scale_component_covariance, symmetrize,
 };
+use crate::cluster::em::optimizer::EmModel;
+use crate::cluster::kmeans::Centers;
+use crate::cluster::kmeans::init::Initialization;
+use crate::{Float, VectorData as Dataset, math};
 
 /// General multivariate Gaussian component for EM.
 #[derive(Clone, Debug)]
-pub struct MultivariateGaussianModel<M, N>
+pub struct MultivariateGaussianModel<N>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
+    N: Float,
 {
     mean: Vec<N>,
     nmean: Vec<N>,
@@ -31,19 +25,13 @@ where
     chol: Vec<N>,
     prior_covariance: Option<Vec<N>>,
     min_variance: N,
-    _math: std::marker::PhantomData<M>,
 }
 
-impl<M, N> MultivariateGaussianModel<M, N>
+impl<N> MultivariateGaussianModel<N>
 where
-    N: Float + Copy + Scalar + ndarray_linalg::Lapack + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
+    N: Float + Scalar + ndarray_linalg::Lapack,
 {
-    pub fn new(weight: N, mean: Vec<N>, covariance: Vec<N>, min_variance: N) -> Self
-    where
-        N: Float + Copy + Scalar + ndarray_linalg::Lapack + AddAssign + SubAssign + MulAssign + Sum,
-        M: crate::math::Math<N>,
-    {
+    pub fn new(weight: N, mean: Vec<N>, covariance: Vec<N>, min_variance: N) -> Self {
         let dim = mean.len();
         assert_eq!(covariance.len(), dim * dim, "covariance size mismatch");
         let log_2pi = num_traits::Float::ln(N::from(2.0 * std::f64::consts::PI).unwrap());
@@ -59,23 +47,16 @@ where
             chol: vec![N::zero(); dim * dim],
             prior_covariance: None,
             min_variance,
-            _math: std::marker::PhantomData,
         };
         model.refresh_cholesky();
         model
     }
 
-    pub fn mean(&self) -> &[N] {
-        &self.mean
-    }
+    pub fn mean(&self) -> &[N] { &self.mean }
 
-    pub fn covariance(&self) -> &[N] {
-        &self.covariance
-    }
+    pub fn covariance(&self) -> &[N] { &self.covariance }
 
-    pub fn min_variance(&self) -> N {
-        self.min_variance
-    }
+    pub fn min_variance(&self) -> N { self.min_variance }
 
     fn refresh_cholesky(&mut self) {
         let dim = self.mean.len();
@@ -90,10 +71,9 @@ where
     }
 }
 
-impl<M, N> EmModel<N> for MultivariateGaussianModel<M, N>
+impl<N> EmModel<N> for MultivariateGaussianModel<N>
 where
-    N: Float + Copy + Scalar + ndarray_linalg::Lapack + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
+    N: Float + Scalar + ndarray_linalg::Lapack,
 {
     fn begin_estep(&mut self) {
         self.wsum = N::zero();
@@ -129,7 +109,7 @@ where
             let delta_i = x[i] - self.nmean[i];
             let scale = delta_i * responsibility;
             let row = &mut self.covariance[i * dim..i * dim + (i + 1)];
-            DefaultMath::<N>::axpy(row, scale, &diff[..(i + 1)], i + 1);
+            math::axpy(row, scale, &diff[..(i + 1)], i + 1);
         }
         self.mean.copy_from_slice(&self.nmean);
     }
@@ -173,9 +153,7 @@ where
             + self.log_norm_det
     }
 
-    fn weight(&self) -> N {
-        self.weight
-    }
+    fn weight(&self) -> N { self.weight }
 
     fn set_weight(&mut self, weight: N) {
         self.weight = weight.max(N::epsilon());
@@ -185,30 +163,22 @@ where
 
 /// Factory for multivariate Gaussian mixture models.
 #[derive(Debug)]
-pub struct MultivariateGaussianModelFactory<M, N, I>
+pub struct MultivariateGaussianModelFactory<N, I>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
+    N: Float,
     I: Initialization<N>,
 {
     pub initializer: I,
     pub min_variance: N,
-    _math: std::marker::PhantomData<M>,
 }
 
-impl<M, N, I> MultivariateGaussianModelFactory<M, N, I>
+impl<N, I> MultivariateGaussianModelFactory<N, I>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum + Scalar + ndarray_linalg::Lapack,
-    M: crate::math::Math<N>,
+    N: Float + Scalar + ndarray_linalg::Lapack,
     I: Initialization<N>,
 {
-    /// Generic constructor specifying math backend `M`.
-    pub fn with_math(initializer: I) -> Self {
-        Self {
-            initializer,
-            min_variance: N::from(1e-10).unwrap(),
-            _math: std::marker::PhantomData,
-        }
+    pub fn new(initializer: I) -> Self {
+        Self { initializer, min_variance: N::from(1e-10).unwrap() }
     }
 
     fn global_covariance<A>(&self, data: &A) -> Vec<N>
@@ -227,14 +197,14 @@ where
             data.load_into(i, &mut scratch, d);
             // compute delta = scratch - mean using math kernel
             delta.copy_from_slice(&scratch);
-            DefaultMath::<N>::sub_assign(&mut delta, &mean, d);
+            math::sub_assign(&mut delta, &mean, d);
 
             // update each row of covariance: row_u += delta[u] * delta
             for u in 0..d {
                 let diff_u = delta[u];
                 // only update columns 0..=u (upper triangle)
                 let row = &mut cov[u * d..u * d + (u + 1)];
-                DefaultMath::<N>::axpy(row, diff_u, &delta[..(u + 1)], u + 1);
+                math::axpy(row, diff_u, &delta[..(u + 1)], u + 1);
             }
         }
 
@@ -249,19 +219,16 @@ where
     }
 
     pub fn build_initial_models<A>(
-        &mut self,
-        data: &A,
-        k: usize,
-    ) -> Vec<MultivariateGaussianModel<M, N>>
+        &mut self, data: &A, k: usize,
+    ) -> Vec<MultivariateGaussianModel<N>>
     where
         A: Dataset<N>,
-        M: crate::math::Math<N>,
     {
         let d = data.ncols();
         let mut cent = Centers::<N>::new(k, d);
         self.initializer.init::<A>(data, &mut cent, k);
 
-        let mut cov = MultivariateGaussianModelFactory::<M, N, I>::global_covariance(self, data);
+        let mut cov = self.global_covariance(data);
         scale_component_covariance(&mut cov, k, d, self.min_variance);
 
         let weight = N::one() / N::from(k).unwrap();
@@ -276,48 +243,27 @@ where
         }
         models
     }
-}
-
-impl<N, I> MultivariateGaussianModelFactory<crate::math::DefaultMath<N>, N, I>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum + Scalar + ndarray_linalg::Lapack,
-    I: Initialization<N>,
-{
-    pub fn new(initializer: I) -> Self {
-        MultivariateGaussianModelFactory::with_math(initializer)
-    }
 
     pub fn build_initial_models_dispatch<A>(
-        initializer: I,
-        data: &A,
-        k: usize,
-    ) -> Vec<MultivariateGaussianModel<crate::math::DefaultMath<N>, N>>
+        initializer: I, data: &A, k: usize,
+    ) -> Vec<MultivariateGaussianModel<N>>
     where
-        N: Float
-            + Copy
-            + AddAssign
-            + SubAssign
-            + MulAssign
-            + Sum
-            + Scalar
-            + ndarray_linalg::Lapack
-            + 'static,
         A: Dataset<N>,
     {
-        let mut factory: MultivariateGaussianModelFactory<crate::math::DefaultMath<N>, N, I> =
-            MultivariateGaussianModelFactory::with_math(initializer);
+        let mut factory = MultivariateGaussianModelFactory::new(initializer);
         factory.build_initial_models(data, k)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use ndarray::Array2;
+
     use super::*;
     use crate::cluster::em::models::multivariate::MultivariateGaussianModelFactory;
     use crate::cluster::em::optimizer::{EmConfig, expectation_maximization};
     use crate::cluster::kmeans::init::FirstK;
     use crate::cluster::kmeans::ndarray::NdArrayDataset;
-    use ndarray::Array2;
 
     fn two_blob_data() -> Array2<f64> {
         let mut data = Array2::<f64>::zeros((200, 2));
@@ -337,12 +283,7 @@ mod tests {
         // 2D identity covariance
         let mean = vec![0.0f64, 0.0];
         let cov = vec![1.0, 0.0, 0.0, 1.0];
-        let mut m = MultivariateGaussianModel::<crate::math::DefaultMath<f64>, f64>::new(
-            1.0,
-            mean.clone(),
-            cov,
-            1e-10,
-        );
+        let mut m = MultivariateGaussianModel::<f64>::new(1.0, mean.clone(), cov, 1e-10);
         let ld = m.estimate_log_density(&mean);
         let dim = 2;
         let expected = -0.5 * (dim as f64) * (2.0 * std::f64::consts::PI).ln();
@@ -362,19 +303,11 @@ mod tests {
             &ds,
             2,
         );
-        let cfg = EmConfig::<f64> {
-            maxiter: 100,
-            return_soft: true,
-            ..Default::default()
-        };
+        let cfg = EmConfig::<f64> { maxiter: 100, return_soft: true, ..Default::default() };
         let result = expectation_maximization(&ds, 2, models, cfg);
         assert!(result.n_iter > 0);
         assert!(result.log_likelihood.is_finite());
-        let means = result
-            .models
-            .iter()
-            .map(|m| m.mean()[0])
-            .collect::<Vec<_>>();
+        let means = result.models.iter().map(|m| m.mean()[0]).collect::<Vec<_>>();
         assert_eq!(means.len(), 2);
         assert!((means[0] - means[1]).abs() > 1e-6);
     }
@@ -386,12 +319,7 @@ mod tests {
         // `wsum`, causing a mismatch with the optimizer's external copy.
         let mean = vec![0.0f64, 0.0];
         let cov = vec![1.0, 0.0, 0.0, 1.0];
-        let mut m = MultivariateGaussianModel::<crate::math::DefaultMath<f64>, f64>::new(
-            0.5,
-            mean.clone(),
-            cov.clone(),
-            1e-10,
-        );
+        let mut m = MultivariateGaussianModel::<f64>::new(0.5, mean.clone(), cov.clone(), 1e-10);
         m.begin_estep();
         let x = [1.0f64, -1.0];
         m.update_estep(&x, 1e-12);

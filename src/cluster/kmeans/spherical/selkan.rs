@@ -1,22 +1,14 @@
 use super::common::*;
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::{Centers, KMeansResult};
-use crate::math::DefaultMath;
-use crate::math::Math;
-use crate::{Float, VectorData as Dataset};
-use std::iter::Sum;
-use std::ops::*;
+use crate::{Float, VectorData as Dataset, math};
 
 #[inline(always)]
 fn sph_selkan_initial_assignment<N, A, I>(
-    data: &A,
-    k: usize,
-    init: &mut I,
-    cent: &mut Centers<N>,
-    sums: &mut Centers<N>,
+    data: &A, k: usize, init: &mut I, cent: &mut Centers<N>, sums: &mut Centers<N>,
 ) -> (Vec<usize>, Vec<usize>, Vec<N>)
 where
-    N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy,
+    N: Float,
     A: Dataset<N>,
     I: Initialization<N>,
 {
@@ -26,9 +18,9 @@ where
     let mut bounds = vec![N::from(2).unwrap(); n * k];
     init.init::<A>(data, cent, k);
     for j in 0..k {
-        let nrm = DefaultMath::<N>::dot(cent.center(j), cent.center(j), d).sqrt();
+        let nrm = math::dot(cent.center(j), cent.center(j), d).sqrt();
         if nrm > N::zero() {
-            DefaultMath::<N>::mul_assign(cent.center_mut(j), nrm.recip(), d);
+            math::mul_assign(cent.center_mut(j), nrm.recip(), d);
         }
     }
     let mut scratch = vec![N::zero(); d];
@@ -36,10 +28,10 @@ where
         data.load_into(i, &mut scratch, d);
         let bounds_i = &mut bounds[i * k..i * k + k];
         let mut a = 0;
-        let mut best = clamp_one(DefaultMath::<N>::dot(&scratch, cent.center(0), d));
+        let mut best = clamp_one(math::dot(&scratch, cent.center(0), d));
         bounds_i[0] = best;
         for (j, bound_j) in bounds_i.iter_mut().enumerate().take(k).skip(1) {
-            let sim = clamp_one(DefaultMath::<N>::dot(&scratch, cent.center(j), d));
+            let sim = clamp_one(math::dot(&scratch, cent.center(j), d));
             *bound_j = sim;
             if sim > best {
                 a = j;
@@ -48,7 +40,7 @@ where
         }
         assign[i] = a;
         csize[a] += 1;
-        DefaultMath::<N>::add_assign(sums.center_mut(a), &scratch, d);
+        math::add_assign(sums.center_mut(a), &scratch, d);
     }
     (assign, csize, bounds)
 }
@@ -67,13 +59,10 @@ fn update_bounds<N: Float>(bounds: &mut [N], assign: &[usize], msim: &[N], k: us
 
 #[inline(always)]
 pub fn spherical_selkan<N, I, A>(
-    data: &A,
-    k: usize,
-    init: &mut I,
-    maxiter: usize,
-    tol: N,
+    data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
 ) -> KMeansResult<N>
-where    N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
+where
+    N: Float,
     I: Initialization<N>,
     A: Dataset<N>,
 {
@@ -87,24 +76,15 @@ where    N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::D
     let mut iter = 1;
     while iter < maxiter {
         iter += 1;
-        let old_cent = if tol > N::zero() {
-            Some(cent.clone())
-        } else {
-            None
-        };
+        let old_cent = if tol > N::zero() { Some(cent.clone()) } else { None };
         for j in 0..k {
             if csize[j] > 0 {
-                DefaultMath::<N>::mul(
-                    &mut scratch,
-                    sums.center(j),
-                    N::from(csize[j]).unwrap().recip(),
-                    d,
-                );
-                let nrm = DefaultMath::<N>::norm(&scratch, d);
+                math::mul(&mut scratch, sums.center(j), N::from(csize[j]).unwrap().recip(), d);
+                let nrm = math::norm(&scratch, d);
                 if nrm > N::zero() {
-                    DefaultMath::<N>::mul_assign(&mut scratch, nrm.recip(), d);
-                    msim[j] = clamp_one(DefaultMath::<N>::dot(&scratch, cent.center(j), d));
-                    DefaultMath::<N>::copy(cent.center_mut(j), &scratch, d);
+                    math::mul_assign(&mut scratch, nrm.recip(), d);
+                    msim[j] = clamp_one(math::dot(&scratch, cent.center(j), d));
+                    math::copy(cent.center_mut(j), &scratch, d);
                 } else {
                     msim[j] = N::one();
                 }
@@ -126,14 +106,14 @@ where    N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::D
                     continue;
                 }
                 if recompute_ls {
-                    ls = clamp_one(DefaultMath::<N>::dot(&scratch, cent.center(cur), d));
+                    ls = clamp_one(math::dot(&scratch, cent.center(cur), d));
                     bounds_i[cur] = ls;
                     recompute_ls = false;
                     if ls >= bounds_i[j] {
                         continue;
                     }
                 }
-                let sim = clamp_one(DefaultMath::<N>::dot(&scratch, cent.center(j), d));
+                let sim = clamp_one(math::dot(&scratch, cent.center(j), d));
                 bounds_i[j] = sim;
                 if sim > ls {
                     cur = j;
@@ -145,8 +125,8 @@ where    N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::D
                 assign[i] = cur;
                 csize[orig] -= 1;
                 csize[cur] += 1;
-                DefaultMath::<N>::sub_assign(sums.center_mut(orig), &scratch, d);
-                DefaultMath::<N>::add_assign(sums.center_mut(cur), &scratch, d);
+                math::sub_assign(sums.center_mut(orig), &scratch, d);
+                math::add_assign(sums.center_mut(cur), &scratch, d);
                 changed += 1;
             }
         }
@@ -166,14 +146,10 @@ where    N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::D
 }
 
 pub fn spherical_simp_elkan<N, I, A>(
-    data: &A,
-    k: usize,
-    init: &mut I,
-    maxiter: usize,
-    tol: N,
+    data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
 ) -> KMeansResult<N>
 where
-    N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display + 'static,
+    N: Float,
     I: Initialization<N>,
     A: Dataset<N>,
 {
@@ -182,10 +158,11 @@ where
 
 #[cfg(test)]
 mod tests {
+    use ndarray::Array2;
+
     use crate::cluster::kmeans::init::FirstK;
     use crate::cluster::kmeans::ndarray::NdArrayDataset;
     use crate::cluster::kmeans::spherical::selkan::*;
-    use ndarray::Array2;
 
     #[test]
     fn test_spherical_selkan_basic() {
@@ -197,18 +174,14 @@ mod tests {
         assert!(res.iterations > 0, "spherical simplified elkan did not run");
         assert_eq!(res.assignments.len(), 4);
         assert_eq!(
-            res.assignments
-                .iter()
-                .copied()
-                .collect::<std::collections::HashSet<_>>()
-                .len(),
+            res.assignments.iter().copied().collect::<std::collections::HashSet<_>>().len(),
             2,
             "expected both clusters to be used"
         );
         for j in 0..2 {
             let nrm = ((res.centers[[j, 0]] as f64) * (res.centers[[j, 0]] as f64)
                 + (res.centers[[j, 1]] as f64) * (res.centers[[j, 1]] as f64))
-            .sqrt();
+                .sqrt();
             assert!((nrm - 1.0).abs() < 1e-12, "center is not normalized");
         }
     }

@@ -1,20 +1,14 @@
-use crate::cluster::em::optimizer::EmModel;
-use crate::cluster::kmeans::init::Initialization;
-use crate::cluster::kmeans::Centers;
-use crate::math::DefaultMath;
-use crate::math::Math;
-use crate::{Float, VectorData as Dataset};
-use std::iter::Sum;
-use std::ops::{AddAssign, MulAssign, SubAssign};
-
 use crate::cluster::em::models::common::{log_norm_det_spherical, scale_component_variance};
+use crate::cluster::em::optimizer::EmModel;
+use crate::cluster::kmeans::Centers;
+use crate::cluster::kmeans::init::Initialization;
+use crate::{Float, VectorData as Dataset, math};
 
 /// Numerically stable spherical Gaussian component for EM.
 #[derive(Clone, Debug)]
-pub struct SphericalGaussianModel<M, N>
+pub struct SphericalGaussianModel<N>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
+    N: Float,
 {
     mean: Vec<N>,
     nmean: Vec<N>,
@@ -24,19 +18,10 @@ where
     log_norm_det: N,
     prior_variance: N,
     min_variance: N,
-    _math: std::marker::PhantomData<M>,
 }
 
-impl<M, N> SphericalGaussianModel<M, N>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
-{
-    pub fn new(weight: N, mean: Vec<N>, variance: N, min_variance: N) -> Self
-    where
-        N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-        M: crate::math::Math<N>,
-    {
+impl<N: Float> SphericalGaussianModel<N> {
+    pub fn new(weight: N, mean: Vec<N>, variance: N, min_variance: N) -> Self {
         let mut model = Self {
             nmean: mean.clone(),
             mean,
@@ -46,40 +31,25 @@ where
             log_norm_det: N::zero(),
             prior_variance: variance.max(min_variance),
             min_variance,
-            _math: std::marker::PhantomData,
         };
         model.update_log_norm_det();
         model
     }
 
-    pub fn mean(&self) -> &[N] {
-        &self.mean
-    }
+    pub fn mean(&self) -> &[N] { &self.mean }
 
-    pub fn variance(&self) -> N {
-        self.variance
-    }
+    pub fn variance(&self) -> N { self.variance }
 
     /// Minimum variance used by the model.
-    pub fn min_variance(&self) -> N {
-        self.min_variance
-    }
+    pub fn min_variance(&self) -> N { self.min_variance }
 
     fn update_log_norm_det(&mut self) {
-        self.log_norm_det = log_norm_det_spherical(
-            self.weight,
-            self.mean.len(),
-            self.variance,
-            self.min_variance,
-        );
+        self.log_norm_det =
+            log_norm_det_spherical(self.weight, self.mean.len(), self.variance, self.min_variance);
     }
 }
 
-impl<M, N> EmModel<N> for SphericalGaussianModel<M, N>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
-{
+impl<N: Float> EmModel<N> for SphericalGaussianModel<N> {
     fn begin_estep(&mut self) {
         self.wsum = N::zero();
         self.variance = N::zero();
@@ -130,9 +100,7 @@ where
         -N::from(0.5).unwrap() * mahal + self.log_norm_det
     }
 
-    fn weight(&self) -> N {
-        self.weight
-    }
+    fn weight(&self) -> N { self.weight }
 
     fn set_weight(&mut self, weight: N) {
         self.weight = weight.max(N::epsilon());
@@ -142,30 +110,18 @@ where
 
 /// Factory for numerically stable spherical Gaussian mixture models.
 #[derive(Debug)]
-pub struct SphericalGaussianModelFactory<M, N, I>
+pub struct SphericalGaussianModelFactory<N, I>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
+    N: Float,
     I: Initialization<N>,
 {
     pub initializer: I,
     pub min_variance: N,
-    _math: std::marker::PhantomData<M>,
 }
 
-impl<M, N, I> SphericalGaussianModelFactory<M, N, I>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
-    I: Initialization<N>,
-{
-    /// Create a factory using a specific math backend `M`.
-    pub fn with_math(initializer: I) -> Self {
-        Self {
-            initializer,
-            min_variance: N::from(1e-10).unwrap(),
-            _math: std::marker::PhantomData,
-        }
+impl<N: Float, I: Initialization<N>> SphericalGaussianModelFactory<N, I> {
+    pub fn new(initializer: I) -> Self {
+        Self { initializer, min_variance: N::from(1e-10).unwrap() }
     }
 
     fn global_spherical_variance<A>(&self, data: &A) -> N
@@ -191,15 +147,15 @@ where
 
             // nmean = mean + (scratch - mean) * f
             let mut delta = scratch.clone();
-            DefaultMath::<N>::sub_assign(&mut delta, &mean, d);
-            DefaultMath::<N>::mul_assign(&mut delta, f, d);
+            math::sub_assign(&mut delta, &mean, d);
+            math::mul_assign(&mut delta, f, d);
             let mut nmean_vec = mean.clone();
-            DefaultMath::<N>::add_assign(&mut nmean_vec, &delta, d);
+            math::add_assign(&mut nmean_vec, &delta, d);
 
             // acc += dot(scratch - nmean, scratch - mean)
             let mut delta2 = scratch.clone();
-            DefaultMath::<N>::sub_assign(&mut delta2, &nmean_vec, d);
-            acc += DefaultMath::<N>::dot(&delta2, &delta, d);
+            math::sub_assign(&mut delta2, &nmean_vec, d);
+            acc += math::dot(&delta2, &delta, d);
 
             mean.copy_from_slice(&nmean_vec);
         }
@@ -207,25 +163,16 @@ where
         (acc / (nf * df)).max(self.min_variance)
     }
 
-    pub fn build_initial_models<A>(
-        &mut self,
-        data: &A,
-        k: usize,
-    ) -> Vec<SphericalGaussianModel<M, N>>
+    pub fn build_initial_models<A>(&mut self, data: &A, k: usize) -> Vec<SphericalGaussianModel<N>>
     where
         A: Dataset<N>,
-        M: crate::math::Math<N>,
     {
         let d = data.ncols();
         let mut cent = Centers::<N>::new(k, d);
         self.initializer.init::<A>(data, &mut cent, k);
 
-        let var = scale_component_variance(
-            SphericalGaussianModelFactory::<M, N, I>::global_spherical_variance(self, data),
-            k,
-            d,
-            self.min_variance,
-        );
+        let var =
+            scale_component_variance(self.global_spherical_variance(data), k, d, self.min_variance);
         let weight = N::one() / N::from(k).unwrap();
         let mut models = Vec::with_capacity(k);
         for i in 0..k {
@@ -238,42 +185,27 @@ where
         }
         models
     }
-}
 
-impl<N, I> SphericalGaussianModelFactory<crate::math::DefaultMath<N>, N, I>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    I: Initialization<N>,
-{
-    /// Default-math convenience constructor.
-    pub fn new(initializer: I) -> Self {
-        SphericalGaussianModelFactory::with_math(initializer)
-    }
-
-    /// Dispatch wrapper analogous to diagonal version.
     pub fn build_initial_models_dispatch<A>(
-        initializer: I,
-        data: &A,
-        k: usize,
-    ) -> Vec<SphericalGaussianModel<crate::math::DefaultMath<N>, N>>
+        initializer: I, data: &A, k: usize,
+    ) -> Vec<SphericalGaussianModel<N>>
     where
-        N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum + 'static,
         A: Dataset<N>,
     {
-        let mut factory: SphericalGaussianModelFactory<crate::math::DefaultMath<N>, N, I> =
-            SphericalGaussianModelFactory::with_math(initializer);
+        let mut factory = SphericalGaussianModelFactory::new(initializer);
         factory.build_initial_models(data, k)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use ndarray::Array2;
+
     use super::*;
     use crate::cluster::em::models::spherical::SphericalGaussianModelFactory;
     use crate::cluster::em::optimizer::{EmConfig, expectation_maximization};
     use crate::cluster::kmeans::init::FirstK;
     use crate::cluster::kmeans::ndarray::NdArrayDataset;
-    use ndarray::Array2;
 
     fn two_blob_data() -> Array2<f64> {
         let mut data = Array2::<f64>::zeros((200, 2));
@@ -293,12 +225,7 @@ mod tests {
         let dim = 2;
         let mean = vec![0.0f64; dim];
         let var = 1.0f64;
-        let mut m = SphericalGaussianModel::<crate::math::DefaultMath<f64>, f64>::new(
-            1.0,
-            mean.clone(),
-            var,
-            1e-10,
-        );
+        let mut m = SphericalGaussianModel::<f64>::new(1.0, mean.clone(), var, 1e-10);
         let ld = m.estimate_log_density(&mean);
         let expected = -0.5 * (dim as f64) * (2.0 * std::f64::consts::PI).ln();
         assert!((ld - expected).abs() < 1e-12);
@@ -316,19 +243,12 @@ mod tests {
             &ds,
             2,
         );
-        let cfg = EmConfig::<f64> {
-            maxiter: 100,
-            ..Default::default()
-        };
+        let cfg = EmConfig::<f64> { maxiter: 100, ..Default::default() };
         let result = expectation_maximization(&ds, 2, models, cfg);
         assert!(result.n_iter > 0);
         assert!(result.log_likelihood.is_finite());
         assert!(result.models.iter().all(|m| m.variance() > 0.0));
-        let means = result
-            .models
-            .iter()
-            .map(|m| m.mean()[0])
-            .collect::<Vec<_>>();
+        let means = result.models.iter().map(|m| m.mean()[0]).collect::<Vec<_>>();
         assert_eq!(means.len(), 2);
         assert!((means[0] - means[1]).abs() > 1e-6);
     }

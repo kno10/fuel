@@ -5,13 +5,14 @@ use std::error::Error;
 use std::time::Instant;
 
 use common::{CountingDistance, read_numeric_data_with_limit};
-use fuel::{TableWithDistance, condensed_distance_matrix::CondensedDistanceMatrix};
+use fuel::TableWithDistance;
 use fuel::cluster::hdbscan::extraction::{ExtractedHierarchy, extract_simplified_hierarchy};
 use fuel::cluster::hierarchical::{
     Merge, MergeHistory, SingleLinkage, agnes, anderberg, boruvka_searchers_single_link,
     buffered_search_single_link, heap_of_searchers_single_link, lazy_buffered_search_single_link,
     muellner, nn_chain, restarting_search_single_link, slink,
 };
+use fuel::condensed_distance_matrix::CondensedDistanceMatrix;
 use fuel::distance::Euclidean;
 use fuel::search::kdtree::{KdTree, MaxVarianceSplit};
 use fuel::search::vptree::VPTree;

@@ -6,8 +6,7 @@ use ndarray::Array2;
 
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// Build initial assignments using squared L2 distances (just like Lloyd).
 #[allow(dead_code)]
@@ -58,16 +57,16 @@ where
     // centre during the selection process).
     for (i, assign_i) in assign.iter_mut().enumerate().take(n) {
         data.load_into(i, &mut scratch, d);
-        let (mut a, mut s_sq) = (0, DefaultMath::<N>::sqdist(cent.center(0), &scratch, d));
+        let (mut a, mut s_sq) = (0, math::sqdist(cent.center(0), &scratch, d));
         for j in 1..k {
-            let tmp_sq = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+            let tmp_sq = math::sqdist(cent.center(j), &scratch, d);
             if tmp_sq < s_sq {
                 (a, s_sq) = (j, tmp_sq);
             }
         }
         csize[a] += 1;
         *assign_i = a;
-        lastsum += DefaultMath::<N>::sqdist(cent.center(a), &scratch, d).sqrt();
+        lastsum += math::sqdist(cent.center(a), &scratch, d).sqrt();
         if let Some(ref mut cache) = prev_sq {
             cache[i] = s_sq;
         }
@@ -135,7 +134,7 @@ where
             // Weiszfeld step.
             if prev_dists_are_squared { prev_dists[i].sqrt() } else { prev_dists[i] }
         } else {
-            DefaultMath::<N>::sqdist(&out, &point, d).sqrt()
+            math::sqdist(&out, &point, d).sqrt()
         };
         if dist <= eps {
             // treat as coincident; count multiplicity but do not add to
@@ -145,12 +144,12 @@ where
         }
         let inv = N::one() / dist;
         // numer += point / dist
-        DefaultMath::<N>::axpy(&mut numer, inv, &point, d);
+        math::axpy(&mut numer, inv, &point, d);
         // r_vec += (point - out) / dist
         let mut diff = point.clone();
-        DefaultMath::<N>::sub_assign(&mut diff, &out, d);
-        DefaultMath::<N>::mul_assign(&mut diff, inv, d);
-        DefaultMath::<N>::add_assign(&mut r_vec, &diff, d);
+        math::sub_assign(&mut diff, &out, d);
+        math::mul_assign(&mut diff, inv, d);
+        math::add_assign(&mut r_vec, &diff, d);
         denom += inv;
     }
 
@@ -161,13 +160,13 @@ where
 
     // compute t1 = numer / denom
     let mut t1 = vec![N::zero(); d];
-    DefaultMath::<N>::mul(&mut t1, &numer, N::one() / denom, d);
+    math::mul(&mut t1, &numer, N::one() / denom, d);
 
     if eta_count == 0 {
         return t1;
     }
 
-    let r_norm = DefaultMath::<N>::norm(&r_vec, d);
+    let r_norm = math::norm(&r_vec, d);
     let gamma = if r_norm > eps {
         let ratio = N::from(eta_count).unwrap_or(N::one()) / r_norm;
         if ratio < N::one() { ratio } else { N::one() }
@@ -177,8 +176,8 @@ where
     };
 
     let mut out_new = t1.clone();
-    DefaultMath::<N>::mul_assign(&mut out_new, N::one() - gamma, d);
-    DefaultMath::<N>::axpy(&mut out_new, gamma, &out, d);
+    math::mul_assign(&mut out_new, N::one() - gamma, d);
+    math::axpy(&mut out_new, gamma, &out, d);
     out_new
 }
 
@@ -217,7 +216,7 @@ where
             if count == 0 {
                 continue;
             }
-            DefaultMath::<N>::copy(&mut current, cent.center(j), d);
+            math::copy(&mut current, cent.center(j), d);
             for step in 0..steps {
                 let updated = weiszfeld_step::<N, A>(
                     data,
@@ -227,16 +226,16 @@ where
                     if step == 0 { prev_sq.as_deref() } else { None },
                     true,
                 );
-                DefaultMath::<N>::copy(&mut current, &updated, d);
+                math::copy(&mut current, &updated, d);
             }
-            DefaultMath::<N>::copy(new_cent.center_mut(j), &current, d);
+            math::copy(new_cent.center_mut(j), &current, d);
         }
 
         // tolerance check
         if tol > N::zero() {
             let mut diff_sq = N::zero();
             for j in 0..k {
-                diff_sq += DefaultMath::<N>::sqdist(cent.center(j), new_cent.center(j), d);
+                diff_sq += math::sqdist(cent.center(j), new_cent.center(j), d);
             }
             let diff = diff_sq.sqrt();
             let rel = if old_norm == N::zero() { diff } else { diff / old_norm };
@@ -255,12 +254,12 @@ where
             let aa = *assign_i;
             data.load_into(i, &mut scratch, d);
             // Reassignment must be exact against the current centers.
-            let (mut a, mut s_sq) = (aa, DefaultMath::<N>::sqdist(cent.center(aa), &scratch, d));
+            let (mut a, mut s_sq) = (aa, math::sqdist(cent.center(aa), &scratch, d));
             for j in 0..k {
                 if j == aa {
                     continue;
                 }
-                let tmp_sq = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+                let tmp_sq = math::sqdist(cent.center(j), &scratch, d);
                 if tmp_sq < s_sq {
                     (a, s_sq) = (j, tmp_sq);
                 }
@@ -289,9 +288,9 @@ where
     let mut lastsum = N::zero();
     for (i, assign_i) in assign.iter_mut().enumerate().take(n) {
         data.load_into(i, &mut scratch, d);
-        let (mut a, mut s_sq) = (0, DefaultMath::<N>::sqdist(cent.center(0), &scratch, d));
+        let (mut a, mut s_sq) = (0, math::sqdist(cent.center(0), &scratch, d));
         for j in 1..k {
-            let tmp_sq = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+            let tmp_sq = math::sqdist(cent.center(j), &scratch, d);
             if tmp_sq < s_sq {
                 (a, s_sq) = (j, tmp_sq);
             }
@@ -309,7 +308,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     struct SimpleDataset<N> {
         data: Vec<N>,
@@ -426,7 +424,7 @@ mod kgeometric_tests {
         for (i, &idx) in assign.iter().enumerate().take(dataset.nrows()) {
             dataset.load_into(i, &mut scratch, dataset.ncols());
             let row = cent.row(idx);
-            let sq = DefaultMath::<f64>::sqdist(&scratch, row.as_slice().unwrap(), dataset.ncols());
+            let sq = math::sqdist(&scratch, row.as_slice().unwrap(), dataset.ncols());
             loss += sq.sqrt();
         }
         assert!((loss - los).abs() < 1e-12, "loss not correct");
@@ -464,7 +462,7 @@ mod kgeometric_tests {
             for (i, &idx) in assign.iter().enumerate().take(n) {
                 data.load_into(i, &mut scratch, d);
                 let row = centers.row(idx);
-                let sq = DefaultMath::<f64>::sqdist(&scratch, row.as_slice().unwrap(), d);
+                let sq = math::sqdist(&scratch, row.as_slice().unwrap(), d);
                 loss += sq.sqrt();
             }
             loss

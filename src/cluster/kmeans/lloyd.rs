@@ -3,8 +3,7 @@ use std::ops::*;
 
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// Perform the Lloyd cluster assignment
 // Inline always to allow CPU optimization!
@@ -43,7 +42,7 @@ where
             let a = assign[i];
             csize[a] += 1;
             data.load_into(i, scratch, d);
-            DefaultMath::<N>::add_assign(sums.center_mut(a), scratch, d);
+            math::add_assign(sums.center_mut(a), scratch, d);
             lastsum += best[i];
         }
     } else {
@@ -51,16 +50,16 @@ where
         // Initial assignment, first iteration:
         for (i, assign_i) in assign.iter_mut().enumerate().take(n) {
             data.load_into(i, scratch, d);
-            let (mut a, mut s) = (0, DefaultMath::<N>::sqdist(cent.center(0), scratch, d));
+            let (mut a, mut s) = (0, math::sqdist(cent.center(0), scratch, d));
             for j in 1..k {
-                let tmp = DefaultMath::<N>::sqdist(cent.center(j), scratch, d);
+                let tmp = math::sqdist(cent.center(j), scratch, d);
                 if tmp < s {
                     (a, s) = (j, tmp);
                 }
             }
             csize[a] += 1;
             *assign_i = a;
-            DefaultMath::<N>::add_assign(sums.center_mut(a), scratch, d);
+            math::add_assign(sums.center_mut(a), scratch, d);
             lastsum += s;
         }
     }
@@ -93,22 +92,17 @@ where
         for (j, &csize_j) in csize.iter().enumerate().take(k) {
             if csize_j > 0 {
                 // compute new center in scratch first
-                DefaultMath::<N>::mul(
-                    &mut scratch,
-                    sums.center(j),
-                    N::from(csize_j).unwrap().recip(),
-                    d,
-                );
+                math::mul(&mut scratch, sums.center(j), N::from(csize_j).unwrap().recip(), d);
                 if tol > N::zero() {
-                    let tmp_sq = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+                    let tmp_sq = math::sqdist(cent.center(j), &scratch, d);
                     diff_sq += tmp_sq;
                 }
-                DefaultMath::<N>::copy(cent.center_mut(j), &scratch, d);
+                math::copy(cent.center_mut(j), &scratch, d);
             }
         }
         // tolerance check
         if tol > N::zero() {
-            // diff_sq already computed using DefaultMath::<N>::sqdist
+            // diff_sq already computed using math::sqdist
             let diff = diff_sq.sqrt();
             let rel = if old_norm == N::zero() { diff } else { diff / old_norm };
             if rel <= tol {
@@ -119,9 +113,9 @@ where
         for (i, assign_i) in assign.iter_mut().enumerate().take(n) {
             let aa = *assign_i;
             data.load_into(i, &mut scratch, d);
-            let (mut a, mut s) = (0, DefaultMath::<N>::sqdist(cent.center(0), &scratch, d));
+            let (mut a, mut s) = (0, math::sqdist(cent.center(0), &scratch, d));
             for j in 1..k {
-                let tmp = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+                let tmp = math::sqdist(cent.center(j), &scratch, d);
                 if tmp < s || (j == aa && tmp == s) {
                     (a, s) = (j, tmp);
                 }
@@ -130,8 +124,8 @@ where
                 *assign_i = a;
                 csize[aa] -= 1;
                 csize[a] += 1;
-                DefaultMath::<N>::sub_assign(sums.center_mut(aa), &scratch, d);
-                DefaultMath::<N>::add_assign(sums.center_mut(a), &scratch, d);
+                math::sub_assign(sums.center_mut(aa), &scratch, d);
+                math::add_assign(sums.center_mut(a), &scratch, d);
                 changed += 1;
             }
             sum += s;

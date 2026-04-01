@@ -1,11 +1,9 @@
 use std::iter::Sum;
 use std::ops::*;
 
-
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// K-harmonic means clustering as described in the literature.
 ///
@@ -57,7 +55,7 @@ where
         for i in 0..n {
             data.load_into(i, &mut scratch, d);
             for j in 0..k {
-                let sd = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+                let sd = math::sqdist(cent.center(j), &scratch, d);
                 dist[i * k + j] = sd.sqrt();
             }
         }
@@ -131,12 +129,12 @@ where
                 data.load_into(i, &mut scratch, d);
                 let w = m_ij * weight[i];
                 // weighted accumulation: cent[j] += w * scratch
-                DefaultMath::<N>::axpy(cent.center_mut(j), w, &scratch, d);
+                math::axpy(cent.center_mut(j), w, &scratch, d);
                 denom += w;
             }
             if denom > N::zero() {
                 // divide the accumulated sum by denom to get the new center
-                DefaultMath::<N>::mul_assign(cent.center_mut(j), denom.recip(), d);
+                math::mul_assign(cent.center_mut(j), denom.recip(), d);
             }
         }
     }

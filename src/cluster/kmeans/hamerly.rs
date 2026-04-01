@@ -3,8 +3,7 @@ use std::ops::*;
 
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 // helper alias to reduce complexity of return types in several algorithms
 type AssignmentResult<N> = (Vec<usize>, Vec<usize>, Vec<(N, N)>, Vec<usize>);
@@ -51,7 +50,7 @@ where
             bounds[i] = (bounds[i].0.sqrt(), bounds[i].1.sqrt());
             csize[a] += 1;
             data.load_into(i, scratch, d);
-            DefaultMath::<N>::add_assign(sums.center_mut(a), scratch, d);
+            math::add_assign(sums.center_mut(a), scratch, d);
         }
     } else {
         init.init::<A>(data, cent, k);
@@ -61,8 +60,7 @@ where
             let ci = &cent.center(i);
             for j in 0..i {
                 debug_assert!(idx == triindex(i, j));
-                cdist[idx] =
-                    N::from(0.25).unwrap() * DefaultMath::<N>::sqdist(ci, cent.center(j), d);
+                cdist[idx] = N::from(0.25).unwrap() * math::sqdist(ci, cent.center(j), d);
                 idx += 1;
             }
         }
@@ -72,7 +70,7 @@ where
             let (mut a, mut s, mut b, mut s2) = (k, N::infinity(), k, N::infinity());
             for j in 0..k {
                 if j <= 1 || s2 > cdist[triindex(a, j)] {
-                    let tmp = DefaultMath::<N>::sqdist(cent.center(j), scratch, d);
+                    let tmp = math::sqdist(cent.center(j), scratch, d);
                     if tmp < s {
                         (a, s, b, s2) = (j, tmp, a, s);
                     } else if tmp < s2 {
@@ -85,7 +83,7 @@ where
             debug_assert!(b < k);
             assign2[i] = b;
             bounds[i] = (s.sqrt(), s2.sqrt());
-            DefaultMath::<N>::add_assign(sums.center_mut(a), scratch, d);
+            math::add_assign(sums.center_mut(a), scratch, d);
         }
     }
     (assign, csize, bounds, assign2)
@@ -127,17 +125,12 @@ where
         let mut diff_sq = N::zero();
         for j in 0..k {
             if csize[j] > 0 {
-                DefaultMath::<N>::mul(
-                    &mut scratch,
-                    sums.center(j),
-                    N::from(csize[j]).unwrap().recip(),
-                    d,
-                );
-                let tmp = DefaultMath::<N>::sqdist(&scratch, cent.center(j), d).sqrt();
+                math::mul(&mut scratch, sums.center(j), N::from(csize[j]).unwrap().recip(), d);
+                let tmp = math::sqdist(&scratch, cent.center(j), d).sqrt();
                 if tol > N::zero() {
                     diff_sq += tmp * tmp;
                 }
-                DefaultMath::<N>::copy(cent.center_mut(j), &scratch, d);
+                math::copy(cent.center_mut(j), &scratch, d);
                 cmov[j] = tmp;
                 if tmp > cmov1 {
                     (most, cmov1, cmov2) = (j, tmp, cmov1);
@@ -161,7 +154,7 @@ where
         for i in 1..k {
             let ci = &cent.center(i);
             for j in 0..i {
-                let tmp = DefaultMath::<N>::sqdist(ci, cent.center(j), d);
+                let tmp = math::sqdist(ci, cent.center(j), d);
                 if tmp < cnear[i] {
                     cnear[i] = tmp;
                 }
@@ -186,7 +179,7 @@ where
             }
             // Make upper bound tight first:
             data.load_into(i, &mut scratch, d);
-            let daa = DefaultMath::<N>::sqdist(cent.center(aa), &scratch, d); // squared
+            let daa = math::sqdist(cent.center(aa), &scratch, d); // squared
             upper_i = daa.sqrt(); // bounds are non-squared
             if upper_i <= lower_i || upper_i <= cnear[aa] {
                 bounds[i] = (upper_i, lower_i); // update
@@ -197,7 +190,7 @@ where
             let (mut a, mut s, mut b, mut s2) = (aa, daa, k, N::infinity());
             for j in 0..k {
                 if j != aa {
-                    let tmp = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+                    let tmp = math::sqdist(cent.center(j), &scratch, d);
                     if tmp < s {
                         (a, s, b, s2) = (j, tmp, a, s);
                     } else if tmp < s2 {
@@ -215,8 +208,8 @@ where
                 assign[i] = a;
                 csize[aa] -= 1;
                 csize[a] += 1;
-                DefaultMath::<N>::sub_assign(sums.center_mut(aa), &scratch, d);
-                DefaultMath::<N>::add_assign(sums.center_mut(a), &scratch, d);
+                math::sub_assign(sums.center_mut(aa), &scratch, d);
+                math::add_assign(sums.center_mut(a), &scratch, d);
                 changed += 1;
             }
         }

@@ -3,8 +3,7 @@ use std::ops::*;
 
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// Hartigan-Wong k-means (Algorithm AS 136).
 ///
@@ -64,13 +63,13 @@ where
         let l1 = assign[i];
         let mut best = l1;
         let mut best_d = N::infinity();
-        let d1 = DefaultMath::<N>::sqdist(cent.center(l1), &scratch, d);
+        let d1 = math::sqdist(cent.center(l1), &scratch, d);
         dist1[i] = d1 * an1[l1];
         for l in 0..k {
             if l == l1 {
                 continue;
             }
-            let d = DefaultMath::<N>::sqdist(cent.center(l), &scratch, d);
+            let d = math::sqdist(cent.center(l), &scratch, d);
             if d < best_d {
                 best_d = d;
                 best = l;
@@ -104,14 +103,14 @@ where
 
             if ncp[l1] != 0 {
                 data.load_into(i, &mut scratch, d);
-                let d1 = DefaultMath::<N>::sqdist(cent.center(l1), &scratch, d);
+                let d1 = math::sqdist(cent.center(l1), &scratch, d);
                 dist1[i] = d1 * an1[l1];
             }
 
             // Determine the best candidate cluster (starting from IC2).
             let mut l2 = second[i];
             data.load_into(i, &mut scratch, d);
-            let mut r2 = DefaultMath::<N>::sqdist(cent.center(l2), &scratch, d) * an2[l2];
+            let mut r2 = math::sqdist(cent.center(l2), &scratch, d) * an2[l2];
 
             // Search for a better transfer.
             for l in 0..k {
@@ -121,7 +120,7 @@ where
                 if i >= live[l1] && i >= live[l] {
                     continue;
                 }
-                let r2cand = DefaultMath::<N>::sqdist(cent.center(l), &scratch, d) * an2[l];
+                let r2cand = math::sqdist(cent.center(l), &scratch, d) * an2[l];
                 if r2cand < r2 {
                     r2 = r2cand;
                     l2 = l;
@@ -135,19 +134,19 @@ where
 
                 // remove from l1
                 csize[l1] -= 1;
-                DefaultMath::<N>::sub_assign(sums.center_mut(l1), &scratch, d);
+                math::sub_assign(sums.center_mut(l1), &scratch, d);
                 if csize[l1] > 0 {
                     let recip = N::from(csize[l1]).unwrap().recip();
-                    DefaultMath::<N>::mul(&mut center_buf, sums.center(l1), recip, d);
-                    DefaultMath::<N>::copy(cent.center_mut(l1), &center_buf, d);
+                    math::mul(&mut center_buf, sums.center(l1), recip, d);
+                    math::copy(cent.center_mut(l1), &center_buf, d);
                 }
 
                 // add to l2
                 csize[l2] += 1;
-                DefaultMath::<N>::add_assign(sums.center_mut(l2), &scratch, d);
+                math::add_assign(sums.center_mut(l2), &scratch, d);
                 let recip = N::from(csize[l2]).unwrap().recip();
-                DefaultMath::<N>::mul(&mut center_buf, sums.center(l2), recip, d);
-                DefaultMath::<N>::copy(cent.center_mut(l2), &center_buf, d);
+                math::mul(&mut center_buf, sums.center(l2), recip, d);
+                math::copy(cent.center_mut(l2), &center_buf, d);
 
                 assign[i] = l2;
                 second[i] = l1;
@@ -193,7 +192,7 @@ where
                 }
 
                 data.load_into(i, &mut scratch, d);
-                let d2 = DefaultMath::<N>::sqdist(cent.center(l2), &scratch, d);
+                let d2 = math::sqdist(cent.center(l2), &scratch, d);
 
                 let r2 = dist1[i] / an2[l2];
                 if d2 >= r2 {
@@ -205,18 +204,18 @@ where
                 let mut center_buf = vec![N::zero(); d];
 
                 csize[l1] -= 1;
-                DefaultMath::<N>::sub_assign(sums.center_mut(l1), &scratch, d);
+                math::sub_assign(sums.center_mut(l1), &scratch, d);
                 if csize[l1] > 0 {
                     let recip = N::from(csize[l1]).unwrap().recip();
-                    DefaultMath::<N>::mul(&mut center_buf, sums.center(l1), recip, d);
-                    DefaultMath::<N>::copy(cent.center_mut(l1), &center_buf, d);
+                    math::mul(&mut center_buf, sums.center(l1), recip, d);
+                    math::copy(cent.center_mut(l1), &center_buf, d);
                 }
 
                 csize[l2] += 1;
-                DefaultMath::<N>::add_assign(sums.center_mut(l2), &scratch, d);
+                math::add_assign(sums.center_mut(l2), &scratch, d);
                 let recip = N::from(csize[l2]).unwrap().recip();
-                DefaultMath::<N>::mul(&mut center_buf, sums.center(l2), recip, d);
-                DefaultMath::<N>::copy(cent.center_mut(l2), &center_buf, d);
+                math::mul(&mut center_buf, sums.center(l2), recip, d);
+                math::copy(cent.center_mut(l2), &center_buf, d);
 
                 assign[i] = l2;
                 second[i] = l1;
@@ -256,7 +255,7 @@ where
     let mut sum = N::zero();
     for i in 0..n {
         data.load_into(i, &mut scratch, d);
-        sum += DefaultMath::<N>::sqdist(cent.center(assign[i]), &scratch, d);
+        sum += math::sqdist(cent.center(assign[i]), &scratch, d);
     }
 
     KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, sum)
@@ -299,7 +298,7 @@ where
             if j == r {
                 continue;
             }
-            let ds = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+            let ds = math::sqdist(cent.center(j), &scratch, d);
             if ds < best_d {
                 best_d = ds;
                 best_j = j;
@@ -322,11 +321,11 @@ where
             if nr <= 1 {
                 continue;
             }
-            let dr = DefaultMath::<N>::sqdist(cent.center(r), &scratch, d);
+            let dr = math::sqdist(cent.center(r), &scratch, d);
 
             // Try quick transfer using the most promising alternative cluster.
             let mut best_j = best2_idx[i];
-            let ds = DefaultMath::<N>::sqdist(cent.center(best_j), &scratch, d);
+            let ds = math::sqdist(cent.center(best_j), &scratch, d);
             best2_dist[i] = ds;
 
             let ns = csize[best_j];
@@ -344,7 +343,7 @@ where
                         continue;
                     }
                     let ns = csize[j];
-                    let ds = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+                    let ds = math::sqdist(cent.center(j), &scratch, d);
                     let delta = dr * N::from(nr).unwrap() / (N::from(nr).unwrap() - N::one())
                         - ds * N::from(ns).unwrap() / (N::from(ns).unwrap() + N::one());
                     if delta > best_delta_opt {
@@ -358,11 +357,11 @@ where
             if moved {
                 // perform move
                 csize[r] -= 1;
-                DefaultMath::<N>::sub_assign(sums.center_mut(r), &scratch, d);
+                math::sub_assign(sums.center_mut(r), &scratch, d);
                 if csize[r] > 0 {
                     let recip = N::from(csize[r]).unwrap().recip();
-                    DefaultMath::<N>::mul(&mut scratch, sums.center(r), recip, d);
-                    DefaultMath::<N>::copy(cent.center_mut(r), &scratch, d);
+                    math::mul(&mut scratch, sums.center(r), recip, d);
+                    math::copy(cent.center_mut(r), &scratch, d);
                 } else {
                     for v in cent.center_mut(r).iter_mut() {
                         *v = N::zero();
@@ -373,10 +372,10 @@ where
                 }
 
                 csize[best_j] += 1;
-                DefaultMath::<N>::add_assign(sums.center_mut(best_j), &scratch, d);
+                math::add_assign(sums.center_mut(best_j), &scratch, d);
                 let recip = N::from(csize[best_j]).unwrap().recip();
-                DefaultMath::<N>::mul(&mut scratch, sums.center(best_j), recip, d);
-                DefaultMath::<N>::copy(cent.center_mut(best_j), &scratch, d);
+                math::mul(&mut scratch, sums.center(best_j), recip, d);
+                math::copy(cent.center_mut(best_j), &scratch, d);
 
                 assign[i] = best_j;
                 changed += 1;
@@ -390,7 +389,7 @@ where
                     if j == r_new {
                         continue;
                     }
-                    let ds2 = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+                    let ds2 = math::sqdist(cent.center(j), &scratch, d);
                     if ds2 < best_d2 {
                         best_d2 = ds2;
                         best_j2 = j;
@@ -420,7 +419,7 @@ where
     let mut sum = N::zero();
     for i in 0..n {
         data.load_into(i, &mut scratch, d);
-        sum += DefaultMath::<N>::sqdist(cent.center(assign[i]), &scratch, d);
+        sum += math::sqdist(cent.center(assign[i]), &scratch, d);
     }
 
     KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, sum)
@@ -503,7 +502,7 @@ mod tests {
                     let mut buf = vec![N::zero(); 2];
                     buf[0] = N::from(c[0]).unwrap();
                     buf[1] = N::from(c[1]).unwrap();
-                    DefaultMath::<N>::copy(cent.center_mut(i), &buf, 2);
+                    math::copy(cent.center_mut(i), &buf, 2);
                 }
             }
 

@@ -2,14 +2,11 @@
 ///
 /// This helps with using SSE, AVX, and similar instruction sets.
 #[allow(dead_code)]
-use std::iter::Sum;
 use std::ops::*;
 
 use ndarray::{Array2, ArrayBase, Data, Ix2, RawData};
-use num_traits::Float; // FIXME: prefer crate::Float
 
-use crate::VectorData as Dataset;
-use crate::math::{DefaultMath, Math};
+use crate::{Float, VectorData as Dataset, math};
 
 pub fn compute_loss<N, D, A>(
     data: &A,
@@ -17,7 +14,7 @@ pub fn compute_loss<N, D, A>(
     assign: &[usize],
 ) -> N
 where
-    N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
+    N: Float + std::fmt::Display,
     D: RawData<Elem = N> + Data,
     A: Dataset<N>,
 {
@@ -26,7 +23,7 @@ where
     (0..n)
         .map(|i| {
             data.load_into(i, &mut scratch, d);
-            DefaultMath::<N>::sqdist(cent.row(assign[i]).as_slice().unwrap(), &scratch, d)
+            math::sqdist(cent.row(assign[i]).as_slice().unwrap(), &scratch, d)
         })
         .sum()
 }
@@ -114,7 +111,7 @@ pub fn compute_fuzzy_loss<N, D, A>(
     data: &A, cent: &ArrayBase<D, Ix2>, u: &ArrayBase<D, Ix2>, m: N,
 ) -> N
 where
-    N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
+    N: Float + std::fmt::Display,
     D: RawData<Elem = N> + Data,
     A: Dataset<N>,
 {
@@ -127,7 +124,7 @@ where
         for j in 0..k {
             let uval = u[[i, j]];
             let um = uval.powf(m);
-            let dist = DefaultMath::<N>::sqdist(cent.row(j).as_slice().unwrap(), &scratch, d);
+            let dist = math::sqdist(cent.row(j).as_slice().unwrap(), &scratch, d);
             loss += um * dist;
         }
     }
@@ -169,7 +166,7 @@ pub struct Centers<N> {
 
 impl<N> Centers<N>
 where
-    N: Float + Copy,
+    N: Float,
 {
     #[inline]
     pub fn new(k: usize, d: usize) -> Self { Self { k, d, centers: vec![N::zero(); k * d] } }
@@ -196,7 +193,7 @@ where
 // additional helper methods used for tolerance checks
 impl<N> Centers<N>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Mul<Output = N> + Sum,
+    N: Float,
 {
     /// Frobenius norm of all centers treated as a matrix.
     #[inline]
@@ -205,7 +202,7 @@ where
         for i in 0..self.k {
             let row = self.center(i);
             // dot(row, row) yields squared norm of the row
-            sum += DefaultMath::<N>::dot(row, row, self.d);
+            sum += math::dot(row, row, self.d);
         }
         sum.sqrt()
     }
@@ -215,7 +212,7 @@ where
     pub fn diff_frobenius_norm(&self, other: &Self) -> N {
         let mut sum = N::zero();
         for i in 0..self.k {
-            sum += DefaultMath::<N>::sqdist(self.center(i), other.center(i), self.d);
+            sum += math::sqdist(self.center(i), other.center(i), self.d);
         }
         sum.sqrt()
     }

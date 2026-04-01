@@ -3,8 +3,7 @@ use std::ops::*;
 
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// Standard k-means algorithm (Lloyd, Forgy) - naive textbook implementation
 // Inline always to allow CPU optimization!
@@ -36,7 +35,7 @@ where
             data.load_into(i, &mut scratch, d);
             let (mut a, mut s) = (k, N::infinity());
             for j in 0..k {
-                let tmp = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d);
+                let tmp = math::sqdist(cent.center(j), &scratch, d);
                 if tmp < s {
                     (a, s) = (j, tmp);
                 }
@@ -58,7 +57,7 @@ where
         }
         for i in 0..n {
             data.load_into(i, &mut scratch, d);
-            DefaultMath::<N>::add_assign(cent.center_mut(assign[i]), &scratch, d);
+            math::add_assign(cent.center_mut(assign[i]), &scratch, d);
             csize[assign[i]] += 1;
         }
         for (j, &csize_j) in csize.iter().enumerate().take(k) {
@@ -66,7 +65,7 @@ where
                 println!("Cluster has become empty, not handled in naive implementation!");
                 continue;
             }
-            DefaultMath::<N>::mul_assign(cent.center_mut(j), N::from(csize_j).unwrap().recip(), d);
+            math::mul_assign(cent.center_mut(j), N::from(csize_j).unwrap().recip(), d);
         }
         // tolerance check
         if let Some(ref old) = old_cent {

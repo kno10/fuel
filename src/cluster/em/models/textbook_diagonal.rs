@@ -1,18 +1,14 @@
-use crate::cluster::em::optimizer::EmModel;
-use crate::cluster::kmeans::init::Initialization;
-use crate::cluster::kmeans::Centers;
-use crate::{Float, VectorData as Dataset};
-use std::iter::Sum;
-use std::ops::{AddAssign, MulAssign, SubAssign};
-
 use crate::cluster::em::models::common::{log_norm_det_diagonal, scale_component_covariance};
+use crate::cluster::em::optimizer::EmModel;
+use crate::cluster::kmeans::Centers;
+use crate::cluster::kmeans::init::Initialization;
+use crate::{Float, VectorData as Dataset};
 
 /// Textbook (numerically weaker) diagonal-covariance Gaussian component for EM.
 #[derive(Clone, Debug)]
-pub struct TextbookDiagonalGaussianModel<M, N>
+pub struct TextbookDiagonalGaussianModel<N>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
+    N: Float,
 {
     mean: Vec<N>,
     variance: Vec<N>,
@@ -22,19 +18,10 @@ where
     log_norm_det: N,
     prior_variance: Option<Vec<N>>,
     min_variance: N,
-    _math: std::marker::PhantomData<M>,
 }
 
-impl<M, N> TextbookDiagonalGaussianModel<M, N>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
-{
-    pub fn new(weight: N, mean: Vec<N>, variance: Vec<N>, min_variance: N) -> Self
-    where
-        N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-        M: crate::math::Math<N>,
-    {
+impl<N: Float> TextbookDiagonalGaussianModel<N> {
+    pub fn new(weight: N, mean: Vec<N>, variance: Vec<N>, min_variance: N) -> Self {
         assert_eq!(mean.len(), variance.len(), "mean/variance size mismatch");
         let dim = variance.len();
         let mut model = Self {
@@ -46,35 +33,24 @@ where
             log_norm_det: N::zero(),
             prior_variance: None,
             min_variance,
-            _math: std::marker::PhantomData,
         };
         model.prior_variance = Some(model.variance.clone());
         model.update_log_norm_det();
         model
     }
 
-    pub fn mean(&self) -> &[N] {
-        &self.mean
-    }
+    pub fn mean(&self) -> &[N] { &self.mean }
 
-    pub fn variance(&self) -> &[N] {
-        &self.variance
-    }
+    pub fn variance(&self) -> &[N] { &self.variance }
 
-    pub fn min_variance(&self) -> N {
-        self.min_variance
-    }
+    pub fn min_variance(&self) -> N { self.min_variance }
 
     fn update_log_norm_det(&mut self) {
         self.log_norm_det = log_norm_det_diagonal(self.weight, &self.variance, self.min_variance);
     }
 }
 
-impl<M, N> EmModel<N> for TextbookDiagonalGaussianModel<M, N>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
-{
+impl<N: Float> EmModel<N> for TextbookDiagonalGaussianModel<N> {
     fn begin_estep(&mut self) {
         self.wsum = N::zero();
         self.mean.fill(N::zero());
@@ -136,9 +112,7 @@ where
         -N::from(0.5).unwrap() * mahal + self.log_norm_det
     }
 
-    fn weight(&self) -> N {
-        self.weight
-    }
+    fn weight(&self) -> N { self.weight }
 
     fn set_weight(&mut self, weight: N) {
         self.weight = weight.max(N::epsilon());
@@ -148,30 +122,18 @@ where
 
 /// Factory for textbook (numerically weaker) diagonal Gaussian mixture models.
 #[derive(Debug)]
-pub struct TextbookDiagonalGaussianModelFactory<M, N, I>
+pub struct TextbookDiagonalGaussianModelFactory<N, I>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
+    N: Float,
     I: Initialization<N>,
 {
     pub initializer: I,
     pub min_variance: N,
-    _math: std::marker::PhantomData<M>,
 }
 
-impl<M, N, I> TextbookDiagonalGaussianModelFactory<M, N, I>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
-    I: Initialization<N>,
-{
-    /// Generic constructor specifying the math backend `M`.
-    pub fn with_math(initializer: I) -> Self {
-        Self {
-            initializer,
-            min_variance: N::from(1e-10).unwrap(),
-            _math: std::marker::PhantomData,
-        }
+impl<N: Float, I: Initialization<N>> TextbookDiagonalGaussianModelFactory<N, I> {
+    pub fn new(initializer: I) -> Self {
+        Self { initializer, min_variance: N::from(1e-10).unwrap() }
     }
 
     fn global_variance<A>(&self, data: &A) -> Vec<N>
@@ -210,19 +172,16 @@ where
     }
 
     pub fn build_initial_models<A>(
-        &mut self,
-        data: &A,
-        k: usize,
-    ) -> Vec<TextbookDiagonalGaussianModel<M, N>>
+        &mut self, data: &A, k: usize,
+    ) -> Vec<TextbookDiagonalGaussianModel<N>>
     where
         A: Dataset<N>,
-        M: crate::math::Math<N>,
     {
         let d = data.ncols();
         let mut cent = Centers::<N>::new(k, d);
         self.initializer.init::<A>(data, &mut cent, k);
 
-        let mut base = TextbookDiagonalGaussianModelFactory::<M, N, I>::global_variance(self, data);
+        let mut base = self.global_variance(data);
         scale_component_covariance(&mut base, k, d, self.min_variance);
 
         let weight = N::one() / N::from(k).unwrap();
@@ -237,41 +196,26 @@ where
         }
         models
     }
-}
-
-impl<N, I> TextbookDiagonalGaussianModelFactory<crate::math::DefaultMath<N>, N, I>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    I: Initialization<N>,
-{
-    /// Default-math constructor for Python bindings and common use.
-    pub fn new(initializer: I) -> Self {
-        TextbookDiagonalGaussianModelFactory::with_math(initializer)
-    }
 
     pub fn build_initial_models_dispatch<A>(
-        initializer: I,
-        data: &A,
-        k: usize,
-    ) -> Vec<TextbookDiagonalGaussianModel<crate::math::DefaultMath<N>, N>>
+        initializer: I, data: &A, k: usize,
+    ) -> Vec<TextbookDiagonalGaussianModel<N>>
     where
-        N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum + 'static,
         A: Dataset<N>,
     {
-        // Always build using DefaultMath for simplified single-backend behavior.
-        let mut factory: TextbookDiagonalGaussianModelFactory<crate::math::DefaultMath<N>, N, I> =
-            TextbookDiagonalGaussianModelFactory::with_math(initializer);
+        let mut factory = TextbookDiagonalGaussianModelFactory::new(initializer);
         factory.build_initial_models(data, k)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use ndarray::Array2;
+
     use crate::cluster::em::models::textbook_diagonal::TextbookDiagonalGaussianModelFactory;
     use crate::cluster::em::optimizer::{EmConfig, expectation_maximization};
     use crate::cluster::kmeans::init::FirstK;
     use crate::cluster::kmeans::ndarray::NdArrayDataset;
-    use ndarray::Array2;
 
     fn two_blob_data() -> Array2<f64> {
         let mut data = Array2::<f64>::zeros((200, 2));
@@ -295,19 +239,11 @@ mod tests {
             &ds,
             2,
         );
-        let cfg = EmConfig::<f64> {
-            maxiter: 100,
-            return_soft: true,
-            ..Default::default()
-        };
+        let cfg = EmConfig::<f64> { maxiter: 100, return_soft: true, ..Default::default() };
         let result = expectation_maximization(&ds, 2, models, cfg);
         assert!(result.n_iter > 0);
         assert!(result.log_likelihood.is_finite());
-        let means = result
-            .models
-            .iter()
-            .map(|m| m.mean()[0])
-            .collect::<Vec<_>>();
+        let means = result.models.iter().map(|m| m.mean()[0]).collect::<Vec<_>>();
         assert_eq!(means.len(), 2);
         assert!((means[0] - means[1]).abs() > 1e-6);
     }

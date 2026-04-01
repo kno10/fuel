@@ -1,27 +1,21 @@
-use crate::cluster::em::optimizer::EmModel;
-use crate::cluster::kmeans::init::Initialization;
-use crate::cluster::kmeans::Centers;
-use crate::math::DefaultMath;
-use crate::math::Math;
-use crate::{Float, VectorData as Dataset};
-use std::iter::Sum;
-use std::ops::{AddAssign, MulAssign, SubAssign};
-
 use ndarray_linalg::Scalar;
 
 use crate::cluster::em::models::common::{
     idx, mahalanobis_distance_from_cholesky, refresh_cholesky_log_norm_det,
     scale_component_covariance, symmetrize,
 };
+use crate::cluster::em::optimizer::EmModel;
+use crate::cluster::kmeans::Centers;
+use crate::cluster::kmeans::init::Initialization;
+use crate::{Float, VectorData as Dataset, math};
 
 /// "Textbook" two‑pass multivariate Gaussian component; slightly more
 /// numerically stable than the single-pass textbook version, but still not
 /// recommended for production use. Added for reference.
 #[derive(Clone, Debug)]
-pub struct TwoPassMultivariateGaussianModel<M, N>
+pub struct TwoPassMultivariateGaussianModel<N>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
+    N: Float,
 {
     mean: Vec<N>,
     covariance: Vec<N>,
@@ -32,19 +26,13 @@ where
     chol: Vec<N>,
     prior_covariance: Option<Vec<N>>,
     min_variance: N,
-    _math: std::marker::PhantomData<M>,
 }
 
-impl<M, N> TwoPassMultivariateGaussianModel<M, N>
+impl<N> TwoPassMultivariateGaussianModel<N>
 where
-    N: Float + Copy + Scalar + ndarray_linalg::Lapack + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
+    N: Float + Scalar + ndarray_linalg::Lapack,
 {
-    pub fn new(weight: N, mean: Vec<N>, covariance: Vec<N>, min_variance: N) -> Self
-    where
-        N: Float + Copy + Scalar + ndarray_linalg::Lapack + AddAssign + SubAssign + MulAssign + Sum,
-        M: crate::math::Math<N>,
-    {
+    pub fn new(weight: N, mean: Vec<N>, covariance: Vec<N>, min_variance: N) -> Self {
         let dim = mean.len();
         assert_eq!(covariance.len(), dim * dim, "covariance size mismatch");
         let log_2pi = num_traits::Float::ln(N::from(2.0 * std::f64::consts::PI).unwrap());
@@ -59,23 +47,16 @@ where
             chol: vec![N::zero(); dim * dim],
             prior_covariance: None,
             min_variance,
-            _math: std::marker::PhantomData,
         };
         model.refresh_cholesky();
         model
     }
 
-    pub fn mean(&self) -> &[N] {
-        &self.mean
-    }
+    pub fn mean(&self) -> &[N] { &self.mean }
 
-    pub fn covariance(&self) -> &[N] {
-        &self.covariance
-    }
+    pub fn covariance(&self) -> &[N] { &self.covariance }
 
-    pub fn min_variance(&self) -> N {
-        self.min_variance
-    }
+    pub fn min_variance(&self) -> N { self.min_variance }
 
     fn refresh_cholesky(&mut self) {
         let dim = self.mean.len();
@@ -90,10 +71,9 @@ where
     }
 }
 
-impl<M, N> EmModel<N> for TwoPassMultivariateGaussianModel<M, N>
+impl<N> EmModel<N> for TwoPassMultivariateGaussianModel<N>
 where
-    N: Float + Copy + Scalar + ndarray_linalg::Lapack + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
+    N: Float + Scalar + ndarray_linalg::Lapack,
 {
     fn begin_estep(&mut self) {
         self.wsum = N::zero();
@@ -101,9 +81,7 @@ where
         self.covariance.fill(N::zero());
     }
 
-    fn needs_two_pass(&self) -> bool {
-        true
-    }
+    fn needs_two_pass(&self) -> bool { true }
 
     fn first_pass_estep(&mut self, x: &[N], responsibility: N) {
         if responsibility <= N::zero() {
@@ -137,7 +115,7 @@ where
         for u in 0..dim {
             let scale = diff[u] * responsibility;
             let row = &mut self.covariance[u * dim..u * dim + (u + 1)];
-            DefaultMath::<N>::axpy(row, scale, &diff[..(u + 1)], u + 1);
+            math::axpy(row, scale, &diff[..(u + 1)], u + 1);
         }
     }
 
@@ -180,9 +158,7 @@ where
             + self.log_norm_det
     }
 
-    fn weight(&self) -> N {
-        self.weight
-    }
+    fn weight(&self) -> N { self.weight }
 
     fn set_weight(&mut self, weight: N) {
         self.weight = weight.max(N::epsilon());
@@ -192,30 +168,22 @@ where
 
 /// Factory for two‑pass textbook multivariate model.
 #[derive(Debug)]
-pub struct TwoPassMultivariateGaussianModelFactory<M, N, I>
+pub struct TwoPassMultivariateGaussianModelFactory<N, I>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum + ndarray_linalg::Lapack,
-    M: crate::math::Math<N>,
+    N: Float,
     I: Initialization<N>,
 {
     pub initializer: I,
     pub min_variance: N,
-    _math: std::marker::PhantomData<M>,
 }
 
-impl<M, N, I> TwoPassMultivariateGaussianModelFactory<M, N, I>
+impl<N, I> TwoPassMultivariateGaussianModelFactory<N, I>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum + ndarray_linalg::Lapack,
-    M: crate::math::Math<N>,
+    N: Float + Scalar + ndarray_linalg::Lapack,
     I: Initialization<N>,
 {
-    /// Generic constructor with explicit math backend.
-    pub fn with_math(initializer: I) -> Self {
-        Self {
-            initializer,
-            min_variance: N::from(1e-10).unwrap(),
-            _math: std::marker::PhantomData,
-        }
+    pub fn new(initializer: I) -> Self {
+        Self { initializer, min_variance: N::from(1e-10).unwrap() }
     }
 
     fn global_covariance<A>(&self, data: &A) -> Vec<N>
@@ -233,7 +201,7 @@ where
             for u in 0..d {
                 // maintain same half-matrix semantics
                 let row = &mut cov[u * d..u * d + (u + 1)];
-                DefaultMath::<N>::axpy(row, scratch[u], &scratch[..(u + 1)], u + 1);
+                math::axpy(row, scratch[u], &scratch[..(u + 1)], u + 1);
             }
         }
 
@@ -248,10 +216,8 @@ where
     }
 
     pub fn build_initial_models<A>(
-        &mut self,
-        data: &A,
-        k: usize,
-    ) -> Vec<TwoPassMultivariateGaussianModel<M, N>>
+        &mut self, data: &A, k: usize,
+    ) -> Vec<TwoPassMultivariateGaussianModel<N>>
     where
         A: Dataset<N>,
     {
@@ -259,8 +225,7 @@ where
         let mut cent = Centers::<N>::new(k, d);
         self.initializer.init::<A>(data, &mut cent, k);
 
-        let mut cov =
-            TwoPassMultivariateGaussianModelFactory::<M, N, I>::global_covariance(self, data);
+        let mut cov = self.global_covariance(data);
         scale_component_covariance(&mut cov, k, d, self.min_variance);
 
         let weight = N::one() / N::from(k).unwrap();
@@ -275,35 +240,14 @@ where
         }
         models
     }
-}
-
-impl<N, I> TwoPassMultivariateGaussianModelFactory<crate::math::DefaultMath<N>, N, I>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum + ndarray_linalg::Lapack,
-    I: Initialization<N>,
-{
-    pub fn new(initializer: I) -> Self {
-        TwoPassMultivariateGaussianModelFactory::with_math(initializer)
-    }
 
     pub fn build_initial_models_dispatch<A>(
-        initializer: I,
-        data: &A,
-        k: usize,
-    ) -> Vec<TwoPassMultivariateGaussianModel<crate::math::DefaultMath<N>, N>>
+        initializer: I, data: &A, k: usize,
+    ) -> Vec<TwoPassMultivariateGaussianModel<N>>
     where
-        N: Float
-            + Copy
-            + AddAssign
-            + SubAssign
-            + MulAssign
-            + Sum
-            + ndarray_linalg::Lapack
-            + 'static,
         A: Dataset<N>,
     {
-        let mut factory: TwoPassMultivariateGaussianModelFactory<crate::math::DefaultMath<N>, N, I> =
-            TwoPassMultivariateGaussianModelFactory::with_math(initializer);
+        let mut factory = TwoPassMultivariateGaussianModelFactory::new(initializer);
         factory.build_initial_models(data, k)
     }
 }
@@ -311,11 +255,12 @@ where
 // tests
 #[cfg(test)]
 mod tests {
+    use ndarray::Array2;
+
     use super::*;
     use crate::cluster::em::optimizer::{EmConfig, expectation_maximization};
     use crate::cluster::kmeans::init::FirstK;
     use crate::cluster::kmeans::ndarray::NdArrayDataset;
-    use ndarray::Array2;
 
     fn two_blob_data() -> Array2<f64> {
         let mut data = Array2::<f64>::zeros((200, 2));
@@ -334,12 +279,7 @@ mod tests {
     fn test_two_pass_density() {
         let mean = vec![0.0f64, 0.0];
         let cov = vec![1.0, 0.0, 0.0, 1.0];
-        let mut m = TwoPassMultivariateGaussianModel::<crate::math::DefaultMath<f64>, f64>::new(
-            1.0,
-            mean.clone(),
-            cov,
-            1e-10,
-        );
+        let mut m = TwoPassMultivariateGaussianModel::<f64>::new(1.0, mean.clone(), cov, 1e-10);
         let ld = m.estimate_log_density(&mean);
         let dim = 2;
         let expected = -0.5 * (dim as f64) * (2.0 * std::f64::consts::PI).ln();
@@ -358,19 +298,11 @@ mod tests {
             &ds,
             2,
         );
-        let cfg = EmConfig::<f64> {
-            maxiter: 100,
-            return_soft: true,
-            ..Default::default()
-        };
+        let cfg = EmConfig::<f64> { maxiter: 100, return_soft: true, ..Default::default() };
         let result = expectation_maximization(&ds, 2, models, cfg);
         assert!(result.n_iter > 0);
         assert!(result.log_likelihood.is_finite());
-        let means = result
-            .models
-            .iter()
-            .map(|m| m.mean()[0])
-            .collect::<Vec<_>>();
+        let means = result.models.iter().map(|m| m.mean()[0]).collect::<Vec<_>>();
         assert_eq!(means.len(), 2);
         assert!((means[0] - means[1]).abs() > 1e-6);
     }

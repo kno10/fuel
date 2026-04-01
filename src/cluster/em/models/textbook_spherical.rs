@@ -1,18 +1,14 @@
-use crate::cluster::em::optimizer::EmModel;
-use crate::cluster::kmeans::init::Initialization;
-use crate::cluster::kmeans::Centers;
-use crate::{Float, VectorData as Dataset};
-use std::iter::Sum;
-use std::ops::{AddAssign, MulAssign, SubAssign};
-
 use crate::cluster::em::models::common::{log_norm_det_spherical, scale_component_variance};
+use crate::cluster::em::optimizer::EmModel;
+use crate::cluster::kmeans::Centers;
+use crate::cluster::kmeans::init::Initialization;
+use crate::{Float, VectorData as Dataset};
 
 /// Textbook (numerically weaker) spherical Gaussian component for EM.
 #[derive(Clone, Debug)]
-pub struct TextbookSphericalGaussianModel<M, N>
+pub struct TextbookSphericalGaussianModel<N>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
+    N: Float,
 {
     mean: Vec<N>,
     variance: N,
@@ -22,19 +18,10 @@ where
     log_norm_det: N,
     prior_variance: N,
     min_variance: N,
-    _math: std::marker::PhantomData<M>,
 }
 
-impl<M, N> TextbookSphericalGaussianModel<M, N>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
-{
-    pub fn new(weight: N, mean: Vec<N>, variance: N, min_variance: N) -> Self
-    where
-        N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-        M: crate::math::Math<N>,
-    {
+impl<N: Float> TextbookSphericalGaussianModel<N> {
+    pub fn new(weight: N, mean: Vec<N>, variance: N, min_variance: N) -> Self {
         let mut model = Self {
             mean,
             variance: variance.max(min_variance),
@@ -44,39 +31,24 @@ where
             log_norm_det: N::zero(),
             prior_variance: variance.max(min_variance),
             min_variance,
-            _math: std::marker::PhantomData,
         };
         model.update_log_norm_det();
         model
     }
 
-    pub fn mean(&self) -> &[N] {
-        &self.mean
-    }
+    pub fn mean(&self) -> &[N] { &self.mean }
 
-    pub fn variance(&self) -> N {
-        self.variance
-    }
+    pub fn variance(&self) -> N { self.variance }
 
-    pub fn min_variance(&self) -> N {
-        self.min_variance
-    }
+    pub fn min_variance(&self) -> N { self.min_variance }
 
     fn update_log_norm_det(&mut self) {
-        self.log_norm_det = log_norm_det_spherical(
-            self.weight,
-            self.mean.len(),
-            self.variance,
-            self.min_variance,
-        );
+        self.log_norm_det =
+            log_norm_det_spherical(self.weight, self.mean.len(), self.variance, self.min_variance);
     }
 }
 
-impl<M, N> EmModel<N> for TextbookSphericalGaussianModel<M, N>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
-{
+impl<N: Float> EmModel<N> for TextbookSphericalGaussianModel<N> {
     fn begin_estep(&mut self) {
         self.wsum = N::zero();
         self.mean.fill(N::zero());
@@ -107,10 +79,8 @@ where
             if prior > N::zero() {
                 let nu = N::from(d + 2).unwrap();
                 let denom = self.wsum + prior * (nu + N::from(d + 2).unwrap());
-                let mean_sq_sum = self
-                    .mean
-                    .iter()
-                    .fold(N::zero(), |acc, &m| acc + m * m * self.wsum);
+                let mean_sq_sum =
+                    self.mean.iter().fold(N::zero(), |acc, &m| acc + m * m * self.wsum);
                 let sse = (self.sumsq - mean_sq_sum).max(N::zero());
                 self.variance = ((sse / df) + prior * self.prior_variance) / denom;
             } else {
@@ -134,9 +104,7 @@ where
         -N::from(0.5).unwrap() * mahal + self.log_norm_det
     }
 
-    fn weight(&self) -> N {
-        self.weight
-    }
+    fn weight(&self) -> N { self.weight }
 
     fn set_weight(&mut self, weight: N) {
         self.weight = weight.max(N::epsilon());
@@ -146,30 +114,18 @@ where
 
 /// Factory for textbook (numerically weaker) spherical Gaussian mixture models.
 #[derive(Debug)]
-pub struct TextbookSphericalGaussianModelFactory<M, N, I>
+pub struct TextbookSphericalGaussianModelFactory<N, I>
 where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
+    N: Float,
     I: Initialization<N>,
 {
     pub initializer: I,
     pub min_variance: N,
-    _math: std::marker::PhantomData<M>,
 }
 
-impl<M, N, I> TextbookSphericalGaussianModelFactory<M, N, I>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    M: crate::math::Math<N>,
-    I: Initialization<N>,
-{
-    /// Generic constructor specifying math backend `M`.
-    pub fn with_math(initializer: I) -> Self {
-        Self {
-            initializer,
-            min_variance: N::from(1e-10).unwrap(),
-            _math: std::marker::PhantomData,
-        }
+impl<N: Float, I: Initialization<N>> TextbookSphericalGaussianModelFactory<N, I> {
+    pub fn new(initializer: I) -> Self {
+        Self { initializer, min_variance: N::from(1e-10).unwrap() }
     }
 
     fn global_spherical_variance<A>(&self, data: &A) -> N
@@ -203,23 +159,16 @@ where
     }
 
     pub fn build_initial_models<A>(
-        &mut self,
-        data: &A,
-        k: usize,
-    ) -> Vec<TextbookSphericalGaussianModel<M, N>>
+        &mut self, data: &A, k: usize,
+    ) -> Vec<TextbookSphericalGaussianModel<N>>
     where
         A: Dataset<N>,
-        M: crate::math::Math<N>,
     {
         let d = data.ncols();
         let mut cent = Centers::<N>::new(k, d);
         self.initializer.init::<A>(data, &mut cent, k);
-        let var = scale_component_variance(
-            self.global_spherical_variance(data),
-            k,
-            d,
-            self.min_variance,
-        );
+        let var =
+            scale_component_variance(self.global_spherical_variance(data), k, d, self.min_variance);
         let weight = N::one() / N::from(k).unwrap();
         let mut models = Vec::with_capacity(k);
         for i in 0..k {
@@ -232,40 +181,26 @@ where
         }
         models
     }
-}
-
-impl<N, I> TextbookSphericalGaussianModelFactory<crate::math::DefaultMath<N>, N, I>
-where
-    N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    I: Initialization<N>,
-{
-    pub fn new(initializer: I) -> Self {
-        TextbookSphericalGaussianModelFactory::with_math(initializer)
-    }
 
     pub fn build_initial_models_dispatch<A>(
-        initializer: I,
-        data: &A,
-        k: usize,
-    ) -> Vec<TextbookSphericalGaussianModel<crate::math::DefaultMath<N>, N>>
+        initializer: I, data: &A, k: usize,
+    ) -> Vec<TextbookSphericalGaussianModel<N>>
     where
-        N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum + 'static,
         A: Dataset<N>,
     {
-        // Always use DefaultMath in this simplified model path.
-        let mut factory: TextbookSphericalGaussianModelFactory<crate::math::DefaultMath<N>, N, I> =
-            TextbookSphericalGaussianModelFactory::with_math(initializer);
+        let mut factory = TextbookSphericalGaussianModelFactory::new(initializer);
         factory.build_initial_models(data, k)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use ndarray::Array2;
+
     use crate::cluster::em::models::textbook_spherical::TextbookSphericalGaussianModelFactory;
     use crate::cluster::em::optimizer::{EmConfig, EmResult, expectation_maximization};
     use crate::cluster::kmeans::init::FirstK;
     use crate::cluster::kmeans::ndarray::NdArrayDataset;
-    use ndarray::Array2;
 
     fn two_blob_data() -> Array2<f64> {
         let mut data = Array2::<f64>::zeros((200, 2));
@@ -289,18 +224,11 @@ mod tests {
             &ds,
             2,
         );
-        let cfg = EmConfig::<f64> {
-            maxiter: 100,
-            ..Default::default()
-        };
+        let cfg = EmConfig::<f64> { maxiter: 100, ..Default::default() };
         let result: EmResult<_, _> = expectation_maximization(&ds, 2, models, cfg);
         assert!(result.n_iter > 0);
         assert!(result.log_likelihood.is_finite());
-        let means = result
-            .models
-            .iter()
-            .map(|m| m.mean()[0])
-            .collect::<Vec<_>>();
+        let means = result.models.iter().map(|m| m.mean()[0]).collect::<Vec<_>>();
         assert_eq!(means.len(), 2);
         assert!((means[0] - means[1]).abs() > 1e-6);
     }

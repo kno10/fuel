@@ -3,8 +3,7 @@ use std::ops::*;
 
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::math::{DefaultMath, Math};
-use crate::{Float, VectorData as Dataset};
+use crate::{Float, VectorData as Dataset, math};
 
 /// Perform the initial cluster assignment, recompute sums
 // Inline always to allow CPU optimization!
@@ -47,7 +46,7 @@ where
             assign[i] = b;
             csize[b] += 1;
             data.load_into(i, scratch, d);
-            DefaultMath::<N>::add_assign(sums.center_mut(b), scratch, d);
+            math::add_assign(sums.center_mut(b), scratch, d);
         }
     } else {
         init.init::<A>(data, cent, k);
@@ -57,8 +56,7 @@ where
             let ci = &cent.center(i);
             for j in 0..i {
                 debug_assert!(idx == triindex(i, j));
-                cdist[idx] =
-                    N::from(0.5).unwrap() * DefaultMath::<N>::sqdist(ci, cent.center(j), d).sqrt();
+                cdist[idx] = N::from(0.5).unwrap() * math::sqdist(ci, cent.center(j), d).sqrt();
                 idx += 1;
             }
         }
@@ -69,7 +67,7 @@ where
             let (mut a, mut s) = (0, N::infinity());
             for j in 0..k {
                 if j == 0 || s > cdist[triindex(a, j)] {
-                    let tmp = DefaultMath::<N>::sqdist(cent.center(j), scratch, d).sqrt();
+                    let tmp = math::sqdist(cent.center(j), scratch, d).sqrt();
                     bounds_i[j] = tmp;
                     if j == 0 || tmp < s {
                         (a, s) = (j, tmp);
@@ -86,7 +84,7 @@ where
             }
             csize[a] += 1;
             assign[i] = a;
-            DefaultMath::<N>::add_assign(sums.center_mut(a), scratch, d);
+            math::add_assign(sums.center_mut(a), scratch, d);
         }
     }
     (assign, csize, bounds)
@@ -130,14 +128,14 @@ where
                 // copy the sum vector then scale it – this shows how the
                 // `scale` helper can be used for simple scalar multiplication
                 // without reimplementing an entire kernel.
-                DefaultMath::<N>::copy(&mut scratch, sums.center(j), d);
-                DefaultMath::<N>::scale(&mut scratch, N::from(csize[j]).unwrap().recip(), d);
-                let movement = DefaultMath::<N>::sqdist(&scratch, cent.center(j), d).sqrt();
+                math::copy(&mut scratch, sums.center(j), d);
+                math::scale(&mut scratch, N::from(csize[j]).unwrap().recip(), d);
+                let movement = math::sqdist(&scratch, cent.center(j), d).sqrt();
                 if tol > N::zero() {
                     diff_sq += movement * movement;
                 }
                 cmov[j] = movement;
-                DefaultMath::<N>::copy(cent.center_mut(j), &scratch, d);
+                math::copy(cent.center_mut(j), &scratch, d);
             } else {
                 cmov[j] = N::zero();
             }
@@ -154,14 +152,13 @@ where
         // use the math kernel rather than slice method so that
         // alternative implementations can override integer/packed
         // behaviour if needed.
-        DefaultMath::<N>::fill(&mut cnear, N::infinity(), k);
+        math::fill(&mut cnear, N::infinity(), k);
         let mut idx = 0;
         for i in 1..k {
             let ci = &cent.center(i);
             for j in 0..i {
                 debug_assert!(idx == triindex(i, j));
-                let tmp =
-                    N::from(0.5).unwrap() * DefaultMath::<N>::sqdist(ci, cent.center(j), d).sqrt();
+                let tmp = N::from(0.5).unwrap() * math::sqdist(ci, cent.center(j), d).sqrt();
                 cdist[idx] = tmp;
                 if tmp < cnear[i] {
                     cnear[i] = tmp;
@@ -178,7 +175,7 @@ where
             // Update bounds
             let bounds_i = &mut bounds[i * k..i * k + k];
             let mut upper_i = bounds_i[aa] + cmov[aa];
-            DefaultMath::<N>::sub_assign(bounds_i, &cmov, k); // we overwrite [aa] below!
+            math::sub_assign(bounds_i, &cmov, k); // we overwrite [aa] below!
             if upper_i < cnear[aa] {
                 bounds_i[aa] = upper_i; // store upper bound
                 continue;
@@ -195,7 +192,7 @@ where
                         data.load_into(i, &mut scratch, d);
                         loaded = true;
                     }
-                    upper_i = DefaultMath::<N>::sqdist(cent.center(aa), &scratch, d).sqrt();
+                    upper_i = math::sqdist(cent.center(aa), &scratch, d).sqrt();
                     bounds_i[aa] = upper_i;
                     upper_tight = true;
                     if upper_i <= bounds_i[j] || upper_i <= cdist[triindex(a, j)] {
@@ -203,7 +200,7 @@ where
                     }
                 }
                 // Make lower tight
-                bounds_i[j] = DefaultMath::<N>::sqdist(cent.center(j), &scratch, d).sqrt();
+                bounds_i[j] = math::sqdist(cent.center(j), &scratch, d).sqrt();
                 if bounds_i[j] < upper_i {
                     a = j;
                     upper_i = bounds_i[j];
@@ -214,8 +211,8 @@ where
                 assign[i] = a;
                 csize[aa] -= 1;
                 csize[a] += 1;
-                DefaultMath::<N>::sub_assign(sums.center_mut(aa), &scratch, d);
-                DefaultMath::<N>::add_assign(sums.center_mut(a), &scratch, d);
+                math::sub_assign(sums.center_mut(aa), &scratch, d);
+                math::add_assign(sums.center_mut(a), &scratch, d);
                 changed += 1;
             }
         }

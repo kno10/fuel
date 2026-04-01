@@ -74,9 +74,7 @@ mod tests {
         }
     }
 
-    fn make_centroids<N: Default + Copy + num_traits::Float>(k: usize, d: usize) -> Centers<N> {
-        Centers::new(k, d)
-    }
+    fn make_centroids<N: Float>(k: usize, d: usize) -> Centers<N> { Centers::new(k, d) }
 
     #[test]
     fn firstk_initialization() {
