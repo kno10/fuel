@@ -178,19 +178,6 @@ where
     }
 }
 
-#[allow(dead_code)]
-
-/// Execute truncated k-means clustering.
-///
-/// # Parameters
-/// - `data`: Dataset to cluster
-/// - `k`: number of clusters
-/// - `init`: initialization strategy
-/// - `maxiter`: maximum number of iterations
-/// - `tol`: convergence tolerance (relative change in centers)
-/// - `alpha`: fraction of observations to trim (0 <= alpha < 1), or an absolute
-///   count of points to trim (alpha >= 1).
-
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;

@@ -6,8 +6,7 @@ use std::path::Path;
 use csv::ReaderBuilder;
 use fuel::Float;
 use fuel::distance::{DistanceFunction, PartialDistance};
-use rand::Rng;
-use rand::distributions::Standard;
+use rand::RngExt;
 use rand::rngs::StdRng;
 
 #[allow(dead_code)]
@@ -113,7 +112,7 @@ pub fn generate_points(n: usize, dims: usize, rng: &mut StdRng) -> Vec<Vec<f64>>
     for _ in 0..n {
         let mut point = Vec::with_capacity(dims);
         for _ in 0..dims {
-            point.push(rng.sample(Standard));
+            point.push(rng.random::<f64>());
         }
         points.push(point);
     }

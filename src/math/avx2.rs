@@ -11,7 +11,7 @@ use std::arch::x86_64::*;
 use crate::Float;
 
 #[inline(always)]
-pub(super) fn sqdist<N>(v1: &[N], v2: &[N], d: usize) -> N
+pub fn sqdist<N>(v1: &[N], v2: &[N], d: usize) -> N
 where
     N: Float,
 {
@@ -35,7 +35,7 @@ where
         sum += buf.iter().copied().sum::<f32>();
         while i < d {
             let x = unsafe { *v1.get_unchecked(i) - *v2.get_unchecked(i) };
-            sum += x * x;
+            sum = x.mul_add(x, sum);
             i += 1;
         }
         return N::from(sum).unwrap();
@@ -60,7 +60,7 @@ where
         sum += buf.iter().copied().sum::<f64>();
         while i < d {
             let x = unsafe { *v1.get_unchecked(i) - *v2.get_unchecked(i) };
-            sum += x * x;
+            sum = x.mul_add(x, sum);
             i += 1;
         }
         return N::from(sum).unwrap();
@@ -69,7 +69,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn l1dist<N>(v1: &[N], v2: &[N], d: usize) -> N
+pub fn l1dist<N>(v1: &[N], v2: &[N], d: usize) -> N
 where
     N: Float,
 {
@@ -129,7 +129,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn mul<N>(v1: &mut [N], v2: &[N], a: N, d: usize)
+pub fn mul<N>(v1: &mut [N], v2: &[N], a: N, d: usize)
 where
     N: Float,
 {
@@ -179,7 +179,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn mul_assign<N>(v: &mut [N], f: N, d: usize)
+pub fn mul_assign<N>(v: &mut [N], f: N, d: usize)
 where
     N: Float,
 {
@@ -229,7 +229,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn add_assign<N>(v1: &mut [N], v2: &[N], d: usize)
+pub fn add_assign<N>(v1: &mut [N], v2: &[N], d: usize)
 where
     N: Float,
 {
@@ -283,7 +283,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn sub_assign<N>(v1: &mut [N], v2: &[N], d: usize)
+pub fn sub_assign<N>(v1: &mut [N], v2: &[N], d: usize)
 where
     N: Float,
 {
@@ -337,7 +337,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn fmamul<N>(v1: &mut [N], a: N, v2: &[N], b: N, d: usize)
+pub fn fmamul<N>(v1: &mut [N], a: N, v2: &[N], b: N, d: usize)
 where
     N: Float,
 {
@@ -403,7 +403,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn dot<N>(v1: &[N], v2: &[N], d: usize) -> N
+pub fn dot<N>(v1: &[N], v2: &[N], d: usize) -> N
 where
     N: Float,
 {
@@ -425,7 +425,7 @@ where
         unsafe { _mm256_storeu_ps(buf.as_mut_ptr(), acc) };
         sum += buf.iter().copied().sum::<f32>();
         while i < d {
-            sum += unsafe { *v1.get_unchecked(i) * *v2.get_unchecked(i) };
+            sum = unsafe { v1.get_unchecked(i).mul_add(*v2.get_unchecked(i), sum) };
             i += 1;
         }
         return N::from(sum).unwrap();
@@ -448,7 +448,7 @@ where
         unsafe { _mm256_storeu_pd(buf.as_mut_ptr(), acc) };
         sum += buf.iter().copied().sum::<f64>();
         while i < d {
-            sum += unsafe { *v1.get_unchecked(i) * *v2.get_unchecked(i) };
+            sum = unsafe { v1.get_unchecked(i).mul_add(*v2.get_unchecked(i), sum) };
             i += 1;
         }
         return N::from(sum).unwrap();
@@ -457,7 +457,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn axpy<N>(v1: &mut [N], a: N, v2: &[N], d: usize)
+pub fn axpy<N>(v1: &mut [N], a: N, v2: &[N], d: usize)
 where
     N: Float,
 {
@@ -465,21 +465,21 @@ where
         let v1 = unsafe { std::mem::transmute::<&mut [N], &mut [f32]>(v1) };
         let v2 = unsafe { std::mem::transmute::<&[N], &[f32]>(v2) };
         let scalar = a.to_f32().unwrap();
+        let va = unsafe { _mm256_set1_ps(scalar) };
         let mut i = 0;
         while i + 8 <= d {
             unsafe {
                 let ptr1 = v1.as_mut_ptr().add(i);
                 let b = _mm256_loadu_ps(v2.as_ptr().add(i));
-                let prod = _mm256_mul_ps(b, _mm256_set1_ps(scalar));
                 let orig = _mm256_loadu_ps(ptr1);
-                let sum = _mm256_add_ps(orig, prod);
-                _mm256_storeu_ps(ptr1, sum);
+                let res = _mm256_fmadd_ps(b, va, orig);
+                _mm256_storeu_ps(ptr1, res);
             }
             i += 8;
         }
         while i < d {
             unsafe {
-                *v1.get_unchecked_mut(i) += *v2.get_unchecked(i) * scalar;
+                *v1.get_unchecked_mut(i) = v2.get_unchecked(i).mul_add(scalar, *v1.get_unchecked(i));
             }
             i += 1;
         }
@@ -489,21 +489,21 @@ where
         let v1 = unsafe { std::mem::transmute::<&mut [N], &mut [f64]>(v1) };
         let v2 = unsafe { std::mem::transmute::<&[N], &[f64]>(v2) };
         let scalar = a.to_f64().unwrap();
+        let va = unsafe { _mm256_set1_pd(scalar) };
         let mut i = 0;
         while i + 4 <= d {
             unsafe {
                 let ptr1 = v1.as_mut_ptr().add(i);
                 let b = _mm256_loadu_pd(v2.as_ptr().add(i));
-                let prod = _mm256_mul_pd(b, _mm256_set1_pd(scalar));
                 let orig = _mm256_loadu_pd(ptr1);
-                let sum = _mm256_add_pd(orig, prod);
-                _mm256_storeu_pd(ptr1, sum);
+                let res = _mm256_fmadd_pd(b, va, orig);
+                _mm256_storeu_pd(ptr1, res);
             }
             i += 4;
         }
         while i < d {
             unsafe {
-                *v1.get_unchecked_mut(i) += *v2.get_unchecked(i) * scalar;
+                *v1.get_unchecked_mut(i) = v2.get_unchecked(i).mul_add(scalar, *v1.get_unchecked(i));
             }
             i += 1;
         }
@@ -513,7 +513,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn sum<N>(v: &[N], d: usize) -> N
+pub fn sum<N>(v: &[N], d: usize) -> N
 where
     N: Float,
 {
@@ -561,7 +561,15 @@ where
 }
 
 #[inline(always)]
-pub(super) fn add_scalar<N>(v: &mut [N], s: N, d: usize)
+pub fn norm<N>(v: &[N], d: usize) -> N
+where
+    N: Float,
+{
+    sqdist(v, v, d).sqrt()
+}
+
+#[inline(always)]
+pub fn add_scalar<N>(v: &mut [N], s: N, d: usize)
 where
     N: Float,
 {

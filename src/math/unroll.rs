@@ -1,265 +1,281 @@
-// Superseded by scalar.rs + avx2.rs.  The Math<N> trait that UnrollMath
-// implemented has been removed.  Kept for reference only.
+//! Unrolled (LANES = 8) implementations of the vector math primitives.
+//!
+//! Used on non-x86_64 architectures (e.g. ARM) when d >= UNROLL_SIZE, giving
+//! the compiler a fixed-width inner loop body suitable for auto-vectorisation
+//! (e.g. ARM NEON / VFPv4).
 
-use num_traits::Float; //FIXME: use crate::Float instead
+use crate::Float;
+use std::any::TypeId;
 
-use crate::math::Math as MathTrait;
+const LANES: usize = 8;
 
-/// Unrolled vector maths; `LANES` specifies the unroll factor.
-///
-/// This implementation is intended for use when you know the CPU has a
-/// particular vector width and you want to process `LANES` elements in
-/// parallel; the drawback is code size, hence it is kept separate.
-pub struct UnrollMath<N, const LANES: usize> {
-    phantom: PhantomData<N>,
+#[inline(always)]
+pub(super) fn sqdist<N>(v1: &[N], v2: &[N], d: usize) -> N
+where
+    N: Float,
+{
+    assert!(v1.len() >= d && v2.len() >= d);
+    let sd = d & !(LANES - 1);
+    let mut vsum = [N::zero(); LANES];
+    for i in (0..sd).step_by(LANES) {
+        let (vv, cc) = (&v1[i..(i + LANES)], &v2[i..(i + LANES)]);
+        for j in 0..LANES {
+            unsafe {
+                let x = *vv.get_unchecked(j) - *cc.get_unchecked(j);
+                *vsum.get_unchecked_mut(j) += x * x;
+            }
+        }
+    }
+    let mut sum = vsum.iter().copied().sum::<N>();
+    for i in sd..d {
+        let x = unsafe { *v1.get_unchecked(i) - *v2.get_unchecked(i) };
+        sum += x * x;
+    }
+    sum
 }
 
-impl<N, const LANES: usize> MathTrait<N> for UnrollMath<N, LANES>
+#[inline(always)]
+pub(super) fn l1dist<N>(v1: &[N], v2: &[N], d: usize) -> N
 where
-    N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy,
+    N: Float,
 {
-    #[inline(always)]
-    fn sqdist(v1: &[N], v2: &[N], d: usize) -> N {
-        assert!(LANES.count_ones() == 1);
-        assert!(v1.len() == d && v2.len() == d);
-        let sd = d & !(LANES - 1);
-        let mut vsum = [N::zero(); LANES];
-        for i in (0..sd).step_by(LANES) {
-            let (vv, cc) = (&v1[i..(i + LANES)], &v2[i..(i + LANES)]);
-            for j in 0..LANES {
-                unsafe {
-                    let x = *vv.get_unchecked(j) - *cc.get_unchecked(j);
-                    *vsum.get_unchecked_mut(j) += x * x;
-                }
+    assert!(v1.len() >= d && v2.len() >= d);
+    let sd = d & !(LANES - 1);
+    let mut vsum = [N::zero(); LANES];
+    for i in (0..sd).step_by(LANES) {
+        let (vv, cc) = (&v1[i..(i + LANES)], &v2[i..(i + LANES)]);
+        for j in 0..LANES {
+            unsafe {
+                let diff = *vv.get_unchecked(j) - *cc.get_unchecked(j);
+                *vsum.get_unchecked_mut(j) += diff.abs();
             }
         }
-        let mut sum = vsum.iter().copied().sum::<N>();
-        if d > sd {
-            sum += (sd..d)
-                .map(|i| unsafe { *v1.get_unchecked(i) - *v2.get_unchecked(i) })
-                .map(|x| x * x)
-                .sum()
-        }
-        sum
     }
-
-    #[inline(always)]
-    fn l1dist(v1: &[N], v2: &[N], d: usize) -> N {
-        // simple fallback
-        assert!(v1.len() == d && v2.len() == d);
-        let mut sum = N::zero();
-        for i in 0..d {
-            let diff = unsafe { *v1.get_unchecked(i) - *v2.get_unchecked(i) };
-            sum += diff.abs();
-        }
-        sum
+    let mut sum = vsum.iter().copied().sum::<N>();
+    for i in sd..d {
+        let diff = unsafe { *v1.get_unchecked(i) - *v2.get_unchecked(i) };
+        sum += diff.abs();
     }
+    sum
+}
 
-    #[inline(always)]
-    fn mul(v1: &mut [N], v2: &[N], a: N, d: usize) {
-        assert!(LANES.count_ones() == 1);
-        assert!(v1.len() == d && v2.len() == d);
-        let sd = d & !(LANES - 1);
+#[inline(always)]
+pub(super) fn mul<N>(v1: &mut [N], v2: &[N], a: N, d: usize)
+where
+    N: Float,
+{
+    assert!(v1.len() >= d && v2.len() >= d);
+    let sd = d & !(LANES - 1);
+    for i in (0..sd).step_by(LANES) {
+        let (b1, b2) = (&mut v1[i..(i + LANES)], &v2[i..(i + LANES)]);
+        for j in 0..LANES {
+            unsafe {
+                *b1.get_unchecked_mut(j) = *b2.get_unchecked(j) * a;
+            }
+        }
+    }
+    for i in sd..d {
+        unsafe {
+            *v1.get_unchecked_mut(i) = *v2.get_unchecked(i) * a;
+        }
+    }
+}
+
+#[inline(always)]
+pub(super) fn mul_assign<N>(v: &mut [N], f: N, d: usize)
+where
+    N: Float,
+{
+    assert!(v.len() >= d);
+    let sd = d & !(LANES - 1);
+    for i in (0..sd).step_by(LANES) {
+        let b = &mut v[i..(i + LANES)];
+        for j in 0..LANES {
+            unsafe {
+                *b.get_unchecked_mut(j) *= f;
+            }
+        }
+    }
+    for i in sd..d {
+        unsafe {
+            *v.get_unchecked_mut(i) *= f;
+        }
+    }
+}
+
+#[inline(always)]
+pub(super) fn add_assign<N>(v1: &mut [N], v2: &[N], d: usize)
+where
+    N: Float,
+{
+    assert!(v1.len() >= d && v2.len() >= d);
+    let sd = d & !(LANES - 1);
+    for i in (0..sd).step_by(LANES) {
+        let (b1, b2) = (&mut v1[i..(i + LANES)], &v2[i..(i + LANES)]);
+        for j in 0..LANES {
+            unsafe {
+                *b1.get_unchecked_mut(j) += *b2.get_unchecked(j);
+            }
+        }
+    }
+    for i in sd..d {
+        unsafe {
+            *v1.get_unchecked_mut(i) += *v2.get_unchecked(i);
+        }
+    }
+}
+
+#[inline(always)]
+pub(super) fn sub_assign<N>(v1: &mut [N], v2: &[N], d: usize)
+where
+    N: Float,
+{
+    assert!(v1.len() >= d && v2.len() >= d);
+    let sd = d & !(LANES - 1);
+    for i in (0..sd).step_by(LANES) {
+        let (b1, b2) = (&mut v1[i..(i + LANES)], &v2[i..(i + LANES)]);
+        for j in 0..LANES {
+            unsafe {
+                *b1.get_unchecked_mut(j) -= *b2.get_unchecked(j);
+            }
+        }
+    }
+    for i in sd..d {
+        unsafe {
+            *v1.get_unchecked_mut(i) -= *v2.get_unchecked(i);
+        }
+    }
+}
+
+#[inline(always)]
+pub(super) fn fmamul<N>(v1: &mut [N], a: N, v2: &[N], b: N, d: usize)
+where
+    N: Float,
+{
+    assert!(v1.len() >= d && v2.len() >= d);
+    let sd = d & !(LANES - 1);
+
+    #[cfg(any(target_feature = "fma", target_feature = "neon", target_feature = "vfp4", target_feature = "vfpv4"))]
+    if TypeId::of::<N>() == TypeId::of::<f32>() || TypeId::of::<N>() == TypeId::of::<f64>() {
         for i in (0..sd).step_by(LANES) {
             let (b1, b2) = (&mut v1[i..(i + LANES)], &v2[i..(i + LANES)]);
             for j in 0..LANES {
                 unsafe {
-                    *b1.get_unchecked_mut(j) = *b2.get_unchecked(j) * a;
+                    let fma = num_traits::Float::mul_add(*b1.get_unchecked(j), a, *b2.get_unchecked(j));
+                    *b1.get_unchecked_mut(j) = fma * b;
                 }
             }
         }
         for i in sd..d {
             unsafe {
-                *v1.get_unchecked_mut(i) = *v2.get_unchecked(i) * a;
+                let fma = num_traits::Float::mul_add(*v1.get_unchecked(i), a, *v2.get_unchecked(i));
+                *v1.get_unchecked_mut(i) = fma * b;
             }
         }
+        return;
     }
 
-    #[inline(always)]
-    fn mul_assign(v: &mut [N], f: N, d: usize) {
-        assert!(LANES.count_ones() == 1);
-        assert!(v.len() == d);
-        let sd = d & !(LANES - 1);
-        for i in (0..sd).step_by(LANES) {
-            let v2 = &mut v[i..(i + LANES)];
-            for j in 0..LANES {
-                unsafe {
-                    *v2.get_unchecked_mut(j) *= f;
-                }
-            }
-        }
-        for i in sd..d {
+    for i in (0..sd).step_by(LANES) {
+        let (b1, b2) = (&mut v1[i..(i + LANES)], &v2[i..(i + LANES)]);
+        for j in 0..LANES {
             unsafe {
-                *v.get_unchecked_mut(i) *= f;
+                *b1.get_unchecked_mut(j) = (*b1.get_unchecked(j) * a + *b2.get_unchecked(j)) * b;
             }
         }
     }
-
-    #[inline(always)]
-    fn add_assign(v1: &mut [N], v2: &[N], d: usize) {
-        assert!(LANES.count_ones() == 1);
-        assert!(v1.len() == d && v2.len() == d);
-        let sd = d & !(LANES - 1);
-        for i in (0..sd).step_by(LANES) {
-            let (b1, b2) = (&mut v1[i..(i + LANES)], &v2[i..(i + LANES)]);
-            for j in 0..LANES {
-                unsafe {
-                    *b1.get_unchecked_mut(j) += *b2.get_unchecked(j);
-                }
-            }
+    for i in sd..d {
+        unsafe {
+            *v1.get_unchecked_mut(i) = (*v1.get_unchecked(i) * a + *v2.get_unchecked(i)) * b;
         }
-        for i in sd..d {
+    }
+}
+
+#[inline(always)]
+pub(super) fn dot<N>(v1: &[N], v2: &[N], d: usize) -> N
+where
+    N: Float,
+{
+    assert!(v1.len() >= d && v2.len() >= d);
+    let sd = d & !(LANES - 1);
+    let mut vsum = [N::zero(); LANES];
+    for i in (0..sd).step_by(LANES) {
+        let (vv, cc) = (&v1[i..(i + LANES)], &v2[i..(i + LANES)]);
+        for j in 0..LANES {
             unsafe {
-                *v1.get_unchecked_mut(i) += *v2.get_unchecked(i);
+                *vsum.get_unchecked_mut(j) += *vv.get_unchecked(j) * *cc.get_unchecked(j);
             }
         }
     }
+    let mut sum = vsum.iter().copied().sum::<N>();
+    for i in sd..d {
+        sum += unsafe { *v1.get_unchecked(i) * *v2.get_unchecked(i) };
+    }
+    sum
+}
 
-    #[inline(always)]
-    fn sub_assign(v1: &mut [N], v2: &[N], d: usize) {
-        assert!(LANES.count_ones() == 1);
-        assert!(v1.len() == d && v2.len() == d);
-        let sd = d & !(LANES - 1);
-        for i in (0..sd).step_by(LANES) {
-            let (b1, b2) = (&mut v1[i..(i + LANES)], &v2[i..(i + LANES)]);
-            for j in 0..LANES {
-                unsafe {
-                    *b1.get_unchecked_mut(j) -= *b2.get_unchecked(j);
-                }
-            }
-        }
-        for i in sd..d {
+#[inline(always)]
+pub(super) fn axpy<N>(v1: &mut [N], a: N, v2: &[N], d: usize)
+where
+    N: Float,
+{
+    assert!(v1.len() >= d && v2.len() >= d);
+    let sd = d & !(LANES - 1);
+    for i in (0..sd).step_by(LANES) {
+        let (b1, b2) = (&mut v1[i..(i + LANES)], &v2[i..(i + LANES)]);
+        for j in 0..LANES {
             unsafe {
-                *v1.get_unchecked_mut(i) -= *v2.get_unchecked(i);
+                *b1.get_unchecked_mut(j) += *b2.get_unchecked(j) * a;
             }
         }
     }
-
-    #[inline(always)]
-    fn fmamul(v1: &mut [N], a: N, v2: &[N], b: N, d: usize) {
-        assert!(LANES.count_ones() == 1);
-        assert!(v1.len() == d && v2.len() == d);
-        let sd = d & !(LANES - 1);
-        for i in (0..sd).step_by(LANES) {
-            let (b1, b2) = (&mut v1[i..(i + LANES)], &v2[i..(i + LANES)]);
-            for j in 0..LANES {
-                unsafe {
-                    *b1.get_unchecked_mut(j) =
-                        (*b1.get_unchecked(j) * a + *b2.get_unchecked(j)) * b;
-                }
-            }
+    for i in sd..d {
+        unsafe {
+            *v1.get_unchecked_mut(i) += *v2.get_unchecked(i) * a;
         }
-        for i in sd..d {
+    }
+}
+
+#[inline(always)]
+pub(super) fn sum<N>(v: &[N], d: usize) -> N
+where
+    N: Float,
+{
+    assert!(v.len() >= d);
+    let sd = d & !(LANES - 1);
+    let mut vsum = [N::zero(); LANES];
+    for i in (0..sd).step_by(LANES) {
+        let chunk = &v[i..(i + LANES)];
+        for j in 0..LANES {
             unsafe {
-                *v1.get_unchecked_mut(i) = (*v1.get_unchecked(i) * a + *v2.get_unchecked(i)) * b;
+                *vsum.get_unchecked_mut(j) += *chunk.get_unchecked(j);
             }
         }
     }
-
-    #[inline(always)]
-    fn dot(v1: &[N], v2: &[N], d: usize) -> N {
-        assert!(LANES.count_ones() == 1);
-        assert!(v1.len() == d && v2.len() == d);
-        let sd = d & !(LANES - 1);
-        let mut vsum = [N::zero(); LANES];
-        for i in (0..sd).step_by(LANES) {
-            let (vv, cc) = (&v1[i..(i + LANES)], &v2[i..(i + LANES)]);
-            for j in 0..LANES {
-                unsafe {
-                    let (a, b) = (*vv.get_unchecked(j), *cc.get_unchecked(j));
-                    *vsum.get_unchecked_mut(j) += a * b;
-                }
-            }
-        }
-        let mut sum = vsum.iter().copied().sum::<N>();
-        if d > sd {
-            sum += (sd..d).map(|i| unsafe { *v1.get_unchecked(i) * *v2.get_unchecked(i) }).sum()
-        }
-        sum
+    let mut s = vsum.iter().copied().sum::<N>();
+    for i in sd..d {
+        s += unsafe { *v.get_unchecked(i) };
     }
+    s
+}
 
-    // new helpers
-    #[inline(always)]
-    fn axpy(v1: &mut [N], a: N, v2: &[N], d: usize) {
-        assert!(LANES.count_ones() == 1);
-        assert!(v1.len() == d && v2.len() == d);
-        let sd = d & !(LANES - 1);
-        for i in (0..sd).step_by(LANES) {
-            let (b1, b2) = (&mut v1[i..(i + LANES)], &v2[i..(i + LANES)]);
-            for j in 0..LANES {
-                unsafe {
-                    *b1.get_unchecked_mut(j) += *b2.get_unchecked(j) * a;
-                }
-            }
-        }
-        for i in sd..d {
+#[inline(always)]
+pub(super) fn add_scalar<N>(v: &mut [N], s: N, d: usize)
+where
+    N: Float,
+{
+    assert!(v.len() >= d);
+    let sd = d & !(LANES - 1);
+    for i in (0..sd).step_by(LANES) {
+        let b = &mut v[i..(i + LANES)];
+        for j in 0..LANES {
             unsafe {
-                *v1.get_unchecked_mut(i) += *v2.get_unchecked(i) * a;
+                *b.get_unchecked_mut(j) += s;
             }
         }
     }
-
-    #[inline(always)]
-    fn axpby(v1: &mut [N], a: N, v2: &[N], b: N, d: usize)
-    where
-        N: Copy,
-    {
-        assert!(LANES.count_ones() == 1);
-        assert!(v1.len() == d && v2.len() == d);
-        let sd = d & !(LANES - 1);
-        for i in (0..sd).step_by(LANES) {
-            let (b1, b2) = (&mut v1[i..(i + LANES)], &v2[i..(i + LANES)]);
-            for j in 0..LANES {
-                unsafe {
-                    *b1.get_unchecked_mut(j) = *b1.get_unchecked(j) * a + *b2.get_unchecked(j) * b;
-                }
-            }
-        }
-        for i in sd..d {
-            unsafe {
-                *v1.get_unchecked_mut(i) = *v1.get_unchecked(i) * a + *v2.get_unchecked(i) * b;
-            }
-        }
-    }
-
-    #[inline(always)]
-    fn sum(v: &[N], d: usize) -> N {
-        assert!(LANES.count_ones() == 1);
-        assert!(v.len() == d);
-        let sd = d & !(LANES - 1);
-        let mut vsum = [N::zero(); LANES];
-        for i in (0..sd).step_by(LANES) {
-            let chunk = &v[i..(i + LANES)];
-            for j in 0..LANES {
-                unsafe {
-                    *vsum.get_unchecked_mut(j) += *chunk.get_unchecked(j);
-                }
-            }
-        }
-        let mut sum = vsum.iter().copied().sum::<N>();
-        if d > sd {
-            sum += (sd..d).map(|i| unsafe { *v.get_unchecked(i) }).sum();
-        }
-        sum
-    }
-
-    #[inline(always)]
-    fn add_scalar(v: &mut [N], s: N, d: usize) {
-        assert!(LANES.count_ones() == 1);
-        assert!(v.len() == d);
-        let sd = d & !(LANES - 1);
-        for i in (0..sd).step_by(LANES) {
-            let b = &mut v[i..(i + LANES)];
-            for j in 0..LANES {
-                unsafe {
-                    *b.get_unchecked_mut(j) += s;
-                }
-            }
-        }
-        for i in sd..d {
-            unsafe {
-                *v.get_unchecked_mut(i) += s;
-            }
+    for i in sd..d {
+        unsafe {
+            *v.get_unchecked_mut(i) += s;
         }
     }
 }

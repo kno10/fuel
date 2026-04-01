@@ -65,6 +65,11 @@ name = "aknn_benchmark"
 path = "benchmark/aknn_benchmark.rs"
 required-features = ["benchmark"]
 
+[[bench]]
+name = "math"
+path = "benches/math.rs"
+harness = false
+
 [features]
 default = ["parallel"]
 benchmark = ["dep:csv"]
@@ -80,6 +85,9 @@ rayon = "1.11"
 rs-stats = "2.0.3"
 rand_pcg = "0.10"
 csv = { version = "1.3", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [profile.dev]
 opt-level = 1

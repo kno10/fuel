@@ -11,7 +11,7 @@ use fuel::distance::Euclidean;
 use fuel::search::kdtree::{KdTree, MaxVarianceSplit};
 use fuel::{DistanceData, IndexQuery, KnnSearch, TableWithDistance};
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut dims = 2_usize;
@@ -73,7 +73,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut rng = StdRng::seed_from_u64(seed);
     let query_indices =
-        (0..num_queries).map(|_| rng.gen_range(0..points.len())).collect::<Vec<_>>();
+        (0..num_queries).map(|_| rng.random_range(0..points.len())).collect::<Vec<_>>();
 
     let k = ((points.len() as f64).sqrt() * 0.1).ceil() as usize;
     println!("Dataset: {} points × {} dims (source: {})", points.len(), point_dims, source);

@@ -15,7 +15,7 @@ use fuel::{
     PrioritySearcherFactory, RangeSearch, TableWithDistance, VectorData,
 };
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut dims = 2_usize;
@@ -85,7 +85,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let mut rng = StdRng::seed_from_u64(42);
-    let queries = (0..num_queries).map(|_| rng.gen_range(0..points.len())).collect::<Vec<_>>();
+    let queries = (0..num_queries).map(|_| rng.random_range(0..points.len())).collect::<Vec<_>>();
 
     let k = ((points.len() as f64).sqrt() * 0.1).ceil() as usize;
     println!("Dataset: {} points × {} dims (source: {})", points.len(), point_dims, source);

@@ -1,15 +1,11 @@
 use std::iter::Sum;
 use std::ops::*;
 
-#[cfg(test)]
-use ndarray::Array2;
-
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
 use crate::{Float, VectorData as Dataset, math};
 
 /// Build initial assignments using squared L2 distances (just like Lloyd).
-#[allow(dead_code)]
 #[inline(always)]
 pub(crate) fn kgeo_initial_assignment<N, I, A>(
     data: &A, k: usize, init: &mut I, cent: &mut Centers<N>,
@@ -185,8 +181,6 @@ where
 /// iterations are performed per cluster on each k‑means iteration; the
 /// algorithm only executes `steps` loops and then reassigns points.  Distance
 /// for assignment uses squared L2 (just like standard k‑means).
-#[allow(dead_code)]
-#[inline(always)]
 pub fn kgeometric<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N, steps: usize,
 ) -> KMeansResult<N>
@@ -403,6 +397,7 @@ mod tests {
 
 #[cfg(test)]
 mod kgeometric_tests {
+    use ndarray::Array2;
     use rand::SeedableRng;
     use rand_pcg::Pcg32;
 

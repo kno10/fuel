@@ -26,17 +26,6 @@ mod spherical;
 mod tkmeans;
 pub mod util;
 
-// TODO: re-enable once the port reaches these algorithms:
-// mod em;
-// mod elkan;
-// mod exponion;
-// mod hamerly;
-// mod macqueen;
-// mod selkan;
-// mod shallot;
-// mod shamerly;
-// mod tkmeans;
-
 pub use self::elkan::*;
 pub use self::exponion::*;
 pub use self::fuzzy_cmeans::*;

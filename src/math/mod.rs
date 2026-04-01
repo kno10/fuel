@@ -2,15 +2,24 @@
 //!
 //! Public API: plain free functions (`sqdist`, `dot`, `axpy`, ...).
 //! On x86-64 the hot paths delegate to the AVX2 back-end, which uses explicit
-//! intrinsics and FMA for f32 and f64.  On other architectures the scalar
-//! module is used directly.
+//! intrinsics and FMA for f32 and f64.  On ARM and other architectures the
+//! unrolled scalar module is used for d >= UNROLL_SIZE, giving the compiler a
+//! fixed-width inner loop body to auto-vectorise (e.g. NEON), falling back to
+//! the plain scalar module for short vectors.
 
-mod scalar;
+pub mod scalar;
 
 #[cfg(target_arch = "x86_64")]
-mod avx2;
+pub mod avx2;
+
+#[cfg(not(target_arch = "x86_64"))]
+pub mod unroll;
 
 use crate::Float;
+
+/// Minimum number of dimensions to invoke the AVX2 or unrolled back-ends.
+/// Below this threshold the plain scalar loop is used instead.
+const UNROLL_SIZE: usize = 4;
 
 /// Squared Euclidean distance between two length-`d` vectors.
 #[inline(always)]
@@ -19,9 +28,14 @@ where
     N: Float,
 {
     #[cfg(target_arch = "x86_64")]
-    return avx2::sqdist(v1, v2, d);
+    if d >= UNROLL_SIZE {
+        return avx2::sqdist(v1, v2, d);
+    }
     #[cfg(not(target_arch = "x86_64"))]
-    return scalar::sqdist(v1, v2, d);
+    if d >= UNROLL_SIZE {
+        return unroll::sqdist(v1, v2, d);
+    }
+    scalar::sqdist(v1, v2, d)
 }
 
 /// L1 (Manhattan) distance between two vectors.
@@ -31,9 +45,14 @@ where
     N: Float,
 {
     #[cfg(target_arch = "x86_64")]
-    return avx2::l1dist(v1, v2, d);
+    if d >= UNROLL_SIZE {
+        return avx2::l1dist(v1, v2, d);
+    }
     #[cfg(not(target_arch = "x86_64"))]
-    return scalar::l1dist(v1, v2, d);
+    if d >= UNROLL_SIZE {
+        return unroll::l1dist(v1, v2, d);
+    }
+    scalar::l1dist(v1, v2, d)
 }
 
 /// Set `v1[i] = v2[i] * a` for `i` in `0..d`.
@@ -43,9 +62,14 @@ where
     N: Float,
 {
     #[cfg(target_arch = "x86_64")]
-    return avx2::mul(v1, v2, a, d);
+    if d >= UNROLL_SIZE {
+        return avx2::mul(v1, v2, a, d);
+    }
     #[cfg(not(target_arch = "x86_64"))]
-    return scalar::mul(v1, v2, a, d);
+    if d >= UNROLL_SIZE {
+        return unroll::mul(v1, v2, a, d);
+    }
+    scalar::mul(v1, v2, a, d)
 }
 
 /// In-place multiply by a scalar: `v[i] *= f`.
@@ -55,9 +79,14 @@ where
     N: Float,
 {
     #[cfg(target_arch = "x86_64")]
-    return avx2::mul_assign(v, f, d);
+    if d >= UNROLL_SIZE {
+        return avx2::mul_assign(v, f, d);
+    }
     #[cfg(not(target_arch = "x86_64"))]
-    return scalar::mul_assign(v, f, d);
+    if d >= UNROLL_SIZE {
+        return unroll::mul_assign(v, f, d);
+    }
+    scalar::mul_assign(v, f, d)
 }
 
 /// Alias for `mul_assign`.
@@ -76,9 +105,14 @@ where
     N: Float,
 {
     #[cfg(target_arch = "x86_64")]
-    return avx2::add_assign(v1, v2, d);
+    if d >= UNROLL_SIZE {
+        return avx2::add_assign(v1, v2, d);
+    }
     #[cfg(not(target_arch = "x86_64"))]
-    return scalar::add_assign(v1, v2, d);
+    if d >= UNROLL_SIZE {
+        return unroll::add_assign(v1, v2, d);
+    }
+    scalar::add_assign(v1, v2, d)
 }
 
 /// In-place subtraction: `v1[i] -= v2[i]`.
@@ -88,9 +122,14 @@ where
     N: Float,
 {
     #[cfg(target_arch = "x86_64")]
-    return avx2::sub_assign(v1, v2, d);
+    if d >= UNROLL_SIZE {
+        return avx2::sub_assign(v1, v2, d);
+    }
     #[cfg(not(target_arch = "x86_64"))]
-    return scalar::sub_assign(v1, v2, d);
+    if d >= UNROLL_SIZE {
+        return unroll::sub_assign(v1, v2, d);
+    }
+    scalar::sub_assign(v1, v2, d)
 }
 
 /// FMA followed by a multiplication: `v1 = (v1 * a + v2) * b`.
@@ -100,9 +139,14 @@ where
     N: Float,
 {
     #[cfg(target_arch = "x86_64")]
-    return avx2::fmamul(v1, a, v2, b, d);
+    if d >= UNROLL_SIZE {
+        return avx2::fmamul(v1, a, v2, b, d);
+    }
     #[cfg(not(target_arch = "x86_64"))]
-    return scalar::fmamul(v1, a, v2, b, d);
+    if d >= UNROLL_SIZE {
+        return unroll::fmamul(v1, a, v2, b, d);
+    }
+    scalar::fmamul(v1, a, v2, b, d)
 }
 
 /// Dot product of two vectors.
@@ -112,9 +156,14 @@ where
     N: Float,
 {
     #[cfg(target_arch = "x86_64")]
-    return avx2::dot(v1, v2, d);
+    if d >= UNROLL_SIZE {
+        return avx2::dot(v1, v2, d);
+    }
     #[cfg(not(target_arch = "x86_64"))]
-    return scalar::dot(v1, v2, d);
+    if d >= UNROLL_SIZE {
+        return unroll::dot(v1, v2, d);
+    }
+    scalar::dot(v1, v2, d)
 }
 
 /// Squared L2 norm of a vector.
@@ -142,9 +191,14 @@ where
     N: Float,
 {
     #[cfg(target_arch = "x86_64")]
-    return avx2::axpy(v1, a, v2, d);
+    if d >= UNROLL_SIZE {
+        return avx2::axpy(v1, a, v2, d);
+    }
     #[cfg(not(target_arch = "x86_64"))]
-    return scalar::axpy(v1, a, v2, d);
+    if d >= UNROLL_SIZE {
+        return unroll::axpy(v1, a, v2, d);
+    }
+    scalar::axpy(v1, a, v2, d)
 }
 
 /// Combined scaled sum: `v1 := a * v1 + b * v2`.
@@ -164,9 +218,14 @@ where
     N: Float,
 {
     #[cfg(target_arch = "x86_64")]
-    return avx2::sum(v, d);
+    if d >= UNROLL_SIZE {
+        return avx2::sum(v, d);
+    }
     #[cfg(not(target_arch = "x86_64"))]
-    return scalar::sum(v, d);
+    if d >= UNROLL_SIZE {
+        return unroll::sum(v, d);
+    }
+    scalar::sum(v, d)
 }
 
 /// Add a scalar to every element: `v[i] += s`.
@@ -176,9 +235,14 @@ where
     N: Float,
 {
     #[cfg(target_arch = "x86_64")]
-    return avx2::add_scalar(v, s, d);
+    if d >= UNROLL_SIZE {
+        return avx2::add_scalar(v, s, d);
+    }
     #[cfg(not(target_arch = "x86_64"))]
-    return scalar::add_scalar(v, s, d);
+    if d >= UNROLL_SIZE {
+        return unroll::add_scalar(v, s, d);
+    }
+    scalar::add_scalar(v, s, d)
 }
 
 /// Copy `d` elements from `v2` into `v1`.

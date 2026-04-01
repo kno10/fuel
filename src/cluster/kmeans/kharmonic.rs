@@ -157,7 +157,6 @@ where
     KMeansResult::with_inertia(cent.into_ndarray(), assignments, iter, loss)
 }
 
-#[allow(dead_code)]
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;

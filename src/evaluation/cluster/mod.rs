@@ -13,7 +13,6 @@ pub(crate) fn f1_measure(precision: f64, recall: f64) -> f64 {
     if denom == 0.0 { 0.0 } else { 2.0 * precision * recall / denom }
 }
 
-#[allow(dead_code)]
 pub struct ClusteringEvaluation {
     pub pair_counting: PairCounting,
     pub entropy: Entropy,
@@ -23,7 +22,6 @@ pub struct ClusteringEvaluation {
     pub pair_sets_index: PairSetsIndex,
 }
 
-#[allow(dead_code)]
 pub fn evaluate_clustering(
     labels1: &[isize], labels2: &[isize], self_pairing: bool, break_noise_clusters: bool,
     noise_label1: Option<isize>, noise_label2: Option<isize>,
@@ -46,7 +44,6 @@ pub fn evaluate_clustering(
     }
 }
 
-#[allow(dead_code)]
 pub fn cluster_sizes(labels: &[isize]) -> BTreeMap<isize, usize> {
     let mut sizes = BTreeMap::new();
     for &l in labels {

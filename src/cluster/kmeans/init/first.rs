@@ -50,6 +50,7 @@ where
         A: Dataset<N>,
         F: FnMut(usize, usize, N),
     {
+        // FIXME: consumers should not rely on this anyway?
         panic!("Distances not provided by this initialization.");
     }
 }

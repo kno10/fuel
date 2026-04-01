@@ -1,9 +1,3 @@
-/// Math operations for k-means
-///
-/// This helps with using SSE, AVX, and similar instruction sets.
-#[allow(dead_code)]
-use std::ops::*;
-
 use ndarray::{Array2, ArrayBase, Data, Ix2, RawData};
 
 use crate::{Float, VectorData as Dataset, math};
@@ -140,7 +134,6 @@ pub(crate) fn triindex(a: usize, b: usize) -> usize {
 
 /// Generate a data set for unit testing
 #[cfg(test)]
-#[allow(dead_code)]
 pub(crate) fn gen_test_data<R>(shape: (usize, usize), mut rng: R) -> Array2<f64>
 where
     R: rand::Rng,

@@ -72,11 +72,9 @@ pub use linkage::weighted_average::WeightedAverageLinkage;
 pub use linkage::{GeometricLinkage, Linkage, SetLinkage};
 
 #[cfg(test)]
-#[allow(dead_code, unused)]
 pub(crate) mod test_utils;
 
 #[cfg(test)]
-#[allow(dead_code, unused)]
 pub(crate) mod regression_support {
     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/hierarchical/regression_support.rs"));
 }

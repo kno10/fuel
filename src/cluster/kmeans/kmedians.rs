@@ -7,9 +7,8 @@ use crate::{Float, VectorData as Dataset, math};
 
 /// Compute initial assignment for k-medians using the provided initializer.
 /// Returns (assignments, cluster_sizes, total_loss).
-#[allow(dead_code)]
 #[inline(always)]
-pub(crate) fn kmedians_initial_assignment<N, I, A>(
+pub fn kmedians_initial_assignment<N, I, A>(
     data: &A, k: usize, init: &mut I, cent: &mut Centers<N>, scratch: &mut [N],
 ) -> (Vec<usize>, Vec<usize>, N)
 where
@@ -49,9 +48,7 @@ where
 /// Run the plain k-medians algorithm, updating centers by taking the per-axis
 /// median of the points assigned to each cluster.  Distance for assignment is
 /// Manhattan (L1).
-#[allow(dead_code)]
-#[inline(always)]
-pub(crate) fn kmedians_impl<N, I, A>(
+pub fn kmedians<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
 ) -> KMeansResult<N>
 where
@@ -147,17 +144,6 @@ where
         }
     }
     KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum)
-}
-
-pub fn kmedians<N, I, A>(
-    data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
-) -> KMeansResult<N>
-where
-    N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
-    I: Initialization<N>,
-    A: Dataset<N>,
-{
-    kmedians_impl::<N, I, A>(data, k, init, maxiter, tol)
 }
 
 #[cfg(test)]

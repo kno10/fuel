@@ -7,7 +7,7 @@ use crate::Float;
 use std::any::TypeId;
 
 #[inline(always)]
-pub(super) fn sqdist<N>(v1: &[N], v2: &[N], d: usize) -> N
+pub fn sqdist<N>(v1: &[N], v2: &[N], d: usize) -> N
 where
     N: Float,
 {
@@ -16,7 +16,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn l1dist<N>(v1: &[N], v2: &[N], d: usize) -> N
+pub fn l1dist<N>(v1: &[N], v2: &[N], d: usize) -> N
 where
     N: Float,
 {
@@ -30,7 +30,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn mul<N>(v1: &mut [N], v2: &[N], a: N, d: usize)
+pub fn mul<N>(v1: &mut [N], v2: &[N], a: N, d: usize)
 where
     N: Float,
 {
@@ -43,7 +43,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn mul_assign<N>(v: &mut [N], f: N, d: usize)
+pub fn mul_assign<N>(v: &mut [N], f: N, d: usize)
 where
     N: Float,
 {
@@ -56,7 +56,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn add_assign<N>(v1: &mut [N], v2: &[N], d: usize)
+pub fn add_assign<N>(v1: &mut [N], v2: &[N], d: usize)
 where
     N: Float,
 {
@@ -69,7 +69,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn sub_assign<N>(v1: &mut [N], v2: &[N], d: usize)
+pub fn sub_assign<N>(v1: &mut [N], v2: &[N], d: usize)
 where
     N: Float,
 {
@@ -82,13 +82,13 @@ where
 }
 
 #[inline(always)]
-pub(super) fn fmamul<N>(v1: &mut [N], a: N, v2: &[N], b: N, d: usize)
+pub fn fmamul<N>(v1: &mut [N], a: N, v2: &[N], b: N, d: usize)
 where
     N: Float,
 {
     assert!(v1.len() >= d && v2.len() >= d);
 
-    #[cfg(any(target_feature = "fma", target_feature = "neon", target_feature = "vfp4", target_feature = "vfpv4"))]
+    #[cfg(any(target_feature = "fma", target_feature = "neon", target_feature = "vfp4"))]
     {
         if TypeId::of::<N>() == TypeId::of::<f32>() || TypeId::of::<N>() == TypeId::of::<f64>() {
             for i in 0..d {
@@ -109,7 +109,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn dot<N>(v1: &[N], v2: &[N], d: usize) -> N
+pub fn dot<N>(v1: &[N], v2: &[N], d: usize) -> N
 where
     N: Float,
 {
@@ -118,7 +118,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn axpy<N>(v1: &mut [N], a: N, v2: &[N], d: usize)
+pub fn axpy<N>(v1: &mut [N], a: N, v2: &[N], d: usize)
 where
     N: Float,
 {
@@ -131,7 +131,7 @@ where
 }
 
 #[inline(always)]
-pub(super) fn sum<N>(v: &[N], d: usize) -> N
+pub fn sum<N>(v: &[N], d: usize) -> N
 where
     N: Float,
 {
@@ -140,7 +140,15 @@ where
 }
 
 #[inline(always)]
-pub(super) fn add_scalar<N>(v: &mut [N], s: N, d: usize)
+pub fn norm<N>(v: &[N], d: usize) -> N
+where
+    N: Float,
+{
+    dot(v, v, d).sqrt()
+}
+
+#[inline(always)]
+pub fn add_scalar<N>(v: &mut [N], s: N, d: usize)
 where
     N: Float,
 {
