@@ -1,114 +1,269 @@
-use super::common::{
-    Builder, MergeHistory, find_best, run_anderberg_nn_cache, update_matrix_and_cache_with_hook,
+use crate::cluster::hierarchical::common::{
+    condensed_get, condensed_set, shrink_active_end, triangle_index,
 };
-use super::linkage::Linkage;
-use crate::Float;
+use crate::cluster::hierarchical::{Builder, Linkage, MergeHistory, idsize};
+use crate::{DistanceData, Float};
+
+fn find_best<F: Float>(distances: &[F], clustermap: &[idsize], best: &mut [(F, usize)], j: usize) {
+    let mut best_pair = (F::infinity(), usize::MAX);
+    for i in 0..j {
+        if clustermap[i] == idsize::MAX {
+            continue;
+        }
+        let d = distances[triangle_index(j, i)];
+        if d <= best_pair.0 {
+            best_pair = (d, i);
+        }
+    }
+    best[j] = best_pair;
+}
+
+fn initialize_nn_cache<F: Float>(distances: &[F], clustermap: &[idsize], best: &mut [(F, usize)]) {
+    for x in 1..best.len() {
+        if clustermap[x] != idsize::MAX {
+            find_best(distances, clustermap, best, x);
+        }
+    }
+}
+
+/// Working state shared by all Anderberg-family algorithms.
+pub(crate) struct AnderbergState<F: Float> {
+    pub(crate) mat: Vec<F>,
+    pub(crate) clustermap: Vec<idsize>,
+    pub(crate) heights: Vec<F>,
+    pub(crate) builder: Builder<F>,
+    pub(crate) best: Vec<(F, usize)>,
+    pub(crate) end: usize,
+}
+
+impl<F: Float> AnderbergState<F> {
+    pub(crate) fn new(mat: Vec<F>, n: usize) -> Self {
+        let clustermap: Vec<idsize> = (0..(n as idsize)).collect();
+        let heights = vec![F::zero(); n];
+        let builder = Builder::<F>::new(n);
+        let mut best = vec![(F::infinity(), usize::MAX); n];
+        initialize_nn_cache(&mat, &clustermap, &mut best);
+        Self { mat, clustermap, heights, builder, best, end: n }
+    }
+
+    pub(crate) fn n(&self) -> usize { self.best.len() }
+
+    /// Scan for the best merge candidate. Returns `(dist, x, y)` with `x > y`.
+    pub(crate) fn find_merge(&self) -> (F, usize, usize) {
+        let mut be = (F::infinity(), usize::MAX, usize::MAX);
+        for cx in 1..self.end {
+            if self.clustermap[cx] == idsize::MAX || self.best[cx].1 == usize::MAX {
+                continue;
+            }
+            if self.best[cx].0 <= be.0 {
+                be = (self.best[cx].0, cx, self.best[cx].1);
+            }
+        }
+        assert!(be.1 != usize::MAX, "no merge candidate found");
+        (be.0, be.1.max(be.2), be.1.min(be.2))
+    }
+
+    /// Record the merge of clusters at positions x and y.
+    /// Returns `(size_x, size_y)` — cluster sizes before the merge.
+    pub(crate) fn commit_merge(
+        &mut self, x: usize, y: usize, dist: F, prototype: usize,
+    ) -> (usize, usize) {
+        let (cid_x, cid_y) = (self.clustermap[x], self.clustermap[y]);
+        let (size_x, size_y) = (self.builder.get_size(cid_x), self.builder.get_size(cid_y));
+        let (a, b) = if cid_y <= cid_x { (cid_y, cid_x) } else { (cid_x, cid_y) };
+        self.clustermap[y] = self.builder.add_with_prototype(a, dist, b, prototype);
+        self.clustermap[x] = idsize::MAX;
+        self.best[x] = (F::infinity(), usize::MAX);
+        if x == self.end - 1 {
+            shrink_active_end(&self.clustermap, &mut self.end);
+        }
+        (size_x, size_y)
+    }
+
+    /// Apply the Lance-Williams update to the distance matrix and NN cache.
+    /// Calls `on_update(best, j)` for each j whose cache entry changes.
+    pub(crate) fn update_lw<L, OnUpdate>(
+        &mut self, linkage: L, mindist: F, x: usize, y: usize, size_x: usize, size_y: usize,
+        mut on_update: OnUpdate,
+    ) where
+        L: Linkage<F> + Copy,
+        OnUpdate: FnMut(&mut [(F, usize)], usize),
+    {
+        for j in 0..self.end {
+            if j == x || j == y || self.clustermap[j] == idsize::MAX {
+                continue;
+            }
+            let d_xj = condensed_get(&self.mat, x, j);
+            let d_yj = condensed_get(&self.mat, y, j);
+            let size_j = self.builder.get_size(self.clustermap[j]);
+            let height_x = self.heights[x];
+            let height_y = self.heights[y];
+            let height_j = self.heights[j];
+            let d = linkage
+                .combine(size_x, d_xj, size_y, d_yj, size_j, mindist, height_x, height_y, height_j);
+            condensed_set(&mut self.mat, y, j, d);
+            if self.update_best(x, y, j, d) {
+                on_update(&mut self.best, j);
+            }
+        }
+    }
+
+    fn update_best(&mut self, x: usize, y: usize, j: usize, d: F) -> bool {
+        if y < j && d <= self.best[j].0 {
+            self.best[j] = (d, y);
+            return true;
+        }
+        if self.best[j].1 == x || self.best[j].1 == y {
+            let old = self.best[j];
+            find_best(&self.mat, &self.clustermap, &mut self.best, j);
+            return self.best[j] != old;
+        }
+        false
+    }
+
+    /// Refresh the NN cache entry for y (no-op if y == 0).
+    pub(crate) fn refresh_best(&mut self, y: usize) {
+        if y > 0 {
+            find_best(&self.mat, &self.clustermap, &mut self.best, y);
+        }
+    }
+}
 
 /// Perform hierarchical clustering using Anderberg's NN-cache acceleration.
 ///
 /// Input and output conventions are the same as [`crate::cluster::hierarchical::agnes`].
 #[must_use]
-pub fn anderberg<F: Float, L: Linkage<F> + Copy>(
-    distances: &[F], n: usize, linkage: L, is_squared: bool,
-) -> MergeHistory<F> {
+pub fn anderberg<D, F: Float, L: Linkage<F> + Copy>(data: &D, linkage: L) -> MergeHistory<F>
+where
+    D: DistanceData<F>,
+{
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
-    assert_eq!(distances.len(), n * (n - 1) / 2, "bad condensed matrix length");
-
-    let mat: Vec<F> = distances.iter().map(|&d| linkage.initial(d, is_squared)).collect();
-    let mut empty_prototypes = Vec::new();
-
-    run_anderberg_nn_cache::<F, Builder<F>, _, _, _>(
-        mat,
-        n,
-        move |mat,
-              clustermap,
-              builder,
-              bestd,
-              besti,
-              x,
-              y,
-              mindist,
-              end,
-              size_x,
-              size_y,
-              _offset,
-              _prototypes,
-              _prototype| {
-            update_matrix_and_cache_with_hook(
-                mat,
-                clustermap,
-                bestd,
-                besti,
-                builder,
-                linkage,
-                mindist,
-                x,
-                y,
-                size_x,
-                size_y,
-                end,
-                |_, _, _| {},
-            );
-        },
-        move |y, _x, clustermap, mat, bestd, besti| {
-            if y > 0 {
-                find_best(mat, clustermap, bestd, besti, y);
-            }
-        },
-        move |mindist, _x, _y, _offset, _prototypes| (linkage.restore(mindist, is_squared), None),
-        true,
-        &mut empty_prototypes,
-    )
+    let squared = data.is_squared_distance();
+    let mat = (1..n)
+        .flat_map(|x| (0..x).map(move |y| linkage.initial(data.distance(x, y), squared)))
+        .collect();
+    let mut state = AnderbergState::new(mat, n);
+    for _ in 1..n {
+        let (mindist, x, y) = state.find_merge();
+        let (size_x, size_y) = state.commit_merge(x, y, mindist, usize::MAX);
+        state.update_lw(linkage, mindist, x, y, size_x, size_y, |_, _| {});
+        state.heights[y] = mindist;
+        state.heights[x] = F::nan();
+        state.refresh_best(y);
+    }
+    state.builder.into_merges()
 }
 
-#[allow(clippy::too_many_arguments)]
 #[cfg(test)]
 mod tests {
-    // imported via full path to avoid module/name conflict
     use super::anderberg;
-    use crate::cluster::hierarchical::regression_support::{
-        DATASETS, cluster_and_cut, evaluate_clustering, load_dataset, optionally_report,
+    use crate::cluster::hierarchical::extraction::cut_dendrogram_by_number_of_clusters;
+    use crate::cluster::hierarchical::test::test_clustering_condensed;
+    use crate::cluster::hierarchical::{
+        CentroidLinkage, CompleteLinkage, GroupAverageLinkage, MedianLinkage,
+        MinimumSumSquaresLinkage, MinimumVarianceIncreaseLinkage, MinimumVarianceLinkage,
+        SingleLinkage, WardLinkage, WeightedAverageLinkage,
     };
-    use crate::cluster::hierarchical::{AverageLinkage, CompleteLinkage};
+    use crate::distance::{Euclidean, SquaredEuclidean};
 
     #[test]
-    fn anderberg_matches_agnes_complete_on_unique_distances() {
-        let d = vec![1.0, 8.0, 15.0, 22.0, 2.0, 9.0, 16.0, 3.0, 10.0, 4.0];
-        let a = crate::cluster::hierarchical::agnes(&d, 5, CompleteLinkage, false);
-        let b = anderberg(&d, 5, CompleteLinkage, false);
-        assert_eq!(a, b);
+    fn anderberg_average_regression() {
+        test_clustering_condensed("Anderberg", "average", Euclidean, |condensed, min_clusters| {
+            let history = anderberg(condensed, GroupAverageLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
     }
 
     #[test]
-    fn anderberg_matches_agnes_average_on_unique_distances() {
-        let d = vec![1.0, 8.0, 15.0, 22.0, 2.0, 9.0, 16.0, 3.0, 10.0, 4.0];
-        let a = crate::cluster::hierarchical::agnes(&d, 5, AverageLinkage, false);
-        let b = anderberg(&d, 5, AverageLinkage, false);
-        assert_eq!(a, b);
+    fn anderberg_complete_regression() {
+        test_clustering_condensed("Anderberg", "complete", Euclidean, |condensed, min_clusters| {
+            let history = anderberg(condensed, CompleteLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
     }
 
     #[test]
-    fn anderberg_regression_on_sample_datasets() {
-        for dataset in DATASETS.iter().filter(|d| d.name != "nested_clusters") {
-            let (features, truth) = load_dataset(dataset.name);
-            let labels =
-                cluster_and_cut(anderberg, &features, dataset.min_clusters, AverageLinkage);
-            let (ari, nmi) = evaluate_clustering(&labels, &truth);
-            optionally_report("Anderberg", dataset.name, ari, nmi);
-            assert!(
-                ari >= dataset.min_ari,
-                "{name} ARI too low after Anderberg: {ari:.3} < {min_ari:.3}",
-                name = dataset.name,
-                ari = ari,
-                min_ari = dataset.min_ari
-            );
-            assert!(
-                nmi >= dataset.min_nmi,
-                "{name} NMI too low after Anderberg: {nmi:.3} < {min_nmi:.3}",
-                name = dataset.name,
-                nmi = nmi,
-                min_nmi = dataset.min_nmi
-            );
-        }
+    fn anderberg_single_regression() {
+        test_clustering_condensed("Anderberg", "single", Euclidean, |condensed, min_clusters| {
+            let history = anderberg(condensed, SingleLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn anderberg_ward_regression() {
+        test_clustering_condensed(
+            "Anderberg",
+            "ward",
+            SquaredEuclidean,
+            |condensed, min_clusters| {
+                let history = anderberg(condensed, WardLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn anderberg_centroid_regression() {
+        test_clustering_condensed(
+            "Anderberg",
+            "centroid",
+            SquaredEuclidean,
+            |condensed, min_clusters| {
+                let history = anderberg(condensed, CentroidLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn anderberg_median_regression() {
+        test_clustering_condensed(
+            "Anderberg",
+            "median",
+            SquaredEuclidean,
+            |condensed, min_clusters| {
+                let history = anderberg(condensed, MedianLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn anderberg_weighted_average_regression() {
+        test_clustering_condensed(
+            "Anderberg",
+            "weighted_average",
+            Euclidean,
+            |condensed, min_clusters| {
+                let history = anderberg(condensed, WeightedAverageLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn anderberg_minimum_variance_increase_regression() {
+        test_clustering_condensed("Anderberg", "mivar", Euclidean, |condensed, min_clusters| {
+            let history = anderberg(condensed, MinimumVarianceIncreaseLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn anderberg_minimum_sum_squares_regression() {
+        test_clustering_condensed("Anderberg", "mnssq", Euclidean, |condensed, min_clusters| {
+            let history = anderberg(condensed, MinimumSumSquaresLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn anderberg_minimum_variance_regression() {
+        test_clustering_condensed("Anderberg", "mnvar", Euclidean, |condensed, min_clusters| {
+            let history = anderberg(condensed, MinimumVarianceLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
     }
 }

@@ -1,7 +1,8 @@
 use std::cmp::Ordering;
 
-use super::common::MergeHistory;
 use crate::Float;
+use crate::cluster::hdbscan::Merge;
+use crate::cluster::hierarchical::MergeHistory;
 
 /// Native pointer representation used by SLINK/CLINK.
 ///
@@ -42,7 +43,7 @@ pub fn pointer_to_merge_history<F: Float>(pointer: &PointerRepresentation<F>) ->
 
     let mut parent: Vec<usize> = (0..(2 * n - 1)).collect();
     let mut size = vec![1usize; 2 * n - 1];
-    let mut merges = Vec::with_capacity(n.saturating_sub(1));
+    let mut merges = MergeHistory::with_capacity(n.saturating_sub(1));
 
     for &source in &order {
         let target = pointer.pi[source];
@@ -59,11 +60,12 @@ pub fn pointer_to_merge_history<F: Float>(pointer: &PointerRepresentation<F>) ->
         let ss = size[s];
         let st = size[t];
         let (idx1, idx2) = if s <= t { (s, t) } else { (t, s) };
-        merges.push(super::common::Merge {
+        merges.push(Merge {
             idx1,
             idx2,
             distance: pointer.lambda[source],
             size: ss + st,
+            prototype: usize::MAX,
         });
 
         let new_id = n + merges.len() - 1;
@@ -102,7 +104,7 @@ mod tests {
     fn pointer_conversion_builds_full_history() {
         let d = vec![1.0, 8.0, 15.0, 22.0, 2.0, 9.0, 16.0, 3.0, 10.0, 4.0];
         let d_clone = d.clone();
-        let cm = CondensedDistanceMatrix::new_from_condensed(d_clone, 5);
+        let cm = CondensedDistanceMatrix::new_from_condensed(d_clone, 5, false);
         let p = slink_pointer(&cm);
         let h = pointer_to_merge_history(&p);
         assert_eq!(h.len(), 4);

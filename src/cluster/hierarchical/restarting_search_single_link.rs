@@ -1,5 +1,5 @@
 use crate::api::{DistanceData, DistanceSearch, PrioritySearcher, PrioritySearcherFactory};
-use crate::cluster::hierarchical::common::MergeHistory;
+use crate::cluster::hierarchical::MergeHistory;
 use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
 use crate::{CandidateHeap, DistPair, Float, IndexQuery};
 
@@ -127,12 +127,29 @@ mod tests {
     use super::*;
     use crate::TableWithDistance;
     use crate::cluster::hierarchical::buffered_search_single_link;
+    use crate::cluster::hierarchical::extraction::cut_dendrogram_by_number_of_clusters;
+    use crate::cluster::hierarchical::test::test_clustering_table;
     use crate::distance::Euclidean;
     use crate::search::vptree::VPTree;
 
     /// Ensure that restarting search produces the same merge history as a
     /// buffered search with slack=1.  This also serves as a regression test
     /// for the bug that caused RSSL to revisit neighbours and run slowly.
+    #[test]
+    fn restarting_search_single_link_regression() {
+        test_clustering_table(
+            "RestartingSearchSingleLink",
+            "single",
+            crate::distance::Euclidean,
+            |access, min_clusters| {
+                let mut rng = StdRng::seed_from_u64(42);
+                let tree = VPTree::new(access, 3, &mut rng);
+                let history = restarting_search_single_link(&tree, access);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
     #[test]
     fn restarting_equals_buffered_random() {
         let mut rng = StdRng::seed_from_u64(42);
@@ -146,8 +163,8 @@ mod tests {
         let hist_b = buffered_search_single_link(&tree, &data, 1);
         assert_eq!(hist_r.len(), hist_b.len());
         // sort both histories by (idx1, idx2) to allow differences in merge order
-        let mut r_sorted = hist_r.clone();
-        let mut b_sorted = hist_b.clone();
+        let mut r_sorted: Vec<_> = hist_r.clone().into_iter().collect();
+        let mut b_sorted: Vec<_> = hist_b.clone().into_iter().collect();
         r_sorted.sort_by_key(|a| (a.idx1, a.idx2));
         b_sorted.sort_by_key(|a| (a.idx1, a.idx2));
         for (r, b) in r_sorted.iter().zip(b_sorted.iter()) {

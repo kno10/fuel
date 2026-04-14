@@ -141,6 +141,8 @@ where
     F: Float + 'static,
 {
     fn distance(&self, a: &[N], b: &[N]) -> F { squared_euclidean_distance(a, b) }
+
+    fn is_squared_distance(&self) -> bool { true }
 }
 
 impl<N, F> DistanceFunction<Vec<N>, F> for SquaredEuclidean
@@ -149,6 +151,8 @@ where
     F: Float + 'static,
 {
     fn distance(&self, a: &Vec<N>, b: &Vec<N>) -> F { squared_euclidean_distance(a, b) }
+
+    fn is_squared_distance(&self) -> bool { true }
 }
 
 impl<N, F> PartialDistance<N, F> for SquaredEuclidean

@@ -27,6 +27,9 @@ pub trait DistanceData<F: Float>: Data {
 
     /// Create a reusable query object for this data set.
     fn query(&self) -> Self::Query<'_>;
+
+    /// Whether the distances are already squared Euclidean values.
+    fn is_squared_distance(&self) -> bool { false }
 }
 
 /// Access into individual points when coordinate data is available.
@@ -80,6 +83,8 @@ where
     fn distance(&self, a: usize, b: usize) -> F { (*self).distance(a, b) }
 
     fn query(&self) -> Self::Query<'_> { (*self).query() }
+
+    fn is_squared_distance(&self) -> bool { (*self).is_squared_distance() }
 }
 
 impl<C, D, F> PointSearchData<C, F> for D

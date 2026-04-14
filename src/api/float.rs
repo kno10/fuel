@@ -24,6 +24,15 @@ pub trait Float:
 {
     fn cast<T: num_traits::NumCast>(x: T) -> Self { num_traits::NumCast::from(x).unwrap() }
 
+    /// Common constants used throughout the code base.
+    fn two() -> Self { Self::from_f64(2.0).unwrap() }
+
+    fn four() -> Self { Self::from_f64(4.0).unwrap() }
+
+    fn half() -> Self { Self::from_f64(0.5).unwrap() }
+
+    fn quarter() -> Self { Self::from_f64(0.25).unwrap() }
+
     /// Convert this value to another float type.
     fn to_float<T: Float>(self) -> T {
         num_traits::cast(self).unwrap_or_else(|| T::from_f64(self.to_f64().unwrap()).unwrap())

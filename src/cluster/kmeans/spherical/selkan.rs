@@ -160,8 +160,8 @@ where
 mod tests {
     use ndarray::Array2;
 
+    use crate::NdArrayDataset;
     use crate::cluster::kmeans::init::FirstK;
-    use crate::cluster::kmeans::ndarray::NdArrayDataset;
     use crate::cluster::kmeans::spherical::selkan::*;
 
     #[test]

@@ -52,9 +52,9 @@ where
         an1[l] = if sz > 1 { sz_n / (sz_n - N::one()) } else { big };
     }
 
-    for l in 0..k {
+    for (l, live_slot) in live.iter_mut().enumerate() {
         update_an(&csize, &mut an1, &mut an2, l, big);
-        live[l] = n + 1;
+        *live_slot = n + 1;
     }
 
     // Initial computation of IC2, dist1 and dist2.
@@ -236,8 +236,8 @@ where
             break;
         }
 
-        for l in 0..k {
-            ncp[l] = 0;
+        for slot in ncp.iter_mut() {
+            *slot = 0;
         }
 
         // tolerance check
@@ -253,9 +253,9 @@ where
 
     // Compute exact inertia for the final assignment.
     let mut sum = N::zero();
-    for i in 0..n {
+    for (i, &cluster) in assign.iter().enumerate() {
         data.load_into(i, &mut scratch, d);
-        sum += math::sqdist(cent.center(assign[i]), &scratch, d);
+        sum += math::sqdist(cent.center(cluster), &scratch, d);
     }
 
     KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, sum)
@@ -338,11 +338,10 @@ where
             } else {
                 // Fallback: perform full optimal transfer scan.
                 let mut best_delta_opt = best_delta;
-                for j in 0..k {
+                for (j, &ns) in csize.iter().enumerate() {
                     if j == r || j == best_j {
                         continue;
                     }
-                    let ns = csize[j];
                     let ds = math::sqdist(cent.center(j), &scratch, d);
                     let delta = dr * N::from(nr).unwrap() / (N::from(nr).unwrap() - N::one())
                         - ds * N::from(ns).unwrap() / (N::from(ns).unwrap() + N::one());
@@ -417,26 +416,24 @@ where
 
     // Compute exact inertia for the final assignment.
     let mut sum = N::zero();
-    for i in 0..n {
+    for (i, &cluster) in assign.iter().enumerate() {
         data.load_into(i, &mut scratch, d);
-        sum += math::sqdist(cent.center(assign[i]), &scratch, d);
+        sum += math::sqdist(cent.center(cluster), &scratch, d);
     }
 
     KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, sum)
 }
 
 /// Hartigan-Wong k-means (Algorithm AS 136).
-
 /// Hartigan-Wong k-means with quick transfer heuristic (fast path when the
 /// second-closest centroid yields improvement).
-
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;
     use rand_pcg::Pcg32;
 
     use super::*;
-    use crate::cluster::kmeans::NdArrayDataset;
+    use crate::NdArrayDataset;
     use crate::cluster::kmeans::util::gen_test_data;
 
     #[test]

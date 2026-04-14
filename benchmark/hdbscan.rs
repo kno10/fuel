@@ -12,7 +12,7 @@ use fuel::cluster::hdbscan::{
     heap_of_searchers_hdbscan, lazy_buffered_search_hdbscan, restarting_search_hdbscan,
     slink_hdbscan,
 };
-use fuel::cluster::hierarchical::Merge;
+use fuel::cluster::hierarchical::MergeHistory;
 use fuel::distance::Euclidean;
 use fuel::search::vptree::VPTree;
 use fuel::{Data, TableWithDistance};
@@ -140,7 +140,7 @@ fn benchmark_variant(
     }
 }
 
-fn extract_labels(history: &[Merge<f64>], n: usize, min_points: usize) -> Vec<isize> {
+fn extract_labels(history: &MergeHistory<f64>, n: usize, min_points: usize) -> Vec<isize> {
     let num_clusters = (n / min_points).max(1);
     extract_clusters_with_noise(history, num_clusters, min_points)
 }

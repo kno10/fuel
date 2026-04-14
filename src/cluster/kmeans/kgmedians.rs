@@ -80,7 +80,7 @@ where
     // Compute final assignments and within-cluster sums of distances.
     let mut wss = vec![N::zero(); k];
     let mut sizes = vec![0_usize; k];
-    for i in 0..ntot {
+    for (i, assign_i) in assign.iter_mut().enumerate() {
         data_tot.load_into(i, &mut scratch, d);
         let mut best = math::sqdist(centers_av.center(0), &scratch, d).sqrt() / p_sqrt;
         let mut best_j = 0;
@@ -91,7 +91,7 @@ where
                 best_j = j;
             }
         }
-        assign[i] = best_j;
+        *assign_i = best_j;
         sizes[best_j] += 1;
         wss[best_j] += best;
     }
@@ -164,14 +164,13 @@ where
 /// # Parameters
 /// - `gamma`: Constant controlling the magnitude of the descent steps.
 /// - `alpha`: Rate of decrease of the descent steps as cluster sizes grow.
-
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;
     use rand_pcg::Pcg32;
 
     use super::*;
-    use crate::cluster::kmeans::NdArrayDataset;
+    use crate::NdArrayDataset;
     use crate::cluster::kmeans::util::gen_test_data;
 
     #[test]

@@ -5,6 +5,7 @@ use super::hdbscan_common::{
     mutual_reachability_distance,
 };
 use crate::api::{DistanceData, PrioritySearcher, PrioritySearcherFactory, VectorData};
+use crate::cluster::hierarchical::MergeHistory;
 use crate::cluster::hierarchical::common::UnionFind;
 use crate::cluster::hierarchical::search_single_link_common::ClusterBuilder;
 use crate::{CandidateHeap, DistPair, DistanceSearch, Float, IndexQuery, KnnSearch};
@@ -55,7 +56,7 @@ where
 
     let core_distances = compute_core_distances_tree(tree, data, min_points);
     if n == 1 {
-        return HdbscanHierarchy::new(Vec::new(), core_distances);
+        return HdbscanHierarchy::new(MergeHistory::new(), core_distances);
     }
 
     let mut uf = UnionFind::new(n);
@@ -164,7 +165,7 @@ where
             }
             heap.pop();
             let b = top.index;
-            if uf.union(a, b) {
+            if uf.union(a, b).0 {
                 edges.push(Edge { a, b, dist });
             }
         }

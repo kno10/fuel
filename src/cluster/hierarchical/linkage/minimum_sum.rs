@@ -1,4 +1,4 @@
-use crate::cluster::hierarchical::SetLinkage;
+use crate::cluster::hierarchical::{SetLinkage, idsize};
 use crate::{DistanceData, Float};
 
 /// Linkage criterion that chooses the candidate minimizing the total
@@ -6,65 +6,72 @@ use crate::{DistanceData, Float};
 ///
 /// The returned prototype is the index of the chosen medoid.
 pub struct MinimumSumLinkage;
-impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for MinimumSumLinkage {
-    fn summarize(_data: &D, _members: &[usize]) {}
+impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, idsize> for MinimumSumLinkage {
+    fn summarize(data: &D, members: &[idsize]) -> idsize { find_medoid(data, members).1 as idsize }
 
     fn cluster_distance(
-        data: &D, _summary_a: &(), _summary_b: &(), a: &[usize], b: &[usize],
-    ) -> (F, Option<usize>) {
-        let (d, proto) = minimum_sum_candidate(data, a, b);
-        (F::from(d).unwrap(), Some(proto))
+        data: &D, _summary_a: &idsize, _summary_b: &idsize, a: &[idsize], b: &[idsize],
+    ) -> (F, idsize) {
+        minimum_sum_candidate(data, a, b)
     }
+
+    fn merged_prototype(summary: &idsize) -> usize { *summary as usize }
 }
 
-fn minimum_sum_candidate<D: DistanceData<F>, F: Float>(
-    data: &D, cx: &[usize], cy: &[usize],
-) -> (f64, usize) {
-    let mut best_sum = f64::INFINITY;
-    let mut best_proto = cx[0];
+pub(crate) fn minimum_sum_candidate<D: DistanceData<F>, F: Float>(
+    data: &D, cx: &[idsize], cy: &[idsize],
+) -> (F, idsize) {
+    debug_assert!(!cx.is_empty() && !cy.is_empty());
+    if cx.len() == 1 && cy.len() == 1 {
+        return (data.distance(cx[0] as usize, cy[0] as usize), cx[0]);
+    }
 
-    for &cand in cx.iter().chain(cy.iter()) {
-        let mut sum = 0.0;
-        for &p in cx {
-            let d: f64 = data.distance(cand, p).to_f64().unwrap();
-            sum += d;
-            if sum >= best_sum {
-                break;
-            }
-        }
-        if sum >= best_sum {
+    let mut best = (F::infinity(), cx[0]);
+    for &cand in cx {
+        let mut sum = distance_sum(data, cand, cy, F::zero(), best.0);
+        if sum >= best.0 {
             continue;
         }
-        for &p in cy {
-            let d: f64 = data.distance(cand, p).to_f64().unwrap();
-            sum += d;
-            if sum >= best_sum {
-                break;
-            }
+        sum = distance_sum(data, cand, cx, sum, best.0);
+        if sum < best.0 {
+            best = (sum, cand);
         }
-        if sum < best_sum {
-            best_sum = sum;
-            best_proto = cand;
+    }
+    for &cand in cy {
+        let mut sum = distance_sum(data, cand, cx, F::zero(), best.0);
+        if sum >= best.0 {
+            continue;
+        }
+        sum = distance_sum(data, cand, cy, sum, best.0);
+        if sum < best.0 {
+            best = (sum, cand);
         }
     }
 
-    (best_sum, best_proto)
+    best
 }
 
-#[cfg(test)]
-mod tests {
-    use super::MinimumSumLinkage;
-    use crate::TableWithDistance;
-    use crate::cluster::hierarchical::SetLinkage;
-    use crate::cluster::hierarchical::test_utils::ScalarDistance; // bring trait into scope
-
-    #[test]
-    fn minsum_basic() {
-        let points = [vec![0.0], vec![1.0], vec![3.0]];
-        let data = TableWithDistance::with_distance(&points, ScalarDistance);
-        // summaries are unit values for this linkage.
-        let (d, proto) = MinimumSumLinkage::cluster_distance(&data, &(), &(), &[0, 1], &[2]);
-        assert!(proto.is_some());
-        assert!(d >= 0.0);
+pub(crate) fn find_medoid<D: DistanceData<F>, F: Float>(data: &D, cx: &[idsize]) -> (F, idsize) {
+    debug_assert!(!cx.is_empty());
+    let mut best = (F::infinity(), cx[0]);
+    for &cand in cx {
+        let sum = distance_sum(data, cand, cx, F::zero(), best.0);
+        if sum < best.0 {
+            best = (sum, cand);
+        }
     }
+    best
+}
+
+#[inline]
+fn distance_sum<D: DistanceData<F>, F: Float>(
+    data: &D, cand: idsize, cluster: &[idsize], mut sum: F, min_sum: F,
+) -> F {
+    for &p in cluster {
+        sum += data.distance(cand as usize, p as usize);
+        if sum >= min_sum {
+            return sum;
+        }
+    }
+    sum
 }

@@ -3,7 +3,6 @@ use ndarray::{ArrayBase, Data as NdData, Ix2, RawData};
 use crate::VectorData as Dataset;
 
 /// FIXME: this is old/dead code. A ndarray wrapper in /src/api/ may be a good idea though, if not yet present.
-
 /// Wrapper to use ndarrays as data sets
 pub struct NdArrayDataset<'a, N: 'a, A: 'a> {
     data: &'a A,

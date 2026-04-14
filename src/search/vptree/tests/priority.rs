@@ -50,6 +50,8 @@ where
     fn distance(&self, a: usize, b: usize) -> F { self.data.distance(a, b) }
 
     fn query(&self) -> Self::Query<'_> { self.data.query() }
+
+    fn is_squared_distance(&self) -> bool { self.data.is_squared_distance() }
 }
 
 // implement DistanceSearch so the wrapper itself can be used as a query

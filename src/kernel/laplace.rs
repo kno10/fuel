@@ -15,7 +15,7 @@ impl<F: Float> LaplaceKernel<F> {
 
     pub fn new_sigma(sigma: F) -> Self {
         // gamma = 0.5 / sigma^2
-        Self { gamma: F::from(0.5).unwrap() / (sigma * sigma) }
+        Self { gamma: F::half() / (sigma * sigma) }
     }
 
     pub fn similarity(&self, x: &[F], y: &[F]) -> F {

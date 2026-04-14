@@ -97,13 +97,12 @@ where
 
 /// Spherical k-means clustering with the Standard Lloyd-style algorithm.
 /// This maximizes cosine similarity and returns the negated total similarity.
-
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
 
+    use crate::NdArrayDataset;
     use crate::cluster::kmeans::init::FirstK;
-    use crate::cluster::kmeans::ndarray::NdArrayDataset;
     use crate::cluster::kmeans::spherical::lloyd::*;
 
     #[test]
@@ -119,9 +118,7 @@ mod tests {
         assert_eq!(assign[2], assign[3], "negative-direction points should match");
         assert_ne!(assign[0], assign[2], "opposite directions should split");
         for j in 0..2 {
-            let nrm = ((cent[[j, 0]] as f64) * (cent[[j, 0]] as f64)
-                + (cent[[j, 1]] as f64) * (cent[[j, 1]] as f64))
-                .sqrt();
+            let nrm = f64::sqrt(cent[[j, 0]] * cent[[j, 0]] + cent[[j, 1]] * cent[[j, 1]]);
             assert!((nrm - 1.0).abs() < 1e-12, "center is not normalized");
         }
     }

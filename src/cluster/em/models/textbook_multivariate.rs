@@ -106,16 +106,17 @@ where
             for m in &mut self.mean {
                 *m *= invw;
             }
-            if prior > N::zero() && self.prior_covariance.is_some() {
-                let nu = N::from(dim + 2).unwrap();
-                let denom =
-                    self.wsum + prior * (nu + N::from(dim).unwrap() + N::from(2.0).unwrap());
-                let prior_cov = self.prior_covariance.as_ref().unwrap();
-                for i in 0..dim {
-                    for j in 0..=i {
-                        let idx = idx(i, j, dim);
-                        let scaled = (self.covariance[idx] + prior * prior_cov[idx]) / denom;
-                        self.covariance[idx] = scaled;
+            if prior > N::zero() {
+                if let Some(prior_cov) = self.prior_covariance.as_ref() {
+                    let nu = N::from(dim + 2).unwrap();
+                    let denom =
+                        self.wsum + prior * (nu + N::from(dim).unwrap() + N::from(2.0).unwrap());
+                    for i in 0..dim {
+                        for j in 0..=i {
+                            let idx = idx(i, j, dim);
+                            let scaled = (self.covariance[idx] + prior * prior_cov[idx]) / denom;
+                            self.covariance[idx] = scaled;
+                        }
                     }
                 }
             } else {
@@ -248,9 +249,9 @@ mod tests {
     use ndarray::Array2;
 
     use super::*;
+    use crate::NdArrayDataset;
     use crate::cluster::em::optimizer::{EmConfig, EmResult, expectation_maximization};
     use crate::cluster::kmeans::init::FirstK;
-    use crate::cluster::kmeans::ndarray::NdArrayDataset;
 
     fn two_blob_data() -> Array2<f64> {
         let mut data = Array2::<f64>::zeros((200, 2));

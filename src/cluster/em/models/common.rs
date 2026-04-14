@@ -45,7 +45,7 @@ where
 {
     let mut acc = N::zero();
     for i in 0..dim {
-        acc = acc + chol[idx(i, i, dim)].ln();
+        acc += chol[idx(i, i, dim)].ln();
     }
     acc
 }
@@ -57,7 +57,7 @@ where
 {
     let mut sum = N::zero();
     for i in 0..dim {
-        sum = sum + matrix[idx(i, i, dim)];
+        sum += matrix[idx(i, i, dim)];
     }
     let eps = N::from(1e-100).unwrap();
     if sum > eps {
@@ -76,7 +76,7 @@ where
     for i in 0..dim {
         let mut sum = delta[i];
         for j in 0..i {
-            sum = sum - chol[idx(i, j, dim)] * solution[j];
+            sum -= chol[idx(i, j, dim)] * solution[j];
         }
         solution[i] = sum / chol[idx(i, i, dim)];
     }
@@ -150,7 +150,7 @@ where
     let log_2pi = N::from(2.0 * std::f64::consts::PI).unwrap().ln();
     let mut log_det = N::zero();
     for &v in variance {
-        log_det = log_det + v.max(min_variance).ln();
+        log_det += v.max(min_variance).ln();
     }
     weight.ln() - N::from(0.5).unwrap() * (d * log_2pi + log_det)
 }
@@ -184,7 +184,7 @@ where
     }
 
     for m in &mut mean {
-        *m = *m / nf;
+        *m /= nf;
     }
 
     mean

@@ -125,7 +125,7 @@ where
     let mut acc = N::zero();
     for &v in x {
         if v > cutoff {
-            acc = acc + if v < max { (v - max).exp() } else { N::one() };
+            acc += if v < max { (v - max).exp() } else { N::one() };
         }
     }
     if acc > N::one() { max + acc.ln() } else { max }
@@ -215,7 +215,7 @@ fn recompute_models_soft<N, A, Mo>(
         for j in 0..k {
             let p = probs[i * k + j];
             models[j].update_estep(scratch, p);
-            wsum[j] = wsum[j] + p;
+            wsum[j] += p;
         }
     }
 
@@ -281,7 +281,7 @@ fn recompute_models_hard<N, A, Mo>(
             continue;
         }
         models[best].update_estep(scratch, N::one());
-        wsum[best] = wsum[best] + N::one();
+        wsum[best] += N::one();
     }
 
     let nf = N::from(n).unwrap();

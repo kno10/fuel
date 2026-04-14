@@ -4,8 +4,9 @@
 //! the compiler a fixed-width inner loop body suitable for auto-vectorisation
 //! (e.g. ARM NEON / VFPv4).
 
-use crate::Float;
 use std::any::TypeId;
+
+use crate::Float;
 
 const LANES: usize = 8;
 
@@ -155,13 +156,19 @@ where
     assert!(v1.len() >= d && v2.len() >= d);
     let sd = d & !(LANES - 1);
 
-    #[cfg(any(target_feature = "fma", target_feature = "neon", target_feature = "vfp4", target_feature = "vfpv4"))]
+    #[cfg(any(
+        target_feature = "fma",
+        target_feature = "neon",
+        target_feature = "vfp4",
+        target_feature = "vfpv4"
+    ))]
     if TypeId::of::<N>() == TypeId::of::<f32>() || TypeId::of::<N>() == TypeId::of::<f64>() {
         for i in (0..sd).step_by(LANES) {
             let (b1, b2) = (&mut v1[i..(i + LANES)], &v2[i..(i + LANES)]);
             for j in 0..LANES {
                 unsafe {
-                    let fma = num_traits::Float::mul_add(*b1.get_unchecked(j), a, *b2.get_unchecked(j));
+                    let fma =
+                        num_traits::Float::mul_add(*b1.get_unchecked(j), a, *b2.get_unchecked(j));
                     *b1.get_unchecked_mut(j) = fma * b;
                 }
             }

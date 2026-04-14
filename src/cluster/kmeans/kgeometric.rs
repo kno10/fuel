@@ -297,7 +297,6 @@ where
 }
 
 /// K-geometric median clustering entry with runtime math dispatch
-
 // simple dataset helper for tests
 #[cfg(test)]
 mod tests {
@@ -402,7 +401,7 @@ mod kgeometric_tests {
     use rand_pcg::Pcg32;
 
     use super::*;
-    use crate::cluster::kmeans::ndarray::NdArrayDataset;
+    use crate::NdArrayDataset;
     use crate::cluster::kmeans::util::gen_test_data;
 
     #[test]

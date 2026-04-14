@@ -1,7 +1,10 @@
-use crate::api::{DistanceData, DistanceSearch, PrioritySearcher, PrioritySearcherFactory};
-use crate::cluster::hierarchical::common::{BufferedNeighbors, MergeHistory};
+use crate::cluster::hierarchical::MergeHistory;
+use crate::cluster::hierarchical::common::BufferedNeighbors;
 use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
-use crate::{CandidateHeap, DistPair, Float, IndexQuery};
+use crate::{
+    CandidateHeap, DistPair, DistanceData, DistanceSearch, Float, IndexQuery, PrioritySearcher,
+    PrioritySearcherFactory,
+};
 
 /// Lazy Buffered-Search Single-Link with VP-tree priority search.
 ///
@@ -158,31 +161,22 @@ mod tests {
     use rand::rngs::StdRng;
 
     use super::*;
-    use crate::distance::Euclidean;
+    use crate::cluster::hierarchical::extraction::cut_dendrogram_by_number_of_clusters;
+    use crate::cluster::hierarchical::test::test_clustering_table;
     use crate::search::vptree::VPTree;
-    use crate::{CondensedDistanceMatrix, TableWithDistance};
-
-    fn condensed_abs_1d(points: &[Vec<f64>]) -> Vec<f64> {
-        let mut out = Vec::new();
-        for i in 1..points.len() {
-            for j in 0..i {
-                out.push((points[i][0] - points[j][0]).abs());
-            }
-        }
-        out
-    }
 
     #[test]
-    fn lazy_buffered_matches_slink_on_unique_1d_distances() {
-        let points = vec![vec![0.0], vec![1.1], vec![3.7], vec![10.2], vec![20.5]];
-        let data = TableWithDistance::with_distance(&points, Euclidean);
-        let mut rng = StdRng::seed_from_u64(11);
-        let tree = VPTree::new(&data, 3, &mut rng);
-
-        let vec = condensed_abs_1d(&points);
-        let cm = CondensedDistanceMatrix::new_from_condensed(vec, points.len());
-        let expected = crate::cluster::hierarchical::slink(&cm);
-        let got = lazy_buffered_search_single_link(&tree, &data, 2);
-        assert_eq!(got, expected);
+    fn lazy_buffered_search_single_link_regression() {
+        test_clustering_table(
+            "LazyBufferedSearchSingleLink",
+            "single",
+            crate::distance::Euclidean,
+            |access, min_clusters| {
+                let mut rng = StdRng::seed_from_u64(42);
+                let tree = VPTree::new(access, 3, &mut rng);
+                let history = lazy_buffered_search_single_link(&tree, access, 1);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
     }
 }

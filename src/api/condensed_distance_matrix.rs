@@ -57,10 +57,13 @@ where
 pub struct CondensedDistanceMatrix<F: Float> {
     data: Vec<F>,
     n: usize,
+    is_squared_distance: bool,
 }
 
 impl<F: Float> CondensedDistanceMatrix<F> {
-    pub fn new_from_condensed(data: Vec<F>, n: usize) -> Self { Self { data, n } }
+    pub fn new_from_condensed(data: Vec<F>, n: usize, is_squared_distance: bool) -> Self {
+        Self { data, n, is_squared_distance }
+    }
 
     pub fn new_from_data<D>(data: &D) -> Self
     where
@@ -69,7 +72,7 @@ impl<F: Float> CondensedDistanceMatrix<F> {
         let n = data.len();
         let indices: Vec<usize> = (0..n).collect();
         let condensed = compute_pairwise_condensed(&indices, &|i, j| data.distance(*i, *j));
-        Self { data: condensed, n }
+        Self { data: condensed, n, is_squared_distance: data.is_squared_distance() }
     }
 
     pub fn as_slice(&self) -> &[F] { &self.data }
@@ -97,6 +100,8 @@ impl<F: Float> DistanceData<F> for CondensedDistanceMatrix<F> {
     }
 
     fn query(&self) -> Self::Query<'_> { CondensedMatrixQuery::new(self) }
+
+    fn is_squared_distance(&self) -> bool { self.is_squared_distance }
 }
 
 pub struct CondensedMatrixQuery<'a, F: Float> {

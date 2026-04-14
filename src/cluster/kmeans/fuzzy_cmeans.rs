@@ -119,14 +119,13 @@ where
 }
 
 /// Public fuzzy k-means wrapper with runtime dispatch
-
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;
     use rand_pcg::Pcg32;
 
     use super::*;
-    use crate::cluster::kmeans::NdArrayDataset;
+    use crate::NdArrayDataset;
     use crate::cluster::kmeans::util::gen_test_data;
 
     #[test]

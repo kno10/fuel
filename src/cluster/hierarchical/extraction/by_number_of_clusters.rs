@@ -1,6 +1,7 @@
-use super::common::{UnionFind, compress_labels};
 use crate::Float;
-use crate::cluster::hierarchical::Merge;
+use crate::cluster::hierarchical::MergeHistory;
+use crate::cluster::hierarchical::common::UnionFind;
+use crate::cluster::hierarchical::extraction::common::compress_labels;
 
 /// Extract flat cluster labels by cutting a merge history to at least
 /// `min_clusters` clusters.
@@ -12,7 +13,7 @@ use crate::cluster::hierarchical::Merge;
 /// Labels are contiguous `0..k-1` in first-occurrence order.
 #[must_use]
 pub fn cut_dendrogram_by_number_of_clusters<F: Float>(
-    history: &[Merge<F>], min_clusters: usize,
+    history: &MergeHistory<F>, min_clusters: usize,
 ) -> Vec<usize> {
     assert!(min_clusters > 0, "min_clusters must be positive");
 
@@ -25,7 +26,7 @@ pub fn cut_dendrogram_by_number_of_clusters<F: Float>(
     cut_by_split(history, n, split)
 }
 
-fn find_split<F: Float>(history: &[Merge<F>], n: usize, min_clusters: usize) -> usize {
+fn find_split<F: Float>(history: &MergeHistory<F>, n: usize, min_clusters: usize) -> usize {
     if n <= min_clusters {
         return 0;
     }
@@ -34,16 +35,18 @@ fn find_split<F: Float>(history: &[Merge<F>], n: usize, min_clusters: usize) -> 
     if split >= history.len() {
         return history.len();
     }
-    let stop_dist = history[split].distance;
+    let stop_dist = history.get(split).unwrap().distance();
 
-    while split > 0 && history[split - 1].distance == stop_dist {
+    while split > 0 && history.get(split - 1).unwrap().distance() == stop_dist {
         split -= 1;
     }
 
     split
 }
 
-pub(crate) fn cut_by_split<F: Float>(history: &[Merge<F>], n: usize, split: usize) -> Vec<usize> {
+pub(crate) fn cut_by_split<F: Float>(
+    history: &MergeHistory<F>, n: usize, split: usize,
+) -> Vec<usize> {
     assert_eq!(history.len() + 1, n, "history length does not match n");
     assert!(split <= history.len(), "split out of range");
 
@@ -52,10 +55,10 @@ pub(crate) fn cut_by_split<F: Float>(history: &[Merge<F>], n: usize, split: usiz
     cluster_rep.extend(0..n);
 
     for (step, merge) in history.iter().take(split).enumerate() {
-        let rep1 = uf.find(cluster_rep[merge.idx1]);
-        let rep2 = uf.find(cluster_rep[merge.idx2]);
-        let merged = uf.union(rep1, rep2);
-        cluster_rep.push(merged);
+        let rep1 = uf.find(cluster_rep[merge.idx1()]);
+        let rep2 = uf.find(cluster_rep[merge.idx2()]);
+        let (_, cid) = uf.union(rep1, rep2);
+        cluster_rep.push(cid);
 
         // Keep consistency with SciPy/AGNES cluster-id numbering.
         debug_assert_eq!(n + step, cluster_rep.len() - 1);
@@ -71,12 +74,13 @@ pub(crate) fn cut_by_split<F: Float>(history: &[Merge<F>], n: usize, split: usiz
 #[cfg(test)]
 mod tests {
     use super::cut_dendrogram_by_number_of_clusters;
-    use crate::cluster::hierarchical::{Merge, SingleLinkage, agnes};
+    use crate::cluster::hierarchical::{Merge, MergeHistory, SingleLinkage, agnes};
 
     #[test]
     fn cut_by_cluster_count_produces_expected_groups() {
         let d = vec![1.0, 2.0, 3.0, 1.5, 2.5, 1.0];
-        let history = agnes(&d, 4, SingleLinkage, false);
+        let cm = crate::CondensedDistanceMatrix::new_from_condensed(d, 4, false);
+        let history = agnes(&cm, SingleLinkage);
 
         let labels_one = cut_dendrogram_by_number_of_clusters(&history, 1);
         assert_eq!(labels_one, vec![0, 0, 0, 0]);
@@ -93,11 +97,12 @@ mod tests {
 
     #[test]
     fn tie_handling_may_return_more_clusters() {
-        let history = vec![
-            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
-            Merge { idx1: 2, idx2: 3, distance: 1.0, size: 2 },
-            Merge { idx1: 4, idx2: 5, distance: 2.0, size: 4 },
-        ];
+        let history: MergeHistory<f64> = vec![
+            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2, prototype: usize::MAX },
+            Merge { idx1: 2, idx2: 3, distance: 1.0, size: 2, prototype: usize::MAX },
+            Merge { idx1: 4, idx2: 5, distance: 2.0, size: 4, prototype: usize::MAX },
+        ]
+        .into();
 
         let labels = cut_dendrogram_by_number_of_clusters(&history, 3);
         // Both first merges are tied at the split distance and therefore

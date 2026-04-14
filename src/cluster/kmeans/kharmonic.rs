@@ -109,7 +109,7 @@ where
             // normalize membership
             if num_sum > N::zero() {
                 for j in 0..k {
-                    membership[i * k + j] = membership[i * k + j] / num_sum;
+                    membership[i * k + j] /= num_sum;
                 }
             }
         }
@@ -163,7 +163,7 @@ mod tests {
     use rand_pcg::Pcg32;
 
     use super::*;
-    use crate::cluster::kmeans::NdArrayDataset;
+    use crate::NdArrayDataset;
     use crate::cluster::kmeans::util::gen_test_data;
 
     #[test]

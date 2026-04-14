@@ -1,5 +1,6 @@
 use super::hdbscan_common::{HdbscanHierarchy, compute_core_distances_tree};
 use crate::api::DistanceData;
+use crate::cluster::hierarchical::MergeHistory;
 use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, SameClusterFilter};
 use crate::{
     CandidateHeap, DistPair, DistanceSearch, Float, IndexQuery, KnnSearch, PrioritySearcher,
@@ -31,7 +32,7 @@ where
 
     let core_distances = compute_core_distances_tree(tree, data, min_points);
     if n == 1 {
-        return HdbscanHierarchy::new(Vec::new(), core_distances);
+        return HdbscanHierarchy::new(MergeHistory::new(), core_distances);
     }
 
     let mut builder = ClusterBuilder::new(n);

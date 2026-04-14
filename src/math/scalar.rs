@@ -3,8 +3,9 @@
 //! Used as a fallback when AVX2 is not available or when the element type
 //! does not have a dedicated intrinsic path.
 
-use crate::Float;
 use std::any::TypeId;
+
+use crate::Float;
 
 #[inline(always)]
 pub fn sqdist<N>(v1: &[N], v2: &[N], d: usize) -> N
@@ -93,7 +94,8 @@ where
         if TypeId::of::<N>() == TypeId::of::<f32>() || TypeId::of::<N>() == TypeId::of::<f64>() {
             for i in 0..d {
                 unsafe {
-                    let fma = num_traits::Float::mul_add(*v1.get_unchecked(i), a, *v2.get_unchecked(i));
+                    let fma =
+                        num_traits::Float::mul_add(*v1.get_unchecked(i), a, *v2.get_unchecked(i));
                     *v1.get_unchecked_mut(i) = fma * b;
                 }
             }

@@ -2,60 +2,37 @@
 #[derive(Clone, Copy, Default, Debug)]
 pub struct CompleteLinkage;
 
-use super::Linkage;
-use crate::cluster::hierarchical::SetLinkage;
+use crate::cluster::hierarchical::{Linkage, SetLinkage, idsize};
 use crate::{DistanceData, Float};
 
 impl<F: Float> Linkage<F> for CompleteLinkage {
-    fn combine(&self, _sizex: usize, dx: F, _sizey: usize, dy: F, _sizej: usize, _dxy: F) -> F {
+    fn combine(
+        &self, _sizex: usize, dx: F, _sizey: usize, dy: F, _sizej: usize, _dxy: F, _heightx: F,
+        _heighty: F, _heightj: F,
+    ) -> F {
         dx.max(dy)
     }
 }
 
-impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for CompleteLinkage {
-    fn summarize(_data: &D, _members: &[usize]) {}
+impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, idsize> for CompleteLinkage {
+    fn summarize(_data: &D, members: &[idsize]) -> idsize { members[0] }
 
     fn cluster_distance(
-        data: &D, _summary_a: &(), _summary_b: &(), a: &[usize], b: &[usize],
-    ) -> (F, Option<usize>) {
+        data: &D, _summary_a: &idsize, _summary_b: &idsize, a: &[idsize], b: &[idsize],
+    ) -> (F, idsize) {
         let mut best = F::zero();
-        let mut proto = None;
+        let mut proto = a[0];
         for &i in a {
             for &j in b {
-                let d = F::from(data.distance(i, j)).unwrap();
+                let d = F::from(data.distance(i as usize, j as usize)).unwrap();
                 if d > best {
                     best = d;
-                    proto = Some(j);
+                    proto = j;
                 }
             }
         }
         (best, proto)
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::cluster::hierarchical::agnes;
-
-    #[test]
-    fn complete_combines_maximum() {
-        let l = CompleteLinkage;
-        assert_eq!(l.combine(0, 1.0, 0, 2.0, 0, 0.0), 2.0);
-    }
-
-    #[test]
-    fn agnes_with_complete_runs() {
-        let d = vec![1.0, 2.0, 3.0, 1.5, 2.5, 1.0];
-        let history = agnes(&d, 4, CompleteLinkage, false);
-        assert_eq!(history.len(), 3);
-        assert_eq!(history.last().unwrap().size, 4);
-    }
-
-    #[test]
-    fn complete_linkage_f32_compile() {
-        let l = CompleteLinkage;
-        let r: f32 = l.combine(0, 1.0_f32, 0, 2.0_f32, 0, 0.0_f32);
-        assert_eq!(r, 2.0_f32);
-    }
+    fn merged_prototype(summary: &idsize) -> usize { *summary as usize }
 }

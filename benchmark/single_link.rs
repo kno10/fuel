@@ -8,7 +8,7 @@ use common::{CountingDistance, read_numeric_data_with_limit};
 use fuel::TableWithDistance;
 use fuel::cluster::hdbscan::extraction::{ExtractedHierarchy, extract_simplified_hierarchy};
 use fuel::cluster::hierarchical::{
-    Merge, MergeHistory, SingleLinkage, agnes, anderberg, boruvka_searchers_single_link,
+    MergeHistory, SingleLinkage, agnes, anderberg, boruvka_searchers_single_link,
     buffered_search_single_link, heap_of_searchers_single_link, lazy_buffered_search_single_link,
     muellner, nn_chain, restarting_search_single_link, slink,
 };
@@ -168,20 +168,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         let start = Instant::now();
         let history: MergeHistory<f64> = match algorithm {
             SingleLinkAlgorithm::Agnes => {
-                let condensed = CondensedDistanceMatrix::new_from_data(&data).into_vec();
-                agnes(&condensed, used_rows, SingleLinkage, false)
+                let condensed = CondensedDistanceMatrix::new_from_data(&data);
+                agnes(&condensed, SingleLinkage)
             }
             SingleLinkAlgorithm::Anderberg => {
-                let condensed = CondensedDistanceMatrix::new_from_data(&data).into_vec();
-                anderberg(&condensed, used_rows, SingleLinkage, false)
+                let condensed = CondensedDistanceMatrix::new_from_data(&data);
+                anderberg(&condensed, SingleLinkage)
             }
             SingleLinkAlgorithm::Muellner => {
-                let condensed = CondensedDistanceMatrix::new_from_data(&data).into_vec();
-                muellner(&condensed, used_rows, SingleLinkage, false)
+                let condensed = CondensedDistanceMatrix::new_from_data(&data);
+                muellner(&condensed, SingleLinkage)
             }
             SingleLinkAlgorithm::NNChain => {
-                let condensed = CondensedDistanceMatrix::new_from_data(&data).into_vec();
-                nn_chain(&condensed, used_rows, SingleLinkage, false)
+                let condensed = CondensedDistanceMatrix::new_from_data(&data);
+                nn_chain(&condensed, SingleLinkage)
             }
             SingleLinkAlgorithm::Boruvka => {
                 let mut rng = StdRng::seed_from_u64(seed);
@@ -310,7 +310,7 @@ fn labels_from_frontier(
 }
 
 fn labels_from_simplified_hierarchy(
-    history: &[Merge<f64>], n: usize, min_clusters: usize,
+    history: &MergeHistory<f64>, n: usize, min_clusters: usize,
 ) -> Vec<usize> {
     // Minpts 10, to give more meaningful clustering structure for comparison.
     let extracted = extract_simplified_hierarchy(history, None, 2);

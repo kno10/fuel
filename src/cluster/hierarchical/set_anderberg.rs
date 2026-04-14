@@ -1,117 +1,46 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
-use super::common::{
-    PrototypeBuilder, PrototypeMergeHistory, initialize_set_clusters, run_anderberg_nn_cache,
-    set_find_best, set_update_cache, triangle_index, update_set_entry,
+use crate::cluster::hierarchical::anderberg::AnderbergState;
+use crate::cluster::hierarchical::common::{
+    initialize_set_clusters, set_update_cache, triangle_index, update_set_entry,
 };
-// SetLinkage trait now lives in `linkage/mod.rs`; import via the public
-// re-export on the parent hierarchical module.
-use crate::cluster::hierarchical::SetLinkage;
+use crate::cluster::hierarchical::{MergeHistory, SetLinkage, idsize};
 use crate::{DistanceData, Float};
 
-/// Shared implementation of the Anderberg/HACAM set‑linkage heuristic.  This
-/// used to be duplicated in both `set_anderberg` and `hacam`, so the two
-/// public entrypoints now delegate to a single helper.  The `recompute_y`
-/// predicate determines whether the best candidate for cluster `y` is
-/// re‑evaluated after a merge.  *set_anderberg* simply recomputes whenever
-/// `y>0`; HACAM only recomputes if `y`'s previous nearest neighbor was the
-/// cluster that just disappeared, giving a small performance win without
-/// changing results.
+/// Perform set-based Anderberg hierarchical clustering.
 #[must_use]
-pub(super) fn set_anderberg_common<D, L, F, S, C>(
-    data: &D, mut recompute_y: C,
-) -> PrototypeMergeHistory<F>
+pub fn set_anderberg<D, L, F, S>(data: &D) -> MergeHistory<F>
 where
     D: DistanceData<F>,
     F: Float,
     L: SetLinkage<D, F, S>,
-    C: FnMut(usize, usize, &[usize]) -> bool,
 {
     let n = data.len();
     assert!(n > 0, "number of points must be positive");
     if n == 1 {
-        return Vec::new();
+        return MergeHistory::new();
     }
 
-    let (members, summaries, distances, mut prototypes, _) =
-        initialize_set_clusters::<D, L, F, S>(data);
-    let members = Rc::new(RefCell::new(members));
-    let summaries = Rc::new(RefCell::new(summaries));
-    let summaries_for_update = summaries.clone();
-    let summaries_for_recompute = summaries.clone();
+    let (mut members, mut summaries, distances, _) = initialize_set_clusters::<D, L, F, S>(data);
+    let mut state = AnderbergState::new(distances, n);
 
-    run_anderberg_nn_cache::<F, PrototypeBuilder<F>, _, _, _>(
-        distances,
-        n,
-        move |distances,
-              clustermap,
-              _builder,
-              bestd,
-              besti,
-              x,
-              y,
-              mindist,
-              end,
-              _size_x,
-              _size_y,
-              _offset,
-              prototypes,
-              proto| {
-            let mut members_ref = members.borrow_mut();
-            let mut summaries_ref = summaries_for_update.borrow_mut();
+    for _ in 1..n {
+        let (mindist, x, y) = state.find_merge();
+        // Move members[x] out before the merge so we compute cluster_distance once.
+        let cx = std::mem::take(&mut members[x]);
+        let (_, merged_summary) =
+            L::cluster_distance(data, &summaries[x], &summaries[y], &cx, &members[y]);
+        state.commit_merge(x, y, mindist, L::merged_prototype(&merged_summary));
+        members[y].extend(cx);
+        summaries[y] = merged_summary;
+        update_matrices::<D, L, F, S>(data, &mut state, &members, &summaries, x, y);
+        state.refresh_best(y);
+    }
 
-            let cx = std::mem::take(&mut members_ref[x]);
-            members_ref[y].extend(cx);
-
-            let summary_x = summaries_ref[x].take().expect("summary missing for x");
-            let summary_y = summaries_ref[y].as_mut().expect("summary missing for y while merging");
-            L::merge_summary(summary_y, summary_x, proto, mindist);
-
-            update_matrices::<D, L, F, S>(
-                data,
-                distances,
-                prototypes,
-                clustermap,
-                &members_ref,
-                &summaries_ref,
-                bestd,
-                besti,
-                x,
-                y,
-                end,
-            );
-        },
-        move |y, x, clustermap, distances, bestd, besti| {
-            let summaries_ref = summaries_for_recompute.borrow();
-            let should_recompute = recompute_y(y, x, &*besti);
-            if should_recompute {
-                set_find_best::<D, F, L, S>(distances, clustermap, &summaries_ref, bestd, besti, y);
-            }
-        },
-        move |mindist, _x, _y, offset, prototypes| (mindist, prototypes[offset]),
-        false,
-        &mut prototypes,
-    )
+    state.builder.into_merges()
 }
 
-/// Public wrapper that implements the traditional Anderberg heuristic (which
-/// always recomputes the nearest neighbour for cluster `y` after a merge).
-#[must_use]
-pub fn set_anderberg<D, L, F, S>(data: &D) -> PrototypeMergeHistory<F>
-where
-    D: DistanceData<F>,
-    F: Float,
-    L: SetLinkage<D, F, S>,
-{
-    set_anderberg_common::<D, L, F, S, _>(data, |y, _x, _besti| y > 0)
-}
-
-#[allow(clippy::too_many_arguments)]
 fn update_matrices<D, L, F, S>(
-    data: &D, distances: &mut [F], prototypes: &mut [Option<usize>], clustermap: &[Option<usize>],
-    members: &[Vec<usize>], summaries: &[Option<S>], bestd: &mut [F], besti: &mut [usize],
-    x: usize, y: usize, end: usize,
+    data: &D, state: &mut AnderbergState<F>, members: &[Vec<idsize>], summaries: &[S], x: usize,
+    y: usize,
 ) where
     D: DistanceData<F>,
     F: Float,
@@ -120,51 +49,196 @@ fn update_matrices<D, L, F, S>(
     if y > 0 {
         let yoffset = triangle_index(y, 0);
         for b in 0..y {
-            if clustermap[b].is_none() {
+            if state.clustermap[b] == idsize::MAX {
                 continue;
             }
-            update_set_entry::<D, L, F, S>(data, distances, prototypes, members, summaries, y, b);
-            let _ = set_update_cache::<D, F, L, S>(
-                distances,
-                clustermap,
-                summaries,
-                bestd,
-                besti,
+            update_set_entry::<D, L, F, S>(data, &mut state.mat, members, summaries, y, b);
+            set_update_cache::<F>(
+                &state.mat,
+                &state.clustermap,
+                &mut state.best,
                 x,
                 y,
                 b,
-                distances[yoffset + b],
+                state.mat[yoffset + b],
             );
         }
     }
 
-    for a in (y + 1)..end {
-        if clustermap[a].is_none() {
+    for a in (y + 1)..state.end {
+        if state.clustermap[a] == idsize::MAX {
             continue;
         }
-        update_set_entry::<D, L, F, S>(data, distances, prototypes, members, summaries, a, y);
-        let d = distances[triangle_index(a, y)];
-        let _ = set_update_cache::<D, F, L, S>(
-            distances, clustermap, summaries, bestd, besti, x, y, a, d,
-        );
+        update_set_entry::<D, L, F, S>(data, &mut state.mat, members, summaries, a, y);
+        let d = state.mat[triangle_index(a, y)];
+        set_update_cache::<F>(&state.mat, &state.clustermap, &mut state.best, x, y, a, d);
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 #[cfg(test)]
 mod tests {
     use super::set_anderberg;
-    use crate::TableWithDistance;
-    use crate::cluster::hierarchical::linkage::MinimaxLinkage;
-    use crate::cluster::hierarchical::set_agnes::set_agnes;
-    use crate::cluster::hierarchical::test_utils::ScalarDistance;
+    use crate::cluster::hierarchical::extraction::cut_dendrogram_by_number_of_clusters;
+    use crate::cluster::hierarchical::test::test_clustering_table;
+    use crate::cluster::hierarchical::{
+        CompleteLinkage, GroupAverageLinkage, HausdorffLinkage, MedoidLinkage, MinimaxLinkage,
+        MinimumSumIncreaseLinkage, MinimumSumLinkage, MinimumSumSquaresLinkage,
+        MinimumVarianceIncreaseLinkage, MinimumVarianceLinkage, SingleLinkage, WardLinkage,
+    };
 
     #[test]
-    fn set_anderberg_matches_set_agnes() {
-        let points = [vec![0.0], vec![0.8], vec![2.0], vec![5.0], vec![9.0]];
-        let data = TableWithDistance::with_distance(&points, ScalarDistance);
-        let a = set_agnes(&data);
-        let b = set_anderberg::<_, MinimaxLinkage, f64, ()>(&data);
-        assert_eq!(a, b);
+    fn set_anderberg_minimax_regression() {
+        test_clustering_table(
+            "SetAnderberg",
+            "minimax",
+            crate::distance::Euclidean,
+            |access, min_clusters| {
+                let history = set_anderberg::<_, MinimaxLinkage, _, _>(access);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn set_anderberg_group_average_regression() {
+        test_clustering_table(
+            "SetAnderberg",
+            "average",
+            crate::distance::Euclidean,
+            |access, min_clusters| {
+                let history = set_anderberg::<_, GroupAverageLinkage, _, _>(access);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn set_anderberg_complete_regression() {
+        test_clustering_table(
+            "SetAnderberg",
+            "complete",
+            crate::distance::Euclidean,
+            |access, min_clusters| {
+                let history = set_anderberg::<_, CompleteLinkage, _, _>(access);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn set_anderberg_single_regression() {
+        test_clustering_table(
+            "SetAnderberg",
+            "single",
+            crate::distance::Euclidean,
+            |access, min_clusters| {
+                let history = set_anderberg::<_, SingleLinkage, _, _>(access);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn set_anderberg_ward_regression() {
+        test_clustering_table(
+            "SetAnderberg",
+            "ward",
+            crate::distance::SquaredEuclidean,
+            |access, min_clusters| {
+                let history = set_anderberg::<_, WardLinkage, _, _>(access);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn set_anderberg_hausdorff_regression() {
+        test_clustering_table(
+            "SetAnderberg",
+            "hausdorff",
+            crate::distance::Euclidean,
+            |access, min_clusters| {
+                let history = set_anderberg::<_, HausdorffLinkage, _, _>(access);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn set_anderberg_medoid_regression() {
+        test_clustering_table(
+            "SetAnderberg",
+            "medoid",
+            crate::distance::Euclidean,
+            |access, min_clusters| {
+                let history = set_anderberg::<_, MedoidLinkage, _, _>(access);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn set_anderberg_minimum_variance_increase_regression() {
+        test_clustering_table(
+            "SetAnderberg",
+            "mivar",
+            crate::distance::Euclidean,
+            |access, min_clusters| {
+                let history = set_anderberg::<_, MinimumVarianceIncreaseLinkage, _, _>(access);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn set_anderberg_minimum_sum_squares_regression() {
+        test_clustering_table(
+            "SetAnderberg",
+            "mnssq",
+            crate::distance::Euclidean,
+            |access, min_clusters| {
+                let history = set_anderberg::<_, MinimumSumSquaresLinkage, _, _>(access);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn set_anderberg_minimum_variance_regression() {
+        test_clustering_table(
+            "SetAnderberg",
+            "mnvar",
+            crate::distance::Euclidean,
+            |access, min_clusters| {
+                let history = set_anderberg::<_, MinimumVarianceLinkage, _, _>(access);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn set_anderberg_minimum_sum_regression() {
+        test_clustering_table(
+            "SetAnderberg",
+            "minimum_sum",
+            crate::distance::Euclidean,
+            |access, min_clusters| {
+                let history = set_anderberg::<_, MinimumSumLinkage, _, _>(access);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn set_anderberg_minimum_sum_increase_regression() {
+        test_clustering_table(
+            "SetAnderberg",
+            "minimum_sum_increase",
+            crate::distance::Euclidean,
+            |access, min_clusters| {
+                let history = set_anderberg::<_, MinimumSumIncreaseLinkage, _, _>(access);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
     }
 }

@@ -69,8 +69,7 @@ impl<N: Float> EmModel<N> for DiagonalGaussianModel<N> {
             let old_mean = self.mean[j];
             let new_mean = old_mean + (xj - old_mean) * f;
             self.nmean[j] = new_mean;
-            self.variance[j] =
-                self.variance[j] + (xj - new_mean) * (xj - old_mean) * responsibility;
+            self.variance[j] += (xj - new_mean) * (xj - old_mean) * responsibility;
         }
         self.wsum = nwsum;
         self.mean.copy_from_slice(&self.nmean);
@@ -80,19 +79,20 @@ impl<N: Float> EmModel<N> for DiagonalGaussianModel<N> {
         self.weight = weight.max(N::epsilon());
 
         if self.wsum > N::zero() && self.wsum.is_finite() {
-            if prior > N::zero() && self.prior_variance.is_some() {
-                let prior_var = self.prior_variance.as_ref().unwrap();
-                let denom = self.wsum + prior;
-                for (v, pv) in self.variance.iter_mut().zip(prior_var.iter()) {
-                    *v = (*v + prior * *pv) / denom;
-                    if *v < self.min_variance {
-                        *v = self.min_variance;
+            if prior > N::zero() {
+                if let Some(prior_var) = self.prior_variance.as_ref() {
+                    let denom = self.wsum + prior;
+                    for (v, pv) in self.variance.iter_mut().zip(prior_var.iter()) {
+                        *v = (*v + prior * *pv) / denom;
+                        if *v < self.min_variance {
+                            *v = self.min_variance;
+                        }
                     }
                 }
             } else {
                 let inv = self.wsum.recip();
                 for v in &mut self.variance {
-                    *v = *v * inv;
+                    *v *= inv;
                     if *v < self.min_variance {
                         *v = self.min_variance;
                     }
@@ -113,7 +113,7 @@ impl<N: Float> EmModel<N> for DiagonalGaussianModel<N> {
         for (j, &xj) in x.iter().enumerate() {
             let var = self.variance[j].max(self.min_variance);
             let diff = xj - self.mean[j];
-            mahal = mahal + diff * diff / var;
+            mahal += diff * diff / var;
         }
         -N::from(0.5).unwrap() * mahal + self.log_norm_det
     }
@@ -228,10 +228,10 @@ mod tests {
     use ndarray::Array2;
 
     use super::*;
+    use crate::NdArrayDataset;
     use crate::cluster::em::models::diagonal::DiagonalGaussianModelFactory;
     use crate::cluster::em::optimizer::expectation_maximization;
     use crate::cluster::kmeans::init::FirstK;
-    use crate::cluster::kmeans::ndarray::NdArrayDataset;
 
     fn two_blob_data() -> Array2<f64> {
         let mut data = Array2::<f64>::zeros((200, 2));

@@ -1,6 +1,6 @@
-use super::common::MergeHistory;
 use crate::Float;
 use crate::cluster::hdbscan::hdbscan_common::{WeightedEdge, edges_to_merge_history};
+use crate::cluster::hierarchical::MergeHistory;
 use crate::cluster::optics::OpticsResult;
 
 /// Convert an OPTICS cluster order into a hierarchical merge history.
@@ -12,7 +12,7 @@ use crate::cluster::optics::OpticsResult;
 pub fn optics_to_hierarchical<F: Float>(result: &OpticsResult<F>) -> MergeHistory<F> {
     let n = result.ordering.len();
     if n <= 1 {
-        return Vec::new();
+        return MergeHistory::new();
     }
 
     assert_eq!(result.reachability.len(), n, "reachability length must match ordering length");
@@ -52,15 +52,15 @@ mod tests {
         let merges = optics_to_hierarchical(&result);
 
         assert_eq!(merges.len(), 3);
-        assert_eq!(merges[0].idx1, 1);
-        assert_eq!(merges[0].idx2, 2);
-        assert!((merges[0].distance - 0.1).abs() < 1e-12);
-        assert_eq!(merges[1].idx1, 3);
-        assert_eq!(merges[1].idx2, 4);
-        assert!((merges[1].distance - 0.2).abs() < 1e-12);
-        assert_eq!(merges[2].idx1, 0);
-        assert_eq!(merges[2].idx2, 5);
-        assert!((merges[2].distance - 0.3).abs() < 1e-12);
-        assert_eq!(merges[2].size, 4);
+        assert_eq!(merges.get(0).unwrap().idx1, 1);
+        assert_eq!(merges.get(0).unwrap().idx2, 2);
+        assert!((merges.get(0).unwrap().distance - 0.1).abs() < 1e-12);
+        assert_eq!(merges.get(1).unwrap().idx1, 3);
+        assert_eq!(merges.get(1).unwrap().idx2, 4);
+        assert!((merges.get(1).unwrap().distance - 0.2).abs() < 1e-12);
+        assert_eq!(merges.get(2).unwrap().idx1, 0);
+        assert_eq!(merges.get(2).unwrap().idx2, 5);
+        assert!((merges.get(2).unwrap().distance - 0.3).abs() < 1e-12);
+        assert_eq!(merges.get(2).unwrap().size, 4);
     }
 }

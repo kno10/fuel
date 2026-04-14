@@ -15,9 +15,9 @@
 //! SciPy (`pdist` output) except that SciPy uses the upper triangle; users can
 //! simply transpose their indices to convert between the two representations.
 
-use super::common::{Builder, MergeHistory, shrink_active_end, triangle_index};
-use super::linkage::Linkage;
-use crate::Float;
+use crate::cluster::hierarchical::common::{shrink_active_end, triangle_index};
+use crate::cluster::hierarchical::{Builder, Linkage, MergeHistory, idsize};
+use crate::{DistanceData, Float};
 
 // (linkage implementations live in `hierarchical::linkage`)
 /// Perform the AGNES algorithm on a condensed lower‑triangular distance
@@ -38,30 +38,36 @@ use crate::Float;
 ///
 /// The function converts the provided condensed matrix into an agglomerative
 /// merge history and will `panic!` when the preconditions above are violated.
-pub fn agnes<F: Float, L: Linkage<F> + Copy>(
-    distances: &[F], n: usize, linkage: L, is_squared: bool,
-) -> MergeHistory<F> {
+pub fn agnes<D, F: Float, L: Linkage<F> + Copy>(data: &D, linkage: L) -> MergeHistory<F>
+where
+    D: DistanceData<F>,
+{
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
-    assert_eq!(distances.len(), n * (n - 1) / 2, "bad condensed matrix length");
 
     let mut builder = Builder::<F>::new(n);
-    let mut mat: Vec<F> = distances.iter().map(|&d| linkage.initial(d, is_squared)).collect();
-    let mut clustermap: Vec<Option<usize>> = (0..n).map(Some).collect();
-    let mut end = n;
+    let squared = data.is_squared_distance();
+    let mut mat = Vec::with_capacity(n * (n - 1) / 2);
+    for x in 1..n {
+        for y in 0..x {
+            mat.push(linkage.initial(data.distance(x, y), squared));
+        }
+    }
+    let mut clustermap: Vec<idsize> = (0..(n as idsize)).collect();
+    let mut heights = vec![F::zero(); n];
+    let mut end = n; // active end, we use shrinking
 
     // repeatedly merge until one cluster remains
     for _step in 1..n {
         // find the closest pair among active objects
-        let mut mindist = F::infinity();
-        let mut best_x = 0;
-        let mut best_y = 0;
+        let (mut mindist, mut x, mut y) = (F::infinity(), 0, 0);
 
         for ox in 0..end {
-            if clustermap[ox].is_none() {
+            if clustermap[ox] == idsize::MAX {
                 continue;
             }
             for oy in 0..ox {
-                if clustermap[oy].is_none() {
+                if clustermap[oy] == idsize::MAX {
                     continue;
                 }
                 let d = mat[triangle_index(ox, oy)];
@@ -70,51 +76,72 @@ pub fn agnes<F: Float, L: Linkage<F> + Copy>(
                 // achieves that because the loops scan from small indices
                 // upward.
                 if d < mindist {
-                    mindist = d;
-                    best_x = ox;
-                    best_y = oy;
+                    (mindist, x, y) = (d, ox, oy);
                 }
             }
         }
 
-        // perform merge of (best_x,best_y) with best_y < best_x by
-        // construction of the loop above
-        let x = best_x;
-        let y = best_y;
-        let cid_x = clustermap[x].unwrap();
-        let cid_y = clustermap[y].unwrap();
-        let size_x = builder.get_size(cid_x);
-        let size_y = builder.get_size(cid_y);
+        debug_assert!(
+            mindist.is_finite(),
+            "AGNES found no merge candidate end={} active={:?}",
+            end,
+            clustermap[..end]
+                .iter()
+                .enumerate()
+                .filter(|&(_, id)| *id != idsize::MAX)
+                .collect::<Vec<_>>(),
+        );
+
+        // perform merge of (x,y) with y < x by construction of the loop above
+        let (cid_x, cid_y) = (clustermap[x], clustermap[y]);
+        debug_assert!(
+            cid_x != idsize::MAX && cid_y != idsize::MAX,
+            "AGNES selected inactive cluster x={} cid_x={} y={} cid_y={}",
+            x,
+            cid_x,
+            y,
+            cid_y,
+        );
+        let (size_x, size_y) = (builder.get_size(cid_x), builder.get_size(cid_y));
 
         // create new cluster id (keep y and drop x).  force the smaller
         // index to appear first in the history record so that our output
         // mirrors SciPy's convention.  restore the distance before storing.
-        let (a, b) = if cid_y <= cid_x { (cid_y, cid_x) } else { (cid_x, cid_y) };
-        let newcid = builder.add(a, linkage.restore(mindist, is_squared), b);
+        let newcid =
+            builder.add(cid_x.min(cid_y), linkage.restore(mindist, squared), cid_x.max(cid_y));
         // note: even though we sorted (a,b) above, we still store the new
         // cluster in position `y` so that the distance update logic remains
         // correct (we always drop `x`).
-        clustermap[y] = Some(newcid);
-        clustermap[x] = None; // deactivate
+        clustermap[y] = newcid;
+        clustermap[x] = idsize::MAX; // deactivate
+
+        let height_x = heights[x];
+        let height_y = heights[y];
 
         // update distances in the matrix
         for j in 0..end {
-            if j == x || j == y {
-                continue;
-            }
-            if clustermap[j].is_none() {
+            if j == x || j == y || clustermap[j] == idsize::MAX {
                 continue;
             }
             // compute current distances from j to x and y
-            // triangle_index is order‑agnostic, so we can call it
-            // directly without sorting the arguments.
-            let dist_to_x = mat[triangle_index(x, j)];
-            let dist_to_y = mat[triangle_index(y, j)];
-            let size_j = builder.get_size(clustermap[j].unwrap());
-            let combined = linkage.combine(size_x, dist_to_x, size_y, dist_to_y, size_j, mindist);
+            let height_j = heights[j];
+            let combined = linkage.combine(
+                size_x,
+                mat[triangle_index(x, j)],
+                size_y,
+                mat[triangle_index(y, j)],
+                builder.get_size(clustermap[j]),
+                mindist,
+                height_x,
+                height_y,
+                height_j,
+            );
             // triangle_index will handle the ordering of (y,j) internally
             mat[triangle_index(y, j)] = combined;
         }
+
+        heights[y] = mindist;
+        heights[x] = F::nan();
 
         // shrink active set if tail objects have disappeared
         if x == end - 1 {
@@ -128,58 +155,116 @@ pub fn agnes<F: Float, L: Linkage<F> + Copy>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cluster::hierarchical::extraction::cut_dendrogram_by_number_of_clusters;
+    use crate::cluster::hierarchical::linkage::flexible_beta::FlexibleBetaLinkage;
+    use crate::cluster::hierarchical::test::test_clustering_condensed;
     use crate::cluster::hierarchical::{
-        AverageLinkage, CompleteLinkage, Merge, SingleLinkage, WardLinkage,
+        CentroidLinkage, CompleteLinkage, GroupAverageLinkage, MedianLinkage,
+        MinimumSumSquaresLinkage, MinimumVarianceIncreaseLinkage, MinimumVarianceLinkage,
+        SingleLinkage, WardLinkage, WeightedAverageLinkage,
     };
+    use crate::distance::{Euclidean, SquaredEuclidean};
 
     #[test]
-    fn agnes_matches_scipy_single() {
-        // distances for 4 points in the order (0,1),(0,2),(0,3),(1,2),(1,3),(2,3)
-        let d = vec![1.0, 2.0, 3.0, 1.5, 2.5, 1.0];
-        let result = agnes(&d, 4, SingleLinkage, false);
-        let expected = vec![
-            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
-            Merge { idx1: 2, idx2: 3, distance: 1.0, size: 2 },
-            Merge { idx1: 4, idx2: 5, distance: 1.5, size: 4 },
-        ];
-        assert_eq!(result, expected);
+    fn agnes_group_average_regression() {
+        test_clustering_condensed("AGNES", "average", Euclidean, |condensed, min_clusters| {
+            let history = agnes(condensed, GroupAverageLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
     }
 
     #[test]
-    fn agnes_matches_scipy_complete() {
-        // use the same toy matrix as above but with complete linkage.
-        // expected results were obtained from SciPy:
-        // [[0,1,1,2], [2,3,1,2], [4,5,3,4]].
-        let d = vec![1.0, 2.0, 3.0, 1.5, 2.5, 1.0];
-        let result = agnes(&d, 4, CompleteLinkage, false);
-        let expected = vec![
-            Merge { idx1: 0, idx2: 1, distance: 1.0, size: 2 },
-            Merge { idx1: 2, idx2: 3, distance: 1.0, size: 2 },
-            Merge { idx1: 4, idx2: 5, distance: 3.0, size: 4 },
-        ];
-        assert_eq!(result, expected);
+    fn agnes_weighted_average_regression() {
+        test_clustering_condensed(
+            "AGNES",
+            "weighted_average",
+            Euclidean,
+            |condensed, min_clusters| {
+                let history = agnes(condensed, WeightedAverageLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
     }
 
     #[test]
-    fn agnes_average_and_ward_are_consistent() {
-        // small example where we also verify numerical values against SciPy.
-        // distances correspond to three points (0,1)=0.1, (0,2)=0.2, (1,2)=0.3.
-        let d = vec![0.1, 0.2, 0.3];
-        let a = agnes(&d, 3, AverageLinkage, false);
-        let w = agnes(&d, 3, WardLinkage, false);
-        // SciPy outputs for this matrix are:
-        // average -> [[0,1,0.1,2],[2,3,0.25,3]]
-        // ward    -> [[0,1,0.1,2],[2,3,0.28867513,3]]
-        // We don't attempt to reproduce SciPy's ward distance exactly; the
-        // formula implemented here follows the original ELKI/Java version and
-        // differs slightly from SciPy's post‑processing.  Just sanity check
-        // that the algorithm runs and cluster sizes make sense.
-        assert_eq!(a.len(), 2);
-        assert_eq!(w.len(), 2);
-        assert_eq!(a[0].distance, 0.1);
-        assert!((a[1].distance - 0.25f64).abs() < 1e-12);
-        assert_eq!(w[0].distance, 0.1);
-        assert_eq!(a[1].size, 3);
-        assert_eq!(w[1].size, 3);
+    fn agnes_centroid_regression() {
+        test_clustering_condensed(
+            "AGNES",
+            "centroid",
+            SquaredEuclidean,
+            |condensed, min_clusters| {
+                let history = agnes(condensed, CentroidLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn agnes_median_regression() {
+        test_clustering_condensed(
+            "AGNES",
+            "median",
+            SquaredEuclidean,
+            |condensed, min_clusters| {
+                let history = agnes(condensed, MedianLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn agnes_complete_regression() {
+        test_clustering_condensed("AGNES", "complete", Euclidean, |condensed, min_clusters| {
+            let history = agnes(condensed, CompleteLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn agnes_single_regression() {
+        test_clustering_condensed("AGNES", "single", Euclidean, |condensed, min_clusters| {
+            let history = agnes(condensed, SingleLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn agnes_flexible_beta_regression() {
+        test_clustering_condensed("AGNES", "flexible", Euclidean, |condensed, min_clusters| {
+            let history = agnes(condensed, FlexibleBetaLinkage::new(-0.25));
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn agnes_ward_regression() {
+        test_clustering_condensed("AGNES", "ward", SquaredEuclidean, |condensed, min_clusters| {
+            let history = agnes(condensed, WardLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn agnes_minimum_variance_increase_regression() {
+        test_clustering_condensed("AGNES", "mivar", Euclidean, |condensed, min_clusters| {
+            let history = agnes(condensed, MinimumVarianceIncreaseLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn agnes_minimum_sum_squares_regression() {
+        test_clustering_condensed("AGNES", "mnssq", Euclidean, |condensed, min_clusters| {
+            let history = agnes(condensed, MinimumSumSquaresLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn agnes_minimum_variance_regression() {
+        test_clustering_condensed("AGNES", "mnvar", Euclidean, |condensed, min_clusters| {
+            let history = agnes(condensed, MinimumVarianceLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
     }
 }

@@ -49,7 +49,7 @@ where
     // Otherwise it is a fraction of the dataset to trim.
     let keep = if alpha >= 1.0 {
         let trim = alpha.floor() as usize;
-        if trim >= n { 0 } else { n - trim }
+        n.saturating_sub(trim)
     } else {
         let frac = alpha.min(1.0);
         ((N::from(n).unwrap() * (N::one() - N::from(frac).unwrap())).floor())
@@ -101,8 +101,8 @@ where
 
         // Compute new centers using only kept points.
         // Reset accumulators from previous iterations.
+        counts.fill(0);
         for j in 0..k {
-            counts[j] = 0;
             for v in sums.center_mut(j).iter_mut() {
                 *v = N::zero();
             }
@@ -118,9 +118,9 @@ where
             math::add_assign(sums.center_mut(a), &scratch, d);
         }
 
-        for j in 0..k {
-            if counts[j] > 0 {
-                let inv = N::from(counts[j]).unwrap().recip();
+        for (j, &count) in counts.iter().enumerate() {
+            if count > 0 {
+                let inv = N::from(count).unwrap().recip();
                 math::mul(cent.center_mut(j), sums.center(j), inv, d);
             } else {
                 // if a cluster is empty (after trimming), set it to zero
@@ -148,8 +148,8 @@ where
     // comparable to standard k-means (which uses all points, regardless of
     // trimming).
     let mut inertia = N::zero();
-    for i in 0..n {
-        inertia += dist[i];
+    for &d in &dist {
+        inertia += d;
     }
     KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, inertia)
 }
@@ -184,7 +184,7 @@ mod tests {
     use rand_pcg::Pcg32;
 
     use super::*;
-    use crate::cluster::kmeans::ndarray::NdArrayDataset;
+    use crate::NdArrayDataset;
     use crate::cluster::kmeans::util::{compute_loss, gen_test_data};
 
     #[test]

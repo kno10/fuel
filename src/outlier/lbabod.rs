@@ -83,10 +83,9 @@ where
         return F::infinity();
     }
 
-    let two = F::from_f64(2.0).unwrap();
-    let r2 = sumisqd * sumisqd - two * nnsumisqd;
-    let tmp = (two * nnsum + r2) / denom;
-    two * nnsumsq / denom - tmp * tmp
+    let r2 = sumisqd * sumisqd - F::two() * nnsumisqd;
+    let tmp = (F::two() * nnsum + r2) / denom;
+    F::two() * nnsumsq / denom - tmp * tmp
 }
 
 fn max_value<F: Float>(values: &[F]) -> Option<F> {

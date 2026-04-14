@@ -13,7 +13,7 @@ pub struct RadialBasisFunctionKernel<F: Float> {
 impl<F: Float> RadialBasisFunctionKernel<F> {
     pub fn new_gamma(gamma: F) -> Self { Self { gamma } }
 
-    pub fn new_sigma(sigma: F) -> Self { Self { gamma: F::from(0.5).unwrap() / (sigma * sigma) } }
+    pub fn new_sigma(sigma: F) -> Self { Self { gamma: F::half() / (sigma * sigma) } }
 
     pub fn similarity(&self, x: &[F], y: &[F]) -> F {
         (-self.gamma * squared_euclidean_distance::<F, F>(x, y)).exp()

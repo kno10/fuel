@@ -1,6 +1,6 @@
 use crate::Float;
 use crate::api::{NodePoints, SearchFilter};
-use crate::cluster::hierarchical::common::{Merge, MergeHistory};
+use crate::cluster::hierarchical::{Merge, MergeHistory};
 
 /// Edge collected during search-based single-linkage construction.
 struct Edge<F> {
@@ -76,7 +76,7 @@ impl<F: Float> ClusterBuilder<F> {
     pub(crate) fn into_history(mut self) -> MergeHistory<F> {
         let n = self.n;
         if n <= 1 {
-            return Vec::new();
+            return MergeHistory::new();
         }
 
         self.edges.sort_by(|l, r| {
@@ -89,7 +89,7 @@ impl<F: Float> ClusterBuilder<F> {
 
         let mut parent: Vec<usize> = (0..(2 * n - 1)).collect();
         let mut size = vec![1usize; 2 * n - 1];
-        let mut merges = Vec::<Merge<F>>::with_capacity(n - 1);
+        let mut merges = MergeHistory::with_capacity(n - 1);
 
         for edge in &self.edges {
             let s = uf_find(&mut parent, edge.a);
@@ -101,7 +101,13 @@ impl<F: Float> ClusterBuilder<F> {
             let ss = size[s];
             let st = size[t];
             let (idx1, idx2) = if s <= t { (s, t) } else { (t, s) };
-            merges.push(Merge { idx1, idx2, distance: edge.weight, size: ss + st });
+            merges.push(Merge {
+                idx1,
+                idx2,
+                distance: edge.weight,
+                size: ss + st,
+                prototype: usize::MAX,
+            });
 
             let new_id = n + merges.len() - 1;
             parent[s] = new_id;

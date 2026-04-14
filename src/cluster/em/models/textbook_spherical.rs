@@ -61,10 +61,10 @@ impl<N: Float> EmModel<N> for TextbookSphericalGaussianModel<N> {
         }
         for (j, &xj) in x.iter().enumerate() {
             let wx = responsibility * xj;
-            self.mean[j] = self.mean[j] + wx;
-            self.sumsq = self.sumsq + wx * xj;
+            self.mean[j] += wx;
+            self.sumsq += wx * xj;
         }
-        self.wsum = self.wsum + responsibility;
+        self.wsum += responsibility;
     }
 
     fn finalize_estep(&mut self, weight: N, prior: N) {
@@ -74,7 +74,7 @@ impl<N: Float> EmModel<N> for TextbookSphericalGaussianModel<N> {
         if self.wsum > N::zero() && self.wsum.is_finite() {
             let inv_w = self.wsum.recip();
             for m in &mut self.mean {
-                *m = *m * inv_w;
+                *m *= inv_w;
             }
             if prior > N::zero() {
                 let nu = N::from(d + 2).unwrap();
@@ -99,7 +99,7 @@ impl<N: Float> EmModel<N> for TextbookSphericalGaussianModel<N> {
         let mut mahal = N::zero();
         for (j, &xj) in x.iter().enumerate() {
             let diff = xj - self.mean[j];
-            mahal = mahal + diff * diff / var;
+            mahal += diff * diff / var;
         }
         -N::from(0.5).unwrap() * mahal + self.log_norm_det
     }
@@ -197,10 +197,10 @@ impl<N: Float, I: Initialization<N>> TextbookSphericalGaussianModelFactory<N, I>
 mod tests {
     use ndarray::Array2;
 
+    use crate::NdArrayDataset;
     use crate::cluster::em::models::textbook_spherical::TextbookSphericalGaussianModelFactory;
     use crate::cluster::em::optimizer::{EmConfig, EmResult, expectation_maximization};
     use crate::cluster::kmeans::init::FirstK;
-    use crate::cluster::kmeans::ndarray::NdArrayDataset;
 
     fn two_blob_data() -> Array2<f64> {
         let mut data = Array2::<f64>::zeros((200, 2));

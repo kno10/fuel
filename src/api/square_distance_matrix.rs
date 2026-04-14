@@ -71,17 +71,18 @@ where
 pub struct SquareDistanceMatrix<F: Float> {
     data: Vec<F>,
     n: usize,
+    is_squared_distance: bool,
 }
 
 impl<F: Float> SquareDistanceMatrix<F> {
-    pub fn new_from_array2(matrix: Array2<F>) -> Self {
+    pub fn new_from_array2(matrix: Array2<F>, is_squared_distance: bool) -> Self {
         let shape = matrix.shape();
         assert_eq!(shape.len(), 2);
         let n = shape[0];
         assert_eq!(shape[1], n);
         let (data, offset) = matrix.into_raw_vec_and_offset();
         assert_eq!(offset, Some(0));
-        Self { data, n }
+        Self { data, n, is_squared_distance }
     }
 
     pub fn new_from_data<D>(data: &D) -> Self
@@ -90,7 +91,10 @@ impl<F: Float> SquareDistanceMatrix<F> {
     {
         let n = data.len();
         let points: Vec<usize> = (0..n).collect();
-        Self::new_from_array2(compute_pairwise_dense(&points, &|i, j| data.distance(*i, *j)))
+        Self::new_from_array2(
+            compute_pairwise_dense(&points, &|i, j| data.distance(*i, *j)),
+            data.is_squared_distance(),
+        )
     }
 
     pub fn as_slice(&self) -> &[F] { &self.data }
@@ -112,6 +116,8 @@ impl<F: Float> DistanceData<F> for SquareDistanceMatrix<F> {
     }
 
     fn query(&self) -> Self::Query<'_> { SquareMatrixQuery::new(self) }
+
+    fn is_squared_distance(&self) -> bool { self.is_squared_distance }
 }
 
 pub struct SquareMatrixQuery<'a, F: Float> {

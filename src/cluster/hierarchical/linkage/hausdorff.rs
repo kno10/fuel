@@ -1,24 +1,24 @@
-use crate::cluster::hierarchical::SetLinkage;
+use crate::cluster::hierarchical::{SetLinkage, idsize};
 use crate::{DistanceData, Float};
 
 /// Hausdorff linkage based on the directed-maximum definition.
 pub struct HausdorffLinkage;
 impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for HausdorffLinkage {
-    fn summarize(_data: &D, _members: &[usize]) {}
+    fn summarize(_data: &D, _members: &[idsize]) {}
 
     fn cluster_distance(
-        data: &D, _summary_a: &(), _summary_b: &(), a: &[usize], b: &[usize],
-    ) -> (F, Option<usize>) {
-        (hausdorff_distance(data, a, b), None)
+        data: &D, _summary_a: &(), _summary_b: &(), a: &[idsize], b: &[idsize],
+    ) -> (F, ()) {
+        (hausdorff_distance(data, a, b), ())
     }
 }
 
-fn hausdorff_distance<D: DistanceData<F>, F: Float>(data: &D, a: &[usize], b: &[usize]) -> F {
+fn hausdorff_distance<D: DistanceData<F>, F: Float>(data: &D, a: &[idsize], b: &[idsize]) -> F {
     let mut maxmin_ab = F::zero();
     for &p in a {
         let mut min_dist = F::infinity();
         for &q in b {
-            let d = F::from(data.distance(p, q)).unwrap();
+            let d = F::from(data.distance(p as usize, q as usize)).unwrap();
             if d < min_dist {
                 min_dist = d;
                 if min_dist == F::zero() {
@@ -34,7 +34,7 @@ fn hausdorff_distance<D: DistanceData<F>, F: Float>(data: &D, a: &[usize], b: &[
     for &p in b {
         let mut min_dist = F::infinity();
         for &q in a {
-            let d = F::from(data.distance(p, q)).unwrap();
+            let d = F::from(data.distance(p as usize, q as usize)).unwrap();
             if d < min_dist {
                 min_dist = d;
                 if min_dist == F::zero() {

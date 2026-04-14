@@ -1,24 +1,21 @@
-use std::any::TypeId;
-
-use rand::SeedableRng;
-use rand::rngs::StdRng;
-
-use super::WardLinkage;
-use super::common::{Builder, MergeHistory};
-use super::linkage::GeometricLinkage;
+use crate::cluster::hierarchical::{Builder, GeometricLinkage, MergeHistory, idsize};
 use crate::distance::SquaredEuclidean;
-use crate::search::vptree::VPTree;
-use crate::{CoordinateQuery, DistanceData, Float, TableWithDistance};
+use crate::search::kdtree::{KdTree, KdTreePrioritySearcher, MaxVarianceSplit};
+use crate::{CoordinateQuery, DistanceData, Float, PrioritySearcher, TableWithDistance};
 
 struct UnionFind {
     parent: Vec<usize>,
     size: Vec<usize>,
-    cluster_id: Vec<usize>,
+    cluster_id: Vec<idsize>,
 }
 
 impl UnionFind {
     fn new(n: usize) -> Self {
-        Self { parent: (0..n).collect(), size: vec![1; n], cluster_id: (0..n).collect() }
+        Self {
+            parent: (0..n).collect(),
+            size: vec![1; n],
+            cluster_id: (0..(n as idsize)).collect(),
+        }
     }
 
     fn find(&mut self, x: usize) -> usize {
@@ -35,14 +32,13 @@ impl UnionFind {
         root
     }
 
-    fn cluster_of(&mut self, x: usize) -> usize {
+    fn cluster_of(&mut self, x: usize) -> idsize {
         let root = self.find(x);
         self.cluster_id[root]
     }
 
-    fn union(&mut self, a: usize, b: usize, new_id: usize) -> usize {
-        let mut ra = self.find(a);
-        let mut rb = self.find(b);
+    fn union(&mut self, a: usize, b: usize, new_id: idsize) -> usize {
+        let (mut ra, mut rb) = (self.find(a), self.find(b));
         if ra == rb {
             return ra;
         }
@@ -66,25 +62,14 @@ impl UnionFind {
     }
 }
 
-fn ward_cutoff_factor<F: Float>(size: usize) -> F {
-    let s = F::from(size).expect("cluster size must fit into float");
-    F::from(4.0).unwrap() + F::from(4.0).unwrap() / s
-}
-
-fn ward_candidate_factor<F: Float>(size_a: usize, size_i: usize) -> F {
-    let sa = F::from(size_a).expect("cluster size must fit into float");
-    let si = F::from(size_i).expect("cluster size must fit into float");
-    F::from(4.0).unwrap() * (sa + si) / (sa * si)
-}
-
 fn center<F: Float>(centers: &[Option<Vec<F>>], cid: usize) -> &[F] {
     centers[cid].as_ref().expect("cluster center must be initialized")
 }
 
-fn grow_chain<F: Float, L: GeometricLinkage<F> + Copy>(
-    data: &TableWithDistance<'_, F, Vec<F>, SquaredEuclidean, F>, linkage: L, builder: &Builder<F>,
-    centers: &[Option<Vec<F>>], uf: &mut UnionFind, chain: &mut Vec<usize>, visited: &mut [bool],
-    searcher: &mut crate::search::vptree::PrioritySearcher<F>, is_ward: bool,
+fn grow_chain<'a, F: Float, L: GeometricLinkage<F> + Copy>(
+    data: &'a TableWithDistance<'a, F, Vec<F>, SquaredEuclidean, F>, linkage: L,
+    builder: &Builder<F>, centers: &[Option<Vec<F>>], heights: &[F], uf: &mut UnionFind,
+    chain: &mut Vec<usize>, visited: &mut [bool], searcher: &mut KdTreePrioritySearcher<'a, F, F>,
 ) -> bool {
     let mut query = data.query();
     let mut a_root;
@@ -110,15 +95,21 @@ fn grow_chain<F: Float, L: GeometricLinkage<F> + Copy>(
     let mut min_link = {
         let size_a = builder.get_size(a_cid);
         let size_b = builder.get_size(b_cid);
-        linkage.linkage(center(centers, a_cid), size_a, center(centers, b_cid), size_b)
+        linkage.linkage(
+            center(centers, a_cid as usize),
+            size_a,
+            center(centers, b_cid as usize),
+            size_b,
+            heights[a_cid as usize],
+            heights[b_cid as usize],
+        )
     };
 
     loop {
         visited.fill(false);
-
         let size_a = builder.get_size(a_cid);
-        let a_center = center(centers, a_cid);
-        let cutoff_factor = if is_ward { ward_cutoff_factor(size_a) } else { F::one() };
+        let a_center = center(centers, a_cid as usize);
+        let cutoff_factor = linkage.cutoff_factor(size_a);
 
         searcher.reset_with_limits(cutoff_factor * min_link, F::zero());
         query.set_coordinates(a_center);
@@ -126,31 +117,43 @@ fn grow_chain<F: Float, L: GeometricLinkage<F> + Copy>(
         let mut c_root = b_root;
         let mut c_cid = b_cid;
 
-        while let Some(candidate) = searcher.next_filtered_bounds(&query, |_| false) {
-            let root = uf.find(candidate.index as usize);
+        while let Some(candidate) = searcher.next(&query) {
+            let root = uf.find(candidate.index);
             let cid = uf.cluster_id[root];
 
             if cid == a_cid || cid == b_cid {
-                if cid < visited.len() {
-                    visited[cid] = true;
+                let cid_index = cid as usize;
+                if cid_index < visited.len() {
+                    visited[cid_index] = true;
                 }
                 continue;
             }
 
-            if visited.get(cid).copied().unwrap_or(false) {
+            if visited.get(cid as usize).copied().unwrap_or(false) {
                 continue;
             }
 
             let size_i = builder.get_size(cid);
-            if is_ward {
-                let fi: F = ward_candidate_factor(size_a, size_i);
-                if candidate.lower_bound() > fi * min_link {
-                    visited[cid] = true;
-                    continue;
-                }
+            let threshold = linkage.candidate_threshold(
+                min_link,
+                size_a,
+                size_i,
+                heights[a_cid as usize],
+                heights[cid as usize],
+            );
+            if candidate.distance > threshold {
+                visited[cid as usize] = true;
+                continue;
             }
 
-            let link = linkage.linkage(a_center, size_a, center(centers, cid), size_i);
+            let link = linkage.linkage(
+                a_center,
+                size_a,
+                center(centers, cid as usize),
+                size_i,
+                heights[a_cid as usize],
+                heights[cid as usize],
+            );
             if link < min_link {
                 min_link = link;
                 c_root = root;
@@ -158,7 +161,7 @@ fn grow_chain<F: Float, L: GeometricLinkage<F> + Copy>(
                 searcher.decrease_cutoff(cutoff_factor * link);
             }
 
-            visited[cid] = true;
+            visited[cid as usize] = true;
         }
 
         b_root = a_root;
@@ -180,44 +183,51 @@ fn grow_chain<F: Float, L: GeometricLinkage<F> + Copy>(
 /// This variant uses incremental VP-tree search to accelerate nearest
 /// neighbour discovery for geometric linkage criteria.
 #[must_use]
-pub fn incremental_nn_chain<F: Float, L: GeometricLinkage<F> + Copy + 'static>(
-    vectors: &[Vec<F>], linkage: L, is_squared: bool,
-) -> MergeHistory<F> {
-    let n = vectors.len();
+pub fn incremental_nn_chain<F: Float, L: GeometricLinkage<F> + Copy + 'static, D>(
+    data: &D, linkage: L,
+) -> MergeHistory<F>
+where
+    D: crate::VectorData<F>,
+{
+    let n = data.nrows();
     assert!(n > 0, "number of points must be positive");
 
-    let dim = vectors[0].len();
-    assert!(vectors.iter().all(|v| v.len() == dim), "all vectors must have equal dimensionality");
+    let dim = data.dims();
+    assert!(
+        (0..n).all(|i| data.point(i).len() == dim),
+        "all vectors must have equal dimensionality"
+    );
 
-    let data = TableWithDistance::with_distance(vectors, SquaredEuclidean);
-    let mut rng = StdRng::seed_from_u64(42);
-    let tree = VPTree::new(&data, 3, &mut rng);
+    let points: Vec<Vec<F>> = (0..n).map(|i| data.point(i).to_vec()).collect();
+    let table_data: TableWithDistance<'_, F, Vec<F>, SquaredEuclidean, F> =
+        TableWithDistance::with_distance(&points, SquaredEuclidean);
+    let tree = KdTree::new(&table_data, MaxVarianceSplit);
 
     let mut builder = Builder::<F>::new(n);
     let mut centers: Vec<Option<Vec<F>>> = vec![None; 2 * n - 1];
-    for (i, v) in vectors.iter().enumerate() {
+    for (i, v) in points.iter().enumerate() {
         centers[i] = Some(v.clone());
     }
+    let mut heights = vec![F::zero(); 2 * n - 1];
 
+    let squared = table_data.is_squared_distance();
     let mut uf = UnionFind::new(n);
     let mut chain: Vec<usize> = Vec::with_capacity(n.min(64));
     let mut visited = vec![false; 2 * n - 1];
-    let mut searcher = tree.priority_searcher();
+    let mut searcher = KdTreePrioritySearcher::new(&tree);
     let mut merged = 0usize;
-
-    let is_ward = TypeId::of::<L>() == TypeId::of::<WardLinkage>();
 
     while merged < n - 1 {
         if !grow_chain(
-            &data,
+            &table_data,
             linkage,
             &builder,
             &centers,
+            &heights,
             &mut uf,
             &mut chain,
             &mut visited,
             &mut searcher,
-            is_ward,
         ) {
             continue;
         }
@@ -233,15 +243,39 @@ pub fn incremental_nn_chain<F: Float, L: GeometricLinkage<F> + Copy + 'static>(
         let b_cid = uf.cluster_of(b_root);
         let size_a = builder.get_size(a_cid);
         let size_b = builder.get_size(b_cid);
-        let a_center = center(&centers, a_cid);
-        let b_center = center(&centers, b_cid);
-        let min_link = linkage.linkage(a_center, size_a, b_center, size_b);
+        let a_center = center(&centers, a_cid as usize);
+        let b_center = center(&centers, b_cid as usize);
+        let min_link = linkage.linkage(
+            a_center,
+            size_a,
+            b_center,
+            size_b,
+            heights[a_cid as usize],
+            heights[b_cid as usize],
+        );
 
         let (h1, h2) = if a_cid <= b_cid { (a_cid, b_cid) } else { (b_cid, a_cid) };
-        let new_id = builder.add(h1, linkage.restore_linkage(min_link, is_squared), h2);
+        let new_id = builder.add(h1, linkage.restore_linkage(min_link, squared), h2);
 
-        let merged_center = linkage.merge(a_center, size_a, b_center, size_b);
-        centers[new_id] = Some(merged_center);
+        let merged_center = linkage.merge(
+            a_center,
+            size_a,
+            b_center,
+            size_b,
+            heights[a_cid as usize],
+            heights[b_cid as usize],
+        );
+        let merged_height = linkage.merge_height(
+            a_center,
+            size_a,
+            b_center,
+            size_b,
+            heights[a_cid as usize],
+            heights[b_cid as usize],
+        );
+
+        centers[new_id as usize] = Some(merged_center);
+        heights[new_id as usize] = merged_height;
 
         let new_root = uf.union(a_root, b_root, new_id);
 
@@ -255,22 +289,111 @@ pub fn incremental_nn_chain<F: Float, L: GeometricLinkage<F> + Copy + 'static>(
         merged += 1;
     }
 
+    builder.optimize_order_in_place();
     builder.into_merges()
 }
 
 #[cfg(test)]
 mod tests {
     use super::incremental_nn_chain;
-    use crate::cluster::hierarchical::WardLinkage;
-    use crate::cluster::hierarchical::geometric_nn_chain::geometric_nn_chain;
+    use crate::cluster::hierarchical::extraction::cut_dendrogram_by_number_of_clusters;
+    use crate::cluster::hierarchical::test::test_clustering_table;
+    use crate::cluster::hierarchical::{
+        CentroidLinkage, GroupAverageLinkage, MedianLinkage, MinimumSumSquaresLinkage,
+        MinimumVarianceIncreaseLinkage, MinimumVarianceLinkage, WardLinkage, nn_chain,
+    };
+    use crate::distance::SquaredEuclidean;
+    use crate::{CondensedDistanceMatrix, TableWithDistance};
 
     #[test]
-    fn incremental_nn_chain_matches_geometric_variant() {
-        let points =
-            vec![vec![0.0, 0.0], vec![0.2, 0.1], vec![3.0, 3.0], vec![3.1, 3.2], vec![10.0, 10.0]];
+    fn incremental_nn_chain_average_regression() {
+        // Only SquaredEuclidean is geometric!
+        test_clustering_table(
+            "IncrementalNNChain",
+            "average",
+            SquaredEuclidean,
+            |access, min_clusters| {
+                let history = incremental_nn_chain(access, GroupAverageLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
 
-        let a = incremental_nn_chain(&points, WardLinkage, false);
-        let b = geometric_nn_chain(&points, WardLinkage, false);
-        assert_eq!(a, b);
+    #[test]
+    fn incremental_nn_chain_centroid_regression() {
+        test_clustering_table(
+            "IncrementalNNChain",
+            "centroid",
+            SquaredEuclidean,
+            |access, min_clusters| {
+                let history = incremental_nn_chain(access, CentroidLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn incremental_nn_chain_median_regression() {
+        test_clustering_table(
+            "IncrementalNNChain",
+            "median",
+            SquaredEuclidean,
+            |access, min_clusters| {
+                let history = incremental_nn_chain(access, MedianLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn incremental_nn_chain_ward_regression() {
+        test_clustering_table(
+            "IncrementalNNChain",
+            "ward",
+            SquaredEuclidean,
+            |access, min_clusters| {
+                let history = incremental_nn_chain(access, WardLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn incremental_nn_chain_minimum_sum_squares_regression() {
+        test_clustering_table(
+            "IncrementalNNChain",
+            "mnssq",
+            SquaredEuclidean,
+            |access, min_clusters| {
+                let history = incremental_nn_chain(access, MinimumSumSquaresLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn incremental_nn_chain_minimum_variance_regression() {
+        test_clustering_table(
+            "IncrementalNNChain",
+            "mnvar",
+            SquaredEuclidean,
+            |access, min_clusters| {
+                let history = incremental_nn_chain(access, MinimumVarianceLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn incremental_nn_chain_minimum_variance_increase_regression() {
+        test_clustering_table(
+            "IncrementalNNChain",
+            "mivar",
+            SquaredEuclidean,
+            |access, min_clusters| {
+                let history = incremental_nn_chain(access, MinimumVarianceIncreaseLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
     }
 }

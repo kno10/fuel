@@ -18,7 +18,6 @@ mod kmedians;
 mod lloyd;
 mod lloyd_naive;
 mod macqueen;
-pub mod ndarray; // FIXME: retire
 mod selkan;
 mod shallot;
 mod shamerly;
@@ -40,7 +39,6 @@ pub use self::kmedians::*;
 pub use self::lloyd::*;
 pub use self::lloyd_naive::*;
 pub use self::macqueen::*;
-pub use self::ndarray::*;
 pub use self::selkan::*;
 pub use self::shallot::*;
 pub use self::shamerly::*;

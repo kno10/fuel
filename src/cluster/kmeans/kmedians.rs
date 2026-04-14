@@ -153,7 +153,7 @@ mod tests {
     use rand_pcg::Pcg32;
 
     use super::*;
-    use crate::cluster::kmeans::NdArrayDataset;
+    use crate::NdArrayDataset;
     use crate::cluster::kmeans::util::gen_test_data;
 
     fn euclidean_loss<N, A>(data: &A, centers: &Array2<N>, assign: &[usize]) -> N

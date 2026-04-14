@@ -15,7 +15,7 @@ where
     I: Initialization<N>,
     A: Dataset<N>,
 {
-    let (n, d) = (data.nrows(), data.ncols());
+    let d = data.ncols();
     let mut scratch = vec![N::zero(); d];
     let mut cent = Centers::<N>::new(k, d);
     let mut sums = Centers::<N>::new(k, d);
@@ -40,9 +40,9 @@ where
         let mut changed = 0;
 
         // Process points sequentially, updating centers immediately.
-        for i in 0..n {
+        let assign_clone = assign.clone();
+        for (i, aa) in assign_clone.into_iter().enumerate() {
             data.load_into(i, &mut scratch, d);
-            let aa = assign[i];
             let (mut a, mut s) = (0, math::sqdist(cent.center(0), &scratch, d));
             for j in 1..k {
                 let tmp = math::sqdist(cent.center(j), &scratch, d);
@@ -83,9 +83,9 @@ where
 
         // compute current inertia (sum of squared distances to current centers)
         let mut sum = N::zero();
-        for i in 0..n {
+        for (i, &assign_i) in assign.iter().enumerate() {
             data.load_into(i, &mut scratch, d);
-            sum += math::sqdist(cent.center(assign[i]), &scratch, d);
+            sum += math::sqdist(cent.center(assign_i), &scratch, d);
         }
         lastsum = sum;
 
@@ -108,14 +108,13 @@ where
 }
 
 /// Classic MacQueen k-means.
-
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;
     use rand_pcg::Pcg32;
 
     use super::*;
-    use crate::cluster::kmeans::ndarray::NdArrayDataset;
+    use crate::NdArrayDataset;
     use crate::cluster::kmeans::util::{compute_loss, gen_test_data};
 
     #[test]

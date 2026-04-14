@@ -41,6 +41,8 @@ where
     }
 
     fn query(&self) -> Self::Query<'_> { TableQuery::new(self) }
+
+    fn is_squared_distance(&self) -> bool { self.distance_fn.is_squared_distance() }
 }
 
 // TODO: Factor out a supertype with vector only, no distance.

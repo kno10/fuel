@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
-use crate::api::{NodePoints, SearchFilter};
-use crate::cluster::hierarchical::common::{Merge, MergeHistory, UnionFind};
-use crate::{DistanceData, Float, IndexQuery, KnnSearch};
+use crate::cluster::hierarchical::common::UnionFind;
+use crate::cluster::hierarchical::{Merge, MergeHistory};
+use crate::{DistanceData, Float, IndexQuery, KnnSearch, NodePoints, SearchFilter};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HdbscanHierarchy<F: Float> {
@@ -150,7 +150,7 @@ pub(crate) fn edges_to_merge_history<F: Float>(
     n: usize, edges: &mut [WeightedEdge<F>],
 ) -> MergeHistory<F> {
     if n <= 1 {
-        return Vec::new();
+        return MergeHistory::new();
     }
 
     edges.sort_by(|left, right| {
@@ -166,16 +166,20 @@ pub(crate) fn edges_to_merge_history<F: Float>(
     let mut merges = Vec::<Merge<F>>::with_capacity(n - 1);
 
     for edge in edges.iter() {
-        let s = uf_find(&mut parent, edge.a);
-        let t = uf_find(&mut parent, edge.b);
+        let (s, t) = (uf_find(&mut parent, edge.a), uf_find(&mut parent, edge.b));
         if s == t {
             continue;
         }
 
-        let ss = size[s];
-        let st = size[t];
+        let (ss, st) = (size[s], size[t]);
         let (idx1, idx2) = if s <= t { (s, t) } else { (t, s) };
-        merges.push(Merge { idx1, idx2, distance: edge.weight, size: ss + st });
+        merges.push(Merge {
+            idx1,
+            idx2,
+            distance: edge.weight,
+            size: ss + st,
+            prototype: usize::MAX,
+        });
 
         let new_id = n + merges.len() - 1;
         parent[s] = new_id;
@@ -189,7 +193,7 @@ pub(crate) fn edges_to_merge_history<F: Float>(
     }
 
     assert_eq!(merges.len(), n - 1, "edge set did not connect all points");
-    merges
+    merges.into()
 }
 
 #[inline]

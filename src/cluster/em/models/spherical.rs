@@ -68,8 +68,7 @@ impl<N: Float> EmModel<N> for SphericalGaussianModel<N> {
             self.nmean[j] = self.mean[j] + (xj - self.mean[j]) * f;
         }
         for (j, &xj) in x.iter().enumerate() {
-            self.variance =
-                self.variance + (xj - self.nmean[j]) * (xj - self.mean[j]) * responsibility;
+            self.variance += (xj - self.nmean[j]) * (xj - self.mean[j]) * responsibility;
         }
         self.wsum = nwsum;
         self.mean.copy_from_slice(&self.nmean);
@@ -80,10 +79,11 @@ impl<N: Float> EmModel<N> for SphericalGaussianModel<N> {
         let d = N::from(self.mean.len()).unwrap();
         if prior > N::zero() {
             let nu = d + N::from(2.0).unwrap();
-            self.variance = self.variance / d + prior * self.prior_variance;
-            self.variance = self.variance / (self.wsum + prior * (nu + d + N::from(2.0).unwrap()));
+            self.variance /= d;
+            self.variance += prior * self.prior_variance;
+            self.variance /= self.wsum + prior * (nu + d + N::from(2.0).unwrap());
         } else if self.wsum > N::zero() {
-            self.variance = self.variance / (d * self.wsum);
+            self.variance /= d * self.wsum;
         }
         self.variance = self.variance.max(self.min_variance);
 
@@ -95,7 +95,7 @@ impl<N: Float> EmModel<N> for SphericalGaussianModel<N> {
         let mut mahal = N::zero();
         for (j, &xj) in x.iter().enumerate() {
             let diff = xj - self.mean[j];
-            mahal = mahal + diff * diff / var;
+            mahal += diff * diff / var;
         }
         -N::from(0.5).unwrap() * mahal + self.log_norm_det
     }
@@ -202,10 +202,10 @@ mod tests {
     use ndarray::Array2;
 
     use super::*;
+    use crate::NdArrayDataset;
     use crate::cluster::em::models::spherical::SphericalGaussianModelFactory;
     use crate::cluster::em::optimizer::{EmConfig, expectation_maximization};
     use crate::cluster::kmeans::init::FirstK;
-    use crate::cluster::kmeans::ndarray::NdArrayDataset;
 
     fn two_blob_data() -> Array2<f64> {
         let mut data = Array2::<f64>::zeros((200, 2));

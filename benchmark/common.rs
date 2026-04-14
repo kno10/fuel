@@ -185,12 +185,14 @@ fn parse_value(value: &str, line_no: usize) -> Result<f64, Box<dyn Error>> {
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct CountingDistance<D> {
     pub inner: D,
     pub counter: std::sync::Arc<AtomicUsize>,
 }
 
+#[allow(dead_code)]
 impl<D> CountingDistance<D> {
     pub fn new(inner: D) -> Self {
         Self { inner, counter: std::sync::Arc::new(AtomicUsize::new(0)) }

@@ -56,48 +56,99 @@ pub fn cluster_sizes(labels: &[isize]) -> BTreeMap<isize, usize> {
 mod tests {
     use super::*;
 
+    const SKLEARNA: [isize; 17] = [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3];
+    const SKLEARNB: [isize; 17] = [1, 1, 1, 1, 2, 1, 2, 2, 2, 2, 3, 1, 3, 3, 3, 2, 2];
+    const SAMEA: [isize; 6] = [0, 0, 1, 1, 2, 2];
+    const SAMEB: [isize; 6] = [2, 2, 1, 1, 0, 0];
+
     fn approx(a: f64, b: f64, eps: f64) {
         assert!((a - b).abs() <= eps, "{a} !~= {b}");
     }
 
     #[test]
-    fn perfect_match_scores_are_perfect() {
-        let l1 = [0, 0, 1, 1, 2, 2];
-        let l2 = [2, 2, 1, 1, 0, 0];
-        let e: ClusteringEvaluation = evaluate_clustering(&l1, &l2, false, false, None, None);
+    fn pair_counting_same_example() {
+        let table = ClusterContingencyTable::from_labels(&SAMEA, &SAMEB, false, false, None, None);
+        let pc = table.pair_counting();
 
-        approx(e.pair_counting.f1_measure(), 1.0, 1e-12);
-        approx(e.pair_counting.rand_index(), 1.0, 1e-12);
-        approx(e.pair_counting.adjusted_rand_index(), 1.0, 1e-12);
-        approx(e.entropy.mutual_information, e.entropy.entropy_first, 1e-12);
-        approx(e.entropy.variation_of_information, 0.0, 1e-12);
-        approx(e.bcubed.f1_measure(), 1.0, 1e-12);
-        approx(e.set_matching_purity.f1_measure(), 1.0, 1e-12);
-        approx(e.maximum_matching_accuracy.accuracy, 1.0, 1e-12);
+        approx(pc.precision(), 1.0, 0.0);
+        approx(pc.recall(), 1.0, 0.0);
+        approx(pc.rand_index(), 1.0, 0.0);
+        approx(pc.fowlkes_mallows(), 1.0, 0.0);
+        approx(pc.jaccard(), 1.0, 0.0);
+        approx(pc.f1_measure(), 1.0, 0.0);
+        approx(pc.f_measure(5.0), 1.0, 0.0);
+        approx(pc.adjusted_rand_index(), 1.0, 0.0);
+        assert_eq!(pc.mirkin(), 0);
     }
 
     #[test]
-    fn split_vs_single_cluster_is_imperfect() {
-        let l1 = [0, 0, 1, 1];
-        let l2 = [0, 0, 0, 0];
-        let e = evaluate_clustering(&l1, &l2, false, false, None, None);
+    fn pair_counting_sklearn_example() {
+        let table =
+            ClusterContingencyTable::from_labels(&SKLEARNA, &SKLEARNB, false, false, None, None);
+        let pc = table.pair_counting();
 
-        assert!(e.pair_counting.f1_measure() < 1.0);
-        assert!(e.entropy.variation_of_information > 0.0);
-        assert!(e.maximum_matching_accuracy.accuracy < 1.0);
-        assert!(e.set_matching_purity.purity <= 1.0);
-        assert!(e.set_matching_purity.inverse_purity <= 1.0);
+        approx(pc.precision(), 0.476190476190476, 1e-15);
+        approx(pc.recall(), 0.5, 1e-15);
+        approx(pc.rand_index(), 0.691176470588235, 1e-15);
+        approx(pc.fowlkes_mallows(), 0.487950036474267, 1e-15);
+        approx(pc.jaccard(), 0.32258064516129, 1e-15);
+        approx(pc.f1_measure(), 0.487804878048781, 1e-15);
+        approx(pc.f_measure(5.0), 0.499040307101727, 1e-15);
+        approx(pc.adjusted_rand_index(), 0.26694045174538, 1e-15);
+        assert_eq!(pc.mirkin(), 84);
     }
 
     #[test]
-    fn break_noise_clusters_changes_pair_counting() {
-        let l1 = [0, 0, -1, -1, -1, 1, 1];
-        let l2 = [0, 0, 2, 2, 2, 1, 1];
+    fn entropy_same_example() {
+        let table = ClusterContingencyTable::from_labels(&SAMEA, &SAMEB, false, false, None, None);
+        let e = table.entropy();
 
-        let a = evaluate_clustering(&l1, &l2, false, false, Some(-1), Some(-1));
-        let b = evaluate_clustering(&l1, &l2, false, true, Some(-1), Some(-1));
+        approx(e.mutual_information, e.upper_bound_mi(), 0.0);
+        approx(e.joint_nmi(), 1.0, 0.0);
+        approx(e.min_nmi(), 1.0, 0.0);
+        approx(e.max_nmi(), 1.0, 0.0);
+        approx(e.arithmetic_nmi(), 1.0, 0.0);
+        approx(e.geometric_nmi(), 1.0, 0.0);
+        approx(e.expected_mutual_information, 0.5441, 1e-5);
+    }
 
-        assert!(b.pair_counting.in_both <= a.pair_counting.in_both);
-        assert!(b.pair_counting.rand_index() <= 1.0);
+    #[test]
+    fn entropy_sklearn_example() {
+        let table =
+            ClusterContingencyTable::from_labels(&SKLEARNA, &SKLEARNB, false, false, None, None);
+        let e = table.entropy();
+
+        approx(e.mutual_information, 0.41022, 1e-5);
+        approx(e.expected_mutual_information, 0.15042, 1e-5);
+    }
+
+    #[test]
+    fn bcubed_sklearn_example() {
+        let table =
+            ClusterContingencyTable::from_labels(&SKLEARNA, &SKLEARNB, true, false, None, None);
+        let bc = table.bcubed();
+
+        approx(bc.precision, 0.57843137254902, 1e-15);
+        approx(bc.recall, 0.584313725490196, 1e-15);
+        approx(bc.f1_measure(), 0.5813576695433655, 1e-15);
+    }
+
+    #[test]
+    fn maximum_matching_accuracy_sklearn_example() {
+        let table =
+            ClusterContingencyTable::from_labels(&SKLEARNA, &SKLEARNB, true, false, None, None);
+        let mm = table.maximum_matching_accuracy();
+
+        approx(mm.accuracy, 12.0 / 17.0, 1e-15);
+    }
+
+    #[test]
+    fn evaluate_clustering_sklearn_example() {
+        let e = evaluate_clustering(&SKLEARNA, &SKLEARNB, false, false, None, None);
+
+        approx(e.pair_counting.adjusted_rand_index(), 0.26694045174538, 1e-15);
+        approx(e.pair_counting.f1_measure(), 0.487804878048781, 1e-15);
+        approx(e.entropy.mutual_information, 0.41022, 1e-5);
+        approx(e.entropy.expected_mutual_information, 0.15042, 1e-5);
     }
 }

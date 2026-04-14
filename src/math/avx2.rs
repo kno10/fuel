@@ -479,7 +479,8 @@ where
         }
         while i < d {
             unsafe {
-                *v1.get_unchecked_mut(i) = v2.get_unchecked(i).mul_add(scalar, *v1.get_unchecked(i));
+                *v1.get_unchecked_mut(i) =
+                    v2.get_unchecked(i).mul_add(scalar, *v1.get_unchecked(i));
             }
             i += 1;
         }
@@ -503,7 +504,8 @@ where
         }
         while i < d {
             unsafe {
-                *v1.get_unchecked_mut(i) = v2.get_unchecked(i).mul_add(scalar, *v1.get_unchecked(i));
+                *v1.get_unchecked_mut(i) =
+                    v2.get_unchecked(i).mul_add(scalar, *v1.get_unchecked(i));
             }
             i += 1;
         }

@@ -1,17 +1,9 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-use super::common::{
-    Builder,
-    MergeHistory,
-    // nn-cache helpers
-    find_best,
-    initialize_nn_cache,
-    shrink_active_end,
-    update_matrix_and_cache_with_hook,
-};
-use super::linkage::Linkage;
-use crate::Float;
+use crate::cluster::hierarchical::anderberg::AnderbergState;
+use crate::cluster::hierarchical::{Linkage, MergeHistory, idsize};
+use crate::{DistanceData, Float};
 
 #[derive(Clone, Copy, Debug)]
 struct HeapEntry<F: Float> {
@@ -45,97 +37,59 @@ impl<F: Float> Ord for HeapEntry<F> {
 /// Perform hierarchical clustering using Müllner's generic-linkage approach
 /// with an Anderberg nearest-neighbor cache and a heap for candidate retrieval.
 #[must_use]
-pub fn muellner<F: Float, L: Linkage<F> + Copy>(
-    distances: &[F], n: usize, linkage: L, is_squared: bool,
-) -> MergeHistory<F> {
+pub fn muellner<D, F: Float, L: Linkage<F> + Copy>(data: &D, linkage: L) -> MergeHistory<F>
+where
+    D: DistanceData<F>,
+{
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
-    assert_eq!(distances.len(), n * (n - 1) / 2, "bad condensed matrix length");
-
-    let mut builder = Builder::<F>::new(n);
-    let mut mat: Vec<F> = distances.iter().map(|&d| linkage.initial(d, is_squared)).collect();
-    let mut clustermap: Vec<Option<usize>> = (0..n).map(Some).collect();
-    let mut end = n;
-
-    let mut bestd = vec![F::infinity(); n];
-    let mut besti = vec![usize::MAX; n];
-    initialize_nn_cache(&mat, &clustermap, &mut bestd, &mut besti);
+    let squared = data.is_squared_distance();
+    let mat = (1..n)
+        .flat_map(|x| (0..x).map(move |y| linkage.initial(data.distance(x, y), squared)))
+        .collect();
+    let mut state = AnderbergState::new(mat, n);
 
     let mut heap = BinaryHeap::with_capacity(n);
-    for x in 1..n {
-        push_candidate(&mut heap, &bestd, &besti, x);
+    for x in 1..state.n() {
+        push_candidate(&mut heap, &state.best, x);
     }
 
     for _ in 1..n {
-        let (mindist, x, y) = pop_valid_merge(&mut heap, &bestd, &besti, &clustermap);
-
-        let cid_x = clustermap[x].expect("x must be active");
-        let cid_y = clustermap[y].expect("y must be active");
-        let size_x = builder.get_size(cid_x);
-        let size_y = builder.get_size(cid_y);
-
-        let (h1, h2) = if cid_y <= cid_x { (cid_y, cid_x) } else { (cid_x, cid_y) };
-        let new_id = builder.add(h1, linkage.restore(mindist, is_squared), h2);
-        clustermap[y] = Some(new_id);
-        clustermap[x] = None;
-        besti[x] = usize::MAX;
-        bestd[x] = F::infinity();
-
-        update_matrix_and_cache_with_hook(
-            &mut mat,
-            &clustermap,
-            &mut bestd,
-            &mut besti,
-            &builder,
-            linkage,
-            mindist,
-            x,
-            y,
-            size_x,
-            size_y,
-            end,
-            |bestd_slice, besti_slice, j| push_candidate(&mut heap, bestd_slice, besti_slice, j),
-        );
-
-        if y > 0 {
-            find_best(&mat, &clustermap, &mut bestd, &mut besti, y);
-            push_candidate(&mut heap, &bestd, &besti, y);
-        }
-
-        if x == end - 1 {
-            shrink_active_end(&clustermap, &mut end);
-        }
+        let (mindist, x, y) = pop_valid_merge(&mut heap, &state.best, &state.clustermap);
+        let (size_x, size_y) = state.commit_merge(x, y, mindist, usize::MAX);
+        state.update_lw(linkage, mindist, x, y, size_x, size_y, |best, j| {
+            push_candidate(&mut heap, best, j);
+        });
+        state.heights[y] = mindist;
+        state.heights[x] = F::nan();
+        state.refresh_best(y);
+        push_candidate(&mut heap, &state.best, y);
     }
 
-    builder.into_merges()
+    state.builder.into_merges()
 }
 
-fn push_candidate<F: Float>(
-    heap: &mut BinaryHeap<HeapEntry<F>>, bestd: &[F], besti: &[usize], x: usize,
-) {
-    let y = besti[x];
+fn push_candidate<F: Float>(heap: &mut BinaryHeap<HeapEntry<F>>, best: &[(F, usize)], x: usize) {
+    let y = best[x].1;
     if y != usize::MAX {
-        heap.push(HeapEntry { dist: bestd[x], x, y });
+        heap.push(HeapEntry { dist: best[x].0, x, y });
     }
 }
 
 fn pop_valid_merge<F: Float>(
-    heap: &mut BinaryHeap<HeapEntry<F>>, bestd: &[F], besti: &[usize], clustermap: &[Option<usize>],
+    heap: &mut BinaryHeap<HeapEntry<F>>, best: &[(F, usize)], clustermap: &[idsize],
 ) -> (F, usize, usize) {
     while let Some(entry) = heap.pop() {
-        if clustermap[entry.x].is_none() {
+        if entry.y == usize::MAX
+            || clustermap[entry.x] == idsize::MAX
+            || clustermap[entry.y] == idsize::MAX
+        {
             continue;
         }
-        if entry.y == usize::MAX || clustermap[entry.y].is_none() {
+        if best[entry.x].1 != entry.y || best[entry.x].0 != entry.dist {
             continue;
         }
-        if besti[entry.x] != entry.y {
-            continue;
-        }
-        if bestd[entry.x] != entry.dist {
-            continue;
-        }
-        let (x, y) = if entry.y < entry.x { (entry.x, entry.y) } else { (entry.y, entry.x) };
-        return (entry.dist, x, y);
+        return (entry.dist, entry.x.max(entry.y), entry.x.min(entry.y));
     }
 
     panic!("no merge candidate found");
@@ -145,48 +99,112 @@ fn pop_valid_merge<F: Float>(
 #[cfg(test)]
 mod tests {
     use super::muellner;
-    use crate::cluster::hierarchical::regression_support::{
-        DATASETS, cluster_and_cut, evaluate_clustering, load_dataset, optionally_report,
+    use crate::cluster::hierarchical::extraction::cut_dendrogram_by_number_of_clusters;
+    use crate::cluster::hierarchical::test::test_clustering_condensed;
+    use crate::cluster::hierarchical::{
+        CentroidLinkage, CompleteLinkage, GroupAverageLinkage, MedianLinkage,
+        MinimumSumSquaresLinkage, MinimumVarianceIncreaseLinkage, MinimumVarianceLinkage,
+        SingleLinkage, WardLinkage, WeightedAverageLinkage,
     };
-    use crate::cluster::hierarchical::{AverageLinkage, CompleteLinkage, agnes};
+    use crate::distance::{Euclidean, SquaredEuclidean};
 
     #[test]
-    fn muellner_matches_agnes_complete_on_unique_distances() {
-        let d = vec![1.0, 8.0, 15.0, 22.0, 2.0, 9.0, 16.0, 3.0, 10.0, 4.0];
-        let a = agnes(&d, 5, CompleteLinkage, false);
-        let b = muellner(&d, 5, CompleteLinkage, false);
-        assert_eq!(a, b);
+    fn muellner_average_regression() {
+        test_clustering_condensed("Muellner", "average", Euclidean, |condensed, min_clusters| {
+            let history = muellner(condensed, GroupAverageLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
     }
 
     #[test]
-    fn muellner_matches_agnes_average_on_unique_distances() {
-        let d = vec![1.0, 8.0, 15.0, 22.0, 2.0, 9.0, 16.0, 3.0, 10.0, 4.0];
-        let a = agnes(&d, 5, AverageLinkage, false);
-        let b = muellner(&d, 5, AverageLinkage, false);
-        assert_eq!(a, b);
+    fn muellner_complete_regression() {
+        test_clustering_condensed("Muellner", "complete", Euclidean, |condensed, min_clusters| {
+            let history = muellner(condensed, CompleteLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
     }
 
     #[test]
-    fn muellner_regression_on_sample_datasets() {
-        for dataset in DATASETS.iter().filter(|d| d.name != "nested_clusters") {
-            let (features, truth) = load_dataset(dataset.name);
-            let labels = cluster_and_cut(muellner, &features, dataset.min_clusters, AverageLinkage);
-            let (ari, nmi) = evaluate_clustering(&labels, &truth);
-            optionally_report("Muellner", dataset.name, ari, nmi);
-            assert!(
-                ari >= dataset.min_ari,
-                "{name} ARI too low after Mullner: {ari:.3} < {min_ari:.3}",
-                name = dataset.name,
-                ari = ari,
-                min_ari = dataset.min_ari
-            );
-            assert!(
-                nmi >= dataset.min_nmi,
-                "{name} NMI too low after Mullner: {nmi:.3} < {min_nmi:.3}",
-                name = dataset.name,
-                nmi = nmi,
-                min_nmi = dataset.min_nmi
-            );
-        }
+    fn muellner_single_regression() {
+        test_clustering_condensed("Muellner", "single", Euclidean, |condensed, min_clusters| {
+            let history = muellner(condensed, SingleLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn muellner_ward_regression() {
+        test_clustering_condensed(
+            "Muellner",
+            "ward",
+            SquaredEuclidean,
+            |condensed, min_clusters| {
+                let history = muellner(condensed, WardLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn muellner_weighted_average_regression() {
+        test_clustering_condensed(
+            "Muellner",
+            "weighted_average",
+            Euclidean,
+            |condensed, min_clusters| {
+                let history = muellner(condensed, WeightedAverageLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn muellner_centroid_regression() {
+        test_clustering_condensed(
+            "Muellner",
+            "centroid",
+            SquaredEuclidean,
+            |condensed, min_clusters| {
+                let history = muellner(condensed, CentroidLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn muellner_median_regression() {
+        test_clustering_condensed(
+            "Muellner",
+            "median",
+            SquaredEuclidean,
+            |condensed, min_clusters| {
+                let history = muellner(condensed, MedianLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn muellner_minimum_variance_increase_regression() {
+        test_clustering_condensed("Muellner", "mivar", Euclidean, |condensed, min_clusters| {
+            let history = muellner(condensed, MinimumVarianceIncreaseLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn muellner_minimum_sum_squares_regression() {
+        test_clustering_condensed("Muellner", "mnssq", Euclidean, |condensed, min_clusters| {
+            let history = muellner(condensed, MinimumSumSquaresLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn muellner_minimum_variance_regression() {
+        test_clustering_condensed("Muellner", "mnvar", Euclidean, |condensed, min_clusters| {
+            let history = muellner(condensed, MinimumVarianceLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
     }
 }

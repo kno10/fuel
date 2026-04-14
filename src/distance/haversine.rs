@@ -15,14 +15,13 @@ pub fn haversine_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     let lat2: F = b[0].to_float::<F>();
     let lon2: F = b[1].to_float::<F>();
 
-    let half = F::one() / (F::one() + F::one());
-    let dlat = (lat2 - lat1) * half;
-    let dlon = (lon2 - lon1) * half;
+    let dlat = (lat2 - lat1) * F::half();
+    let dlon = (lon2 - lon1) * F::half();
     let sin_dlat = dlat.sin();
     let sin_dlon = dlon.sin();
 
     let h = sin_dlat * sin_dlat + lat1.cos() * lat2.cos() * sin_dlon * sin_dlon;
-    (F::one() + F::one()) * h.sqrt().asin()
+    F::two() * h.sqrt().asin()
 }
 
 #[derive(Debug, Clone, Copy, Default)]

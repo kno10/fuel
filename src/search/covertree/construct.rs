@@ -153,7 +153,7 @@ impl<F: Float> CoverTreeBuilder<F> {
         }
 
         if Self::BEST_CENTER_REASSIGN {
-            let fmax_half = fmax / F::from_f64(2.0).unwrap_or(F::one() + F::one());
+            let fmax_half = fmax * F::half();
 
             let center_indices: Vec<usize> = buckets.iter().map(|(c, _)| c.index).collect();
             let bucket_count = buckets.len();

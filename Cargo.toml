@@ -56,6 +56,11 @@ path = "benchmark/single_link.rs"
 required-features = ["benchmark"]
 
 [[bin]]
+name = "geometric_linkage"
+path = "benchmark/geometric_linkage.rs"
+required-features = ["benchmark"]
+
+[[bin]]
 name = "index_benchmark"
 path = "benchmark/index_benchmark.rs"
 required-features = ["benchmark"]

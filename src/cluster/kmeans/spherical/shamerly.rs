@@ -187,8 +187,8 @@ mod tests {
     use rand_pcg::Pcg32;
 
     use super::*;
+    use crate::NdArrayDataset;
     use crate::cluster::kmeans::init::FirstK;
-    use crate::cluster::kmeans::ndarray::NdArrayDataset;
     use crate::cluster::kmeans::util::gen_test_data;
 
     #[test]

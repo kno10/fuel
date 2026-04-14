@@ -1,29 +1,35 @@
-use super::common::{
-    Builder, MergeHistory, condensed_get, condensed_set, find_active, shrink_active_end,
+use crate::cluster::hierarchical::common::{
+    condensed_get, condensed_set, find_active, shrink_active_end,
 };
-use super::linkage::Linkage;
-use crate::Float;
+use crate::cluster::hierarchical::{Builder, Linkage, MergeHistory, idsize};
+use crate::{DistanceData, Float};
 
 /// Perform hierarchical clustering using the NN-Chain algorithm.
 ///
 /// Input and output conventions are the same as [`crate::cluster::hierarchical::agnes`].
 /// The input matrix uses lower-triangular condensed indexing.
 #[must_use]
-pub fn nn_chain<F: Float, L: Linkage<F> + Copy>(
-    distances: &[F], // FIXME: use the data API
-    n: usize,
-    linkage: L,
-    is_squared: bool,
-) -> MergeHistory<F> {
+pub fn nn_chain<D, F: Float, L: Linkage<F> + Copy>(data: &D, linkage: L) -> MergeHistory<F>
+where
+    D: DistanceData<F>,
+{
+    let n = data.len();
     assert!(n > 0, "number of points must be positive");
-    assert_eq!(distances.len(), n * (n - 1) / 2, "bad condensed matrix length");
 
     let mut builder = Builder::<F>::new(n);
-    let mut mat: Vec<F> = distances.iter().map(|&d| linkage.initial(d, is_squared)).collect();
-    let mut clustermap: Vec<Option<usize>> = (0..n).map(Some).collect();
+    let squared = data.is_squared_distance();
+    let mut mat = Vec::with_capacity(n * (n - 1) / 2);
+    for x in 1..n {
+        for y in 0..x {
+            mat.push(linkage.initial(data.distance(x, y), squared));
+        }
+    }
+    let mut clustermap: Vec<idsize> = (0..(n as idsize)).collect();
+    let mut heights = vec![F::zero(); n];
     let mut end = n;
     let mut chain: Vec<usize> = Vec::with_capacity((n / 4).max(2));
     let mut merged = 0usize;
+    let mut warned_inversion = false;
 
     while merged < n - 1 {
         let mut a;
@@ -35,13 +41,18 @@ pub fn nn_chain<F: Float, L: Linkage<F> + Copy>(
             chain.clear();
             chain.push(a);
         } else {
-            a = chain[chain.len() - 2];
-            b = chain[chain.len() - 1];
-            if clustermap[a].is_none() {
-                // Irreducible linkage inversions can invalidate a cached chain.
-                chain.truncate(chain.len() - 2);
+            (a, b) = (chain[chain.len() - 2], chain[chain.len() - 1]);
+            if clustermap[a] == idsize::MAX {
+                if !warned_inversion {
+                    eprintln!(
+                        "Detected an inversion in the clustering. NNChain on irreducible linkages may yield different results."
+                    );
+                    warned_inversion = true;
+                }
+                chain.truncate(chain.len().saturating_sub(2));
                 continue;
             }
+            debug_assert!(clustermap[b] != idsize::MAX);
             chain.pop();
         }
 
@@ -49,7 +60,7 @@ pub fn nn_chain<F: Float, L: Linkage<F> + Copy>(
         loop {
             let mut c = b;
             for (i, opt) in clustermap.iter().enumerate().take(end) {
-                if i == a || i == b || opt.is_none() {
+                if i == a || i == b || *opt == idsize::MAX {
                     continue;
                 }
                 let d = condensed_get(&mat, a, i);
@@ -58,8 +69,7 @@ pub fn nn_chain<F: Float, L: Linkage<F> + Copy>(
                     c = i;
                 }
             }
-            b = a;
-            a = c;
+            (b, a) = (a, c);
             chain.push(a);
             if chain.len() >= 3 && a == chain[chain.len() - 3] {
                 break;
@@ -67,26 +77,31 @@ pub fn nn_chain<F: Float, L: Linkage<F> + Copy>(
         }
 
         let (x, y) = if a > b { (a, b) } else { (b, a) };
-        let cid_x = clustermap[x].expect("x must be active");
-        let cid_y = clustermap[y].expect("y must be active");
-        let size_x = builder.get_size(cid_x);
-        let size_y = builder.get_size(cid_y);
+        let (cx, cy) = (clustermap[x], clustermap[y]);
+        let (size_x, size_y) = (builder.get_size(cx), builder.get_size(cy));
 
-        let (h1, h2) = if cid_y <= cid_x { (cid_y, cid_x) } else { (cid_x, cid_y) };
-        let new_id = builder.add(h1, linkage.restore(min_dist, is_squared), h2);
-        clustermap[y] = Some(new_id);
-        clustermap[x] = None;
+        let new_id = builder.add(cx.min(cy), linkage.restore(min_dist, squared), cy.max(cx));
+        clustermap[y] = new_id;
+        clustermap[x] = idsize::MAX;
+
+        let height_x = heights[x];
+        let height_y = heights[y];
 
         for (j, opt) in clustermap.iter().enumerate().take(end) {
-            if j == x || j == y || opt.is_none() {
+            if j == x || j == y || *opt == idsize::MAX {
                 continue;
             }
-            let d_xj = condensed_get(&mat, x, j);
-            let d_yj = condensed_get(&mat, y, j);
-            let size_j = builder.get_size(clustermap[j].expect("j must be active"));
-            let d = linkage.combine(size_x, d_xj, size_y, d_yj, size_j, min_dist);
+            let (d_xj, d_yj) = (condensed_get(&mat, x, j), condensed_get(&mat, y, j));
+            let size_j = builder.get_size(clustermap[j]);
+            let height_j = heights[j];
+            let d = linkage.combine(
+                size_x, d_xj, size_y, d_yj, size_j, min_dist, height_x, height_y, height_j,
+            );
             condensed_set(&mut mat, y, j, d);
         }
+
+        heights[y] = min_dist;
+        heights[x] = F::nan();
 
         if x == end - 1 {
             shrink_active_end(&clustermap, &mut end);
@@ -102,54 +117,119 @@ pub fn nn_chain<F: Float, L: Linkage<F> + Copy>(
         merged += 1;
     }
 
+    builder.optimize_order_in_place();
     builder.into_merges()
 }
 
 #[cfg(test)]
 mod tests {
     use super::nn_chain;
-    use crate::cluster::hierarchical::regression_support::{
-        DATASETS, cluster_and_cut, evaluate_clustering, load_dataset, optionally_report,
+    use crate::cluster::hierarchical::extraction::cut_dendrogram_by_number_of_clusters;
+    use crate::cluster::hierarchical::test::test_clustering_condensed;
+    use crate::cluster::hierarchical::{
+        CentroidLinkage, CompleteLinkage, GroupAverageLinkage, MedianLinkage,
+        MinimumSumSquaresLinkage, MinimumVarianceIncreaseLinkage, MinimumVarianceLinkage,
+        SingleLinkage, WardLinkage, WeightedAverageLinkage,
     };
-    use crate::cluster::hierarchical::{AverageLinkage, CompleteLinkage, agnes};
+    use crate::distance::{Euclidean, SquaredEuclidean};
 
     #[test]
-    fn nn_chain_matches_agnes_complete_on_unique_distances() {
-        let d = vec![1.0, 8.0, 15.0, 22.0, 2.0, 9.0, 16.0, 3.0, 10.0, 4.0];
-        let a = agnes(&d, 5, CompleteLinkage, false);
-        let b = nn_chain(&d, 5, CompleteLinkage, false);
-        assert_eq!(a, b);
+    fn nn_chain_average_regression() {
+        test_clustering_condensed("NNChain", "average", Euclidean, |condensed, min_clusters| {
+            let history = nn_chain(condensed, GroupAverageLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
     }
 
     #[test]
-    fn nn_chain_matches_agnes_average_on_unique_distances() {
-        let d = vec![1.0, 8.0, 15.0, 22.0, 2.0, 9.0, 16.0, 3.0, 10.0, 4.0];
-        let a = agnes(&d, 5, AverageLinkage, false);
-        let b = nn_chain(&d, 5, AverageLinkage, false);
-        assert_eq!(a, b);
+    fn nn_chain_complete_regression() {
+        test_clustering_condensed("NNChain", "complete", Euclidean, |condensed, min_clusters| {
+            let history = nn_chain(condensed, CompleteLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
     }
 
     #[test]
-    fn nn_chain_regression_on_sample_datasets() {
-        for dataset in DATASETS.iter().filter(|d| d.name != "nested_clusters") {
-            let (features, truth) = load_dataset(dataset.name);
-            let labels = cluster_and_cut(nn_chain, &features, dataset.min_clusters, AverageLinkage);
-            let (ari, nmi) = evaluate_clustering(&labels, &truth);
-            optionally_report("NNChain", dataset.name, ari, nmi);
-            assert!(
-                ari >= dataset.min_ari,
-                "{name} ARI too low after NN-chain: {ari:.3} < {min_ari:.3}",
-                name = dataset.name,
-                ari = ari,
-                min_ari = dataset.min_ari
-            );
-            assert!(
-                nmi >= dataset.min_nmi,
-                "{name} NMI too low after NN-chain: {nmi:.3} < {min_nmi:.3}",
-                name = dataset.name,
-                nmi = nmi,
-                min_nmi = dataset.min_nmi
-            );
-        }
+    fn nn_chain_single_regression() {
+        test_clustering_condensed("NNChain", "single", Euclidean, |condensed, min_clusters| {
+            let history = nn_chain(condensed, SingleLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn nn_chain_ward_regression() {
+        test_clustering_condensed(
+            "NNChain",
+            "ward",
+            SquaredEuclidean,
+            |condensed, min_clusters| {
+                let history = nn_chain(condensed, WardLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn nn_chain_minimum_variance_increase_regression() {
+        test_clustering_condensed("NNChain", "mivar", Euclidean, |condensed, min_clusters| {
+            let history = nn_chain(condensed, MinimumVarianceIncreaseLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn nn_chain_minimum_sum_squares_regression() {
+        test_clustering_condensed("NNChain", "mnssq", Euclidean, |condensed, min_clusters| {
+            let history = nn_chain(condensed, MinimumSumSquaresLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn nn_chain_minimum_variance_regression() {
+        test_clustering_condensed("NNChain", "mnvar", Euclidean, |condensed, min_clusters| {
+            let history = nn_chain(condensed, MinimumVarianceLinkage);
+            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+        });
+    }
+
+    #[test]
+    fn nn_chain_centroid_regression() {
+        test_clustering_condensed(
+            "NNChain",
+            "centroid",
+            SquaredEuclidean,
+            |condensed, min_clusters| {
+                let history = nn_chain(condensed, CentroidLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn nn_chain_median_regression() {
+        test_clustering_condensed(
+            "NNChain",
+            "median",
+            SquaredEuclidean,
+            |condensed, min_clusters| {
+                let history = nn_chain(condensed, MedianLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
+    }
+
+    #[test]
+    fn nn_chain_weighted_average_regression() {
+        test_clustering_condensed(
+            "NNChain",
+            "weighted_average",
+            Euclidean,
+            |condensed, min_clusters| {
+                let history = nn_chain(condensed, WeightedAverageLinkage);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
     }
 }

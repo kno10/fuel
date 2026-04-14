@@ -2,14 +2,13 @@ use crate::cluster::hierarchical::linkage::ward::{cross_squared_sum, pairwise_sq
 use crate::cluster::hierarchical::{GeometricLinkage, Linkage, SetLinkage, idsize};
 use crate::{DistanceData, Float};
 
-/// Minimum variance linkage (MNVAR).
-///
-/// This global objective is defined by the average squared deviation of the
-/// merged cluster around its centroid.
+/// Minimum variance linkage (MIVAR).
 #[derive(Clone, Copy, Default, Debug)]
-pub struct MinimumVarianceLinkage;
+pub struct MinimumVarianceIncreaseLinkage;
 
-impl<F: Float> Linkage<F> for MinimumVarianceLinkage {
+impl<F: Float> Linkage<F> for MinimumVarianceIncreaseLinkage {
+    fn can_produce_inversions(&self) -> bool { true }
+
     fn initial(&self, d: F, issquare: bool) -> F { F::quarter() * if issquare { d } else { d * d } }
 
     fn restore(&self, d: F, issquare: bool) -> F {
@@ -17,23 +16,18 @@ impl<F: Float> Linkage<F> for MinimumVarianceLinkage {
     }
 
     fn combine(
-        &self, sizex: usize, dx: F, sizey: usize, dy: F, sizej: usize, dxy: F, heightx: F,
-        heighty: F, heightj: F,
+        &self, sizex: usize, dx: F, sizey: usize, dy: F, sizej: usize, dxy: F, _heightx: F,
+        _heighty: F, _heightj: F,
     ) -> F {
-        let nx = F::from(sizex).unwrap();
-        let ny = F::from(sizey).unwrap();
-        let nk = F::from(sizej).unwrap();
-        let n = nx + ny + nk;
-        let (alpha_x, alpha_y, beta) = (nk + nx, nk + ny, nx + ny);
-        (alpha_x * alpha_x * dx + alpha_y * alpha_y * dy + beta * beta * dxy
-            - nx * nx * heightx
-            - ny * ny * heighty
-            - nk * nk * heightj)
-            / (n * n)
+        let xj = F::from(sizex + sizej).unwrap();
+        let yj = F::from(sizey + sizej).unwrap();
+        let n = F::from(sizex + sizey + sizej).unwrap();
+        let cn = F::from(sizej).unwrap() * F::from(sizex + sizey).unwrap();
+        (xj * xj * dx + yj * yj * dy - cn * dxy) / (n * n)
     }
 }
 
-impl<F: Float> GeometricLinkage<F> for MinimumVarianceLinkage {
+impl<F: Float> GeometricLinkage<F> for MinimumVarianceIncreaseLinkage {
     fn linkage(&self, x: &[F], sizex: usize, y: &[F], sizey: usize, heightx: F, heighty: F) -> F {
         let sx = F::from(sizex).unwrap();
         let sy = F::from(sizey).unwrap();
@@ -43,13 +37,14 @@ impl<F: Float> GeometricLinkage<F> for MinimumVarianceLinkage {
             let diff = *xi - *yi;
             sum += diff * diff;
         }
-        (heightx * sx + heighty * sy + sx * sy / tot * sum) / tot
+        (sx * sy * sum + sx * (sy - F::one()) * heightx + sy * (sx - F::one()) * heighty)
+            / (tot * tot)
     }
 
     fn cutoff_factor(&self, size_a: usize) -> F {
         let sa = F::from(size_a).unwrap();
         let sa1 = F::from(size_a + 1).unwrap();
-        sa1 * sa1 / sa
+        F::four() * sa1 * sa1 / sa
     }
 
     fn candidate_threshold(
@@ -57,12 +52,15 @@ impl<F: Float> GeometricLinkage<F> for MinimumVarianceLinkage {
     ) -> F {
         let sa = F::from(size_a).unwrap();
         let si = F::from(size_i).unwrap();
-        let numerator = min_link * (sa + si) - height_a * sa - height_i * si;
-        if numerator <= F::zero() { F::infinity() } else { numerator * (sa + si) / (sa * si) }
+        let tot = sa + si;
+        let numerator = min_link * tot * tot
+            - sa * (si - F::one()) * height_a
+            - si * (sa - F::one()) * height_i;
+        if numerator <= F::zero() { F::infinity() } else { numerator / (sa * si) }
     }
 }
 
-impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, F> for MinimumVarianceLinkage {
+impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, F> for MinimumVarianceIncreaseLinkage {
     fn summarize(data: &D, members: &[idsize]) -> F {
         if members.len() <= 1 {
             return F::zero();
@@ -80,7 +78,8 @@ impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, F> for MinimumVarianceLinkag
         let squared = data.is_squared_distance();
         let cross = cross_squared_sum(data, a, b, squared);
         let summary = (*summary_a * na + *summary_b * nb + cross) / n;
-        (summary / n, summary)
+        let d = (summary - *summary_a - *summary_b) / n;
+        (d, summary)
     }
 
     fn restore(d: F, issquare: bool) -> F {

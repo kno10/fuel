@@ -4,13 +4,11 @@ use crate::distance::DistanceFunction;
 pub fn jensen_shannon_divergence<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     let d = a.len().min(b.len());
     let mut sum = F::zero();
-    let half = F::one() / (F::one() + F::one());
-
     for i in 0..d {
         unsafe {
             let left: F = (*a.get_unchecked(i)).to_float::<F>();
             let right: F = (*b.get_unchecked(i)).to_float::<F>();
-            let mean = (left + right) * half;
+            let mean = (left + right) * F::half();
 
             if left > F::zero() && mean > F::zero() {
                 sum += left * (left / mean).ln();
@@ -22,7 +20,7 @@ pub fn jensen_shannon_divergence<N: Float, F: Float + 'static>(a: &[N], b: &[N])
         }
     }
 
-    sum * half
+    sum * F::half()
 }
 
 #[derive(Debug, Clone, Copy, Default)]

@@ -72,6 +72,12 @@ pub trait DistanceFunction<T: ?Sized, F: Float> {
     fn distance(&self, a: &T, b: &T) -> F;
 
     fn is_metric(&self) -> bool { false }
+
+    /// Whether the returned distances are already squared Euclidean values.
+    ///
+    /// This is useful for hierarchical linkages that operate on sum-of-squares
+    /// style objectives and want to avoid squaring an already-squared input.
+    fn is_squared_distance(&self) -> bool { false }
 }
 
 impl<T: ?Sized, D, F: Float> DistanceFunction<T, F> for Box<D>
@@ -81,6 +87,8 @@ where
     fn distance(&self, a: &T, b: &T) -> F { (**self).distance(a, b) }
 
     fn is_metric(&self) -> bool { (**self).is_metric() }
+
+    fn is_squared_distance(&self) -> bool { (**self).is_squared_distance() }
 }
 
 pub use binary::{

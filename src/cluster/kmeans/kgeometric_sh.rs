@@ -147,8 +147,8 @@ where
         let mut diff_sq = N::zero();
 
         let mut current = vec![N::zero(); d];
-        for j in 0..k {
-            if csize[j] > 0 {
+        for (j, &count) in csize.iter().enumerate() {
+            if count > 0 {
                 // start from current center
                 math::copy(&mut current, cent.center(j), d);
                 for step in 0..steps {
@@ -239,7 +239,6 @@ where
 }
 
 /// Public entry point with backend dispatch just like the original kgeometric
-
 // basic smoke tests for the new algorithm
 #[cfg(test)]
 mod tests {
@@ -248,7 +247,7 @@ mod tests {
     use rand_pcg::Pcg32;
 
     use super::*;
-    use crate::cluster::kmeans::ndarray::NdArrayDataset;
+    use crate::NdArrayDataset;
     use crate::cluster::kmeans::util::gen_test_data;
 
     #[test]

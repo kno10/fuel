@@ -6,8 +6,6 @@ use crate::Float;
 pub fn hellinger_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
     let d = a.len().min(b.len());
     let mut sum = F::zero();
-    let half = F::one() / (F::one() + F::one());
-
     for i in 0..d {
         unsafe {
             let left: F = (*a.get_unchecked(i)).to_float::<F>();
@@ -19,7 +17,7 @@ pub fn hellinger_distance<N: Float, F: Float + 'static>(a: &[N], b: &[N]) -> F {
         }
     }
 
-    (half * sum).sqrt()
+    (F::half() * sum).sqrt()
 }
 
 #[derive(Debug, Clone, Copy, Default)]

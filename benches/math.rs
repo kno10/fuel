@@ -120,7 +120,7 @@ fn bench_math_axpy(c: &mut Criterion) {
             b.iter_batched(
                 || v1_base.clone(),
                 |mut v| {
-                    math::axpy(&mut v, black_box(3.14_f64), black_box(&v2), black_box(d));
+                    math::axpy(&mut v, black_box(3.15_f64), black_box(&v2), black_box(d));
                     black_box(v)
                 },
                 criterion::BatchSize::SmallInput,
@@ -141,7 +141,7 @@ fn bench_math_axpy_scalar(c: &mut Criterion) {
             b.iter_batched(
                 || v1_base.clone(),
                 |mut v| {
-                    math::scalar::axpy(&mut v, black_box(3.14_f64), black_box(&v2), black_box(d));
+                    math::scalar::axpy(&mut v, black_box(3.15_f64), black_box(&v2), black_box(d));
                     black_box(v)
                 },
                 criterion::BatchSize::SmallInput,
@@ -164,7 +164,7 @@ fn bench_math_axpy_avx2(c: &mut Criterion) {
                 b.iter_batched(
                     || v1_base.clone(),
                     |mut v| {
-                        math::avx2::axpy(&mut v, black_box(3.14_f64), black_box(&v2), black_box(d));
+                        math::avx2::axpy(&mut v, black_box(3.15_f64), black_box(&v2), black_box(d));
                         black_box(v)
                     },
                     criterion::BatchSize::SmallInput,

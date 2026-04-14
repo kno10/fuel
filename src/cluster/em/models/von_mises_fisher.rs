@@ -8,48 +8,46 @@ use crate::{Float, VectorData as Dataset};
 /// the first kind; here we use a crude asymptotic approximation that is
 /// sufficient for clustering purposes.  The routine returns the log of the
 /// mixture component weight multiplied by the normalization constant.
-fn log_norm_vmf<N>(weight: N, dim: usize, kappa: N) -> N
+fn log_norm_vmf<F>(weight: F, dim: usize, kappa: F) -> F
 where
-    N: Float + Copy,
+    F: Float,
 {
-    let d = N::from(dim).unwrap();
-    let log_2pi = N::from(2.0 * std::f64::consts::PI).unwrap().ln();
-    let log_c = if kappa <= N::zero() {
+    let d = F::from(dim).unwrap();
+    let log_2pi = F::from(2.0 * std::f64::consts::PI).unwrap().ln();
+    let log_c = if kappa <= F::zero() {
         // near-uniform on the sphere
-        -d / N::from(2.0).unwrap() * log_2pi
+        -d * F::half() * log_2pi
     } else {
         // asymptotic I_v(kappa) ~ exp(kappa) / sqrt(2*pi*kappa)
-        let half = N::from(0.5).unwrap();
-        -kappa + (d / N::from(2.0).unwrap() - half) * kappa.ln()
-            - (d / N::from(2.0).unwrap() - half) * log_2pi
+        -kappa + (d * F::half() - F::half()) * kappa.ln() - (d * F::half() - F::half()) * log_2pi
     };
     weight.ln() + log_c
 }
 
 /// Directional von Mises–Fisher component for EM on the unit hypersphere.
 #[derive(Clone, Debug)]
-pub struct VonMisesFisherModel<N>
+pub struct VonMisesFisherModel<F>
 where
-    N: Float,
+    F: Float,
 {
-    mu: Vec<N>,   // mean direction, always unit norm
-    nsum: Vec<N>, // accumulator for responsibilities
-    kappa: N,     // concentration
-    wsum: N,      // sum of responsibilities
-    weight: N,    // mixture weight
-    log_norm: N,  // cached log normalization + ln(weight)
+    mu: Vec<F>,   // mean direction, always unit norm
+    nsum: Vec<F>, // accumulator for responsibilities
+    kappa: F,     // concentration
+    wsum: F,      // sum of responsibilities
+    weight: F,    // mixture weight
+    log_norm: F,  // cached log normalization + ln(weight)
 }
 
-impl<N: Float> VonMisesFisherModel<N> {
-    pub fn new(weight: N, mu: Vec<N>, kappa: N) -> Self {
+impl<F: Float> VonMisesFisherModel<F> {
+    pub fn new(weight: F, mu: Vec<F>, kappa: F) -> Self {
         let len = mu.len();
         let mut model = Self {
             mu,
-            nsum: vec![N::zero(); len],
-            kappa: kappa.max(N::zero()),
-            wsum: N::zero(),
+            nsum: vec![F::zero(); len],
+            kappa: kappa.max(F::zero()),
+            wsum: F::zero(),
             weight,
-            log_norm: N::zero(),
+            log_norm: F::zero(),
         };
         model.update_log_norm();
         model
@@ -60,69 +58,69 @@ impl<N: Float> VonMisesFisherModel<N> {
     }
 
     /// Accessor for mean direction
-    pub fn mean(&self) -> &[N] { &self.mu }
+    pub fn mean(&self) -> &[F] { &self.mu }
 
     /// Current concentration
-    pub fn kappa(&self) -> N { self.kappa }
+    pub fn kappa(&self) -> F { self.kappa }
 }
 
-impl<N: Float> EmModel<N> for VonMisesFisherModel<N> {
+impl<F: Float> EmModel<F> for VonMisesFisherModel<F> {
     fn begin_estep(&mut self) {
-        self.wsum = N::zero();
+        self.wsum = F::zero();
         for v in &mut self.nsum {
-            *v = N::zero();
+            *v = F::zero();
         }
     }
 
-    fn update_estep(&mut self, x: &[N], responsibility: N) {
-        if responsibility <= N::zero() {
+    fn update_estep(&mut self, x: &[F], responsibility: F) {
+        if responsibility <= F::zero() {
             return;
         }
-        self.wsum = self.wsum + responsibility;
+        self.wsum += responsibility;
         for (j, &xj) in x.iter().enumerate() {
             self.nsum[j] += xj * responsibility;
         }
     }
 
-    fn finalize_estep(&mut self, weight: N, _prior: N) {
-        self.weight = weight.max(N::epsilon());
-        let d = N::from(self.mu.len()).unwrap();
-        if self.wsum > N::zero() && self.wsum.is_finite() {
+    fn finalize_estep(&mut self, weight: F, _prior: F) {
+        self.weight = weight.max(F::epsilon());
+        let d = F::from(self.mu.len()).unwrap();
+        if self.wsum > F::zero() && self.wsum.is_finite() {
             // update mean direction
-            let mut norm = N::zero();
+            let mut norm = F::zero();
             for j in 0..self.mu.len() {
                 self.mu[j] = self.nsum[j] / self.wsum;
                 norm += self.mu[j] * self.mu[j];
             }
             norm = norm.sqrt();
-            if norm > N::zero() {
+            if norm > F::zero() {
                 for val in &mut self.mu {
-                    *val = *val / norm;
+                    *val /= norm;
                 }
             }
             // update concentration using Banerjee et al. (2005)
             let r_bar = norm / self.wsum;
             let num = r_bar * d - r_bar * r_bar * r_bar;
-            let den = N::one() - r_bar * r_bar;
-            let kappa_new = if den.abs() > N::epsilon() { num / den } else { N::zero() };
-            self.kappa = kappa_new.max(N::zero());
+            let den = F::one() - r_bar * r_bar;
+            let kappa_new = if den.abs() > F::epsilon() { num / den } else { F::zero() };
+            self.kappa = kappa_new.max(F::zero());
         }
         self.update_log_norm();
     }
 
-    fn estimate_log_density(&self, x: &[N]) -> N {
+    fn estimate_log_density(&self, x: &[F]) -> F {
         // dot product
-        let mut dot = N::zero();
+        let mut dot = F::zero();
         for (a, b) in self.mu.iter().zip(x.iter()) {
-            dot = dot + *a * *b;
+            dot += *a * *b;
         }
         self.kappa * dot + self.log_norm
     }
 
-    fn weight(&self) -> N { self.weight }
+    fn weight(&self) -> F { self.weight }
 
-    fn set_weight(&mut self, weight: N) {
-        self.weight = weight.max(N::epsilon());
+    fn set_weight(&mut self, weight: F) {
+        self.weight = weight.max(F::epsilon());
         self.update_log_norm();
     }
 }
@@ -130,44 +128,44 @@ impl<N: Float> EmModel<N> for VonMisesFisherModel<N> {
 /// Factory for von Mises–Fisher mixtures.
 /// Initial kappa may be set by the caller.
 #[derive(Debug)]
-pub struct VonMisesFisherModelFactory<N, I>
+pub struct VonMisesFisherModelFactory<F, I>
 where
-    N: Float,
-    I: Initialization<N>,
+    F: Float,
+    I: Initialization<F>,
 {
     pub initializer: I,
-    pub init_kappa: N,
+    pub init_kappa: F,
 }
 
-impl<N: Float, I: Initialization<N>> VonMisesFisherModelFactory<N, I> {
-    pub fn new(initializer: I) -> Self { Self { initializer, init_kappa: N::from(10.0).unwrap() } }
+impl<F: Float, I: Initialization<F>> VonMisesFisherModelFactory<F, I> {
+    pub fn new(initializer: I) -> Self { Self { initializer, init_kappa: F::from(10.0).unwrap() } }
 
-    pub fn with_kappa(mut self, kappa: N) -> Self {
-        self.init_kappa = kappa.max(N::zero());
+    pub fn with_kappa(mut self, kappa: F) -> Self {
+        self.init_kappa = kappa.max(F::zero());
         self
     }
 
-    pub fn build_initial_models<A>(&mut self, data: &A, k: usize) -> Vec<VonMisesFisherModel<N>>
+    pub fn build_initial_models<A>(&mut self, data: &A, k: usize) -> Vec<VonMisesFisherModel<F>>
     where
-        A: Dataset<N>,
+        A: Dataset<F>,
     {
         let d = data.ncols();
-        let mut cent = Centers::<N>::new(k, d);
+        let mut cent = Centers::<F>::new(k, d);
         self.initializer.init::<A>(data, &mut cent, k);
 
-        let weight = N::one() / N::from(k).unwrap();
+        let weight = F::one() / F::from(k).unwrap();
         let mut models = Vec::with_capacity(k);
         for i in 0..k {
             // normalize the center to lie on the unit sphere
             let mut mu = cent.center(i).to_vec();
-            let mut norm = N::zero();
+            let mut norm = F::zero();
             for v in &mu {
                 norm += *v * *v;
             }
             norm = norm.sqrt();
-            if norm > N::zero() {
+            if norm > F::zero() {
                 for v in &mut mu {
-                    *v = *v / norm;
+                    *v /= norm;
                 }
             }
             models.push(VonMisesFisherModel::new(weight, mu, self.init_kappa));
@@ -177,9 +175,9 @@ impl<N: Float, I: Initialization<N>> VonMisesFisherModelFactory<N, I> {
 
     pub fn build_initial_models_dispatch<A>(
         initializer: I, data: &A, k: usize,
-    ) -> Vec<VonMisesFisherModel<N>>
+    ) -> Vec<VonMisesFisherModel<F>>
     where
-        A: Dataset<N>,
+        A: Dataset<F>,
     {
         let mut factory = VonMisesFisherModelFactory::new(initializer);
         factory.build_initial_models(data, k)
@@ -191,9 +189,9 @@ mod tests {
     use ndarray::Array2;
 
     use super::*;
+    use crate::NdArrayDataset;
     use crate::cluster::em::optimizer::{EmConfig, expectation_maximization};
     use crate::cluster::kmeans::init::FirstK;
-    use crate::cluster::kmeans::ndarray::NdArrayDataset;
 
     #[test]
     fn test_vmf_model_density() {

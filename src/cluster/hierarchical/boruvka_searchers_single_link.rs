@@ -2,7 +2,8 @@ use std::cmp::Ordering;
 
 use crate::api::{DistanceData, PrioritySearcher, PrioritySearcherFactory, SearchFilter};
 use crate::cluster::hdbscan::hdbscan_common::SameComponentFilter;
-use crate::cluster::hierarchical::common::{MergeHistory, UnionFind};
+use crate::cluster::hierarchical::MergeHistory;
+use crate::cluster::hierarchical::common::UnionFind;
 use crate::cluster::hierarchical::search_single_link_common::ClusterBuilder;
 use crate::{CandidateHeap, DistPair, DistanceSearch, Float, IndexQuery};
 
@@ -151,7 +152,7 @@ where
             }
             heap.pop();
             let b = top.index;
-            if uf.union(a, b) {
+            if uf.union(a, b).0 {
                 edges.push(Edge { a, b, dist });
             }
         }
@@ -231,31 +232,22 @@ mod tests {
     use rand::rngs::StdRng;
 
     use super::*;
-    use crate::distance::Euclidean;
+    use crate::cluster::hierarchical::extraction::cut_dendrogram_by_number_of_clusters;
+    use crate::cluster::hierarchical::test::test_clustering_table;
     use crate::search::vptree::VPTree;
-    use crate::{CondensedDistanceMatrix, TableWithDistance};
-
-    fn condensed_abs_1d(points: &[Vec<f64>]) -> Vec<f64> {
-        let mut out = Vec::new();
-        for i in 1..points.len() {
-            for j in 0..i {
-                out.push((points[i][0] - points[j][0]).abs());
-            }
-        }
-        out
-    }
 
     #[test]
-    fn boruvka_searchers_matches_slink_on_unique_1d_distances() {
-        let points = vec![vec![0.0], vec![1.1], vec![3.7], vec![10.2], vec![20.5]];
-        let data = TableWithDistance::with_distance(&points, Euclidean);
-        let mut rng = StdRng::seed_from_u64(23);
-        let tree = VPTree::new(&data, 3, &mut rng);
-
-        let vec = condensed_abs_1d(&points);
-        let cm = CondensedDistanceMatrix::new_from_condensed(vec, points.len());
-        let expected = crate::cluster::hierarchical::slink(&cm);
-        let got = boruvka_searchers_single_link(&tree, &data);
-        assert_eq!(got, expected);
+    fn boruvka_searchers_single_link_regression() {
+        test_clustering_table(
+            "BoruvkaSearchersSingleLink",
+            "single",
+            crate::distance::Euclidean,
+            |access, min_clusters| {
+                let mut rng = StdRng::seed_from_u64(42);
+                let tree = VPTree::new(access, 3, &mut rng);
+                let history = boruvka_searchers_single_link(&tree, access);
+                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            },
+        );
     }
 }

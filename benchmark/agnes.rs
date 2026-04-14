@@ -7,11 +7,12 @@ use std::time::Instant;
 use common::{CountingDistance, read_numeric_data};
 use fuel::cluster::hdbscan::extraction::{ExtractedHierarchy, extract_simplified_hierarchy};
 use fuel::cluster::hierarchical::{
-    AverageLinkage, CentroidLinkage, CompleteLinkage, GroupAverageLinkage, MedianLinkage, Merge,
-    MinimumVarianceLinkage, SingleLinkage, WardLinkage, WeightedAverageLinkage, agnes,
+    CentroidLinkage, CompleteLinkage, FlexibleBetaLinkage, GroupAverageLinkage, MedianLinkage,
+    MergeHistory, MinimumSumSquaresLinkage, MinimumVarianceIncreaseLinkage, MinimumVarianceLinkage,
+    SingleLinkage, WardLinkage, WeightedAverageLinkage, agnes,
 };
 use fuel::distance::Euclidean;
-use fuel::{DistanceData, TableWithDistance};
+use fuel::{CondensedDistanceMatrix, TableWithDistance};
 
 fn main() {
     if let Err(err) = run() {
@@ -50,22 +51,21 @@ fn run() -> Result<(), Box<dyn Error>> {
         TableWithDistance::with_distance(&rows, distance.clone());
 
     // build condensed lower-triangular distance matrix
-    let data_ref = &data;
-    let condensed: Vec<_> =
-        (1..n).flat_map(|p| (0..p).map(move |q| data_ref.distance(p, q))).collect();
+    let condensed = CondensedDistanceMatrix::new_from_data(&data);
     let distance_count_after_index = distance.count();
 
     let start = Instant::now();
     let history = match linkage_name.as_str() {
-        "single" => agnes(&condensed, n, SingleLinkage, false),
-        "complete" => agnes(&condensed, n, CompleteLinkage, false),
-        "average" => agnes(&condensed, n, AverageLinkage, false),
-        "ward" => agnes(&condensed, n, WardLinkage, false),
-        "centroid" => agnes(&condensed, n, CentroidLinkage, false),
-        "median" => agnes(&condensed, n, MedianLinkage, false),
-        "group_average" => agnes(&condensed, n, GroupAverageLinkage, false),
-        "minimum_variance" => agnes(&condensed, n, MinimumVarianceLinkage, false),
-        "weighted_average" => agnes(&condensed, n, WeightedAverageLinkage, false),
+        "single" => agnes(&condensed, SingleLinkage),
+        "complete" => agnes(&condensed, CompleteLinkage),
+        "group_average" | "average" => agnes(&condensed, GroupAverageLinkage),
+        "weighted_average" => agnes(&condensed, WeightedAverageLinkage),
+        "ward" => agnes(&condensed, WardLinkage),
+        "centroid" => agnes(&condensed, CentroidLinkage),
+        "median" => agnes(&condensed, MedianLinkage),
+        "minimum_variance" | "mivar" => agnes(&condensed, MinimumVarianceIncreaseLinkage),
+        "minimum_variance_linkage" | "mnvar" => agnes(&condensed, MinimumVarianceLinkage),
+        "minimum_sum_squares" | "missq" | "mnssq" => agnes(&condensed, MinimumSumSquaresLinkage),
         _ => return Err("unknown linkage type".into()),
     };
     let elapsed = start.elapsed();
@@ -132,7 +132,7 @@ fn labels_from_frontier(
 }
 
 fn labels_from_simplified_hierarchy(
-    history: &[Merge<f64>], n: usize, min_clusters: usize,
+    history: &MergeHistory<f64>, n: usize, min_clusters: usize,
 ) -> Vec<usize> {
     let extracted = extract_simplified_hierarchy(history, None, 1);
     assert!(min_clusters > 0, "min_clusters must be positive");
