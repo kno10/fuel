@@ -4,6 +4,8 @@
 //! while tracking cluster sizes, along with a convenience function for
 //! computing indices into the condensed distance matrix.
 
+use num_traits::NumCast;
+
 use crate::cluster::hierarchical::{SetLinkage, idsize};
 use crate::{CandidateHeap, DistPair, DistanceData, Float};
 
@@ -194,38 +196,56 @@ where
 /// union-by-size during `union` to keep tree height low and improve
 /// amortized performance.
 #[derive(Debug, Clone)]
-pub(crate) struct UnionFind {
-    pub parent: Vec<usize>,
+pub(crate) struct UnionFind<U = usize> {
+    pub parent: Vec<U>,
     pub size: Vec<usize>,
 }
 
-impl UnionFind {
-    pub(crate) fn new(n: usize) -> Self { Self { parent: (0..n).collect(), size: vec![1; n] } }
+impl<U> UnionFind<U>
+where
+    U: Copy + NumCast + PartialEq + Eq,
+{
+    pub(crate) fn new(n: usize) -> Self {
+        Self { parent: (0..n).map(|i| NumCast::from(i).unwrap()).collect(), size: vec![1; n] }
+    }
 
-    pub(crate) fn find(&mut self, x: usize) -> usize {
+    pub(crate) fn find(&mut self, x: U) -> U {
         let mut root = x;
-        while self.parent[root] != root {
-            root = self.parent[root];
+        while {
+            let root_idx: usize = num_traits::cast(root).unwrap();
+            self.parent[root_idx] != root
+        } {
+            let root_idx: usize = num_traits::cast(root).unwrap();
+            root = self.parent[root_idx];
         }
         let mut node = x;
-        while self.parent[node] != root {
-            let next = self.parent[node];
-            self.parent[node] = root;
+        while {
+            let node_idx: usize = num_traits::cast(node).unwrap();
+            self.parent[node_idx] != root
+        } {
+            let node_idx: usize = num_traits::cast(node).unwrap();
+            let next = self.parent[node_idx];
+            self.parent[node_idx] = root;
             node = next;
         }
         root
     }
 
-    pub(crate) fn union(&mut self, a: usize, b: usize) -> (bool, usize) {
-        let (mut ra, mut rb) = (self.find(a), self.find(b));
+    pub(crate) fn union(&mut self, a: U, b: U) -> (bool, U) {
+        let mut ra = self.find(a);
+        let mut rb = self.find(b);
         if ra == rb {
             return (false, ra);
         }
-        if self.size[ra] < self.size[rb] {
+        let ra_idx: usize = num_traits::cast(ra).unwrap();
+        let rb_idx: usize = num_traits::cast(rb).unwrap();
+        if self.size[ra_idx] < self.size[rb_idx] {
             std::mem::swap(&mut ra, &mut rb);
         }
-        self.parent[rb] = ra;
-        self.size[ra] += self.size[rb];
+        let rb_idx: usize = num_traits::cast(rb).unwrap();
+        let ra_idx: usize = num_traits::cast(ra).unwrap();
+        self.parent[rb_idx] = ra;
+        self.size[ra_idx] += self.size[rb_idx];
         (true, ra)
     }
 }

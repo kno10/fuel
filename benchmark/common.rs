@@ -214,6 +214,8 @@ where
         self.counter.fetch_add(1, Ordering::Relaxed);
         self.inner.distance(a, b)
     }
+
+    fn is_squared_distance(&self) -> bool { self.inner.is_squared_distance() }
 }
 
 impl<D, N, F> PartialDistance<N, F> for CountingDistance<D>

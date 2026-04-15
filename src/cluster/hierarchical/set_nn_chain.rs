@@ -149,7 +149,10 @@ mod tests {
             crate::distance::Euclidean,
             |access, min_clusters| {
                 let history = set_nn_chain::<_, MinimaxLinkage, _, _>(access);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -162,7 +165,10 @@ mod tests {
             crate::distance::Euclidean,
             |access, min_clusters| {
                 let history = set_nn_chain::<_, GroupAverageLinkage, _, _>(access);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -175,7 +181,10 @@ mod tests {
             crate::distance::Euclidean,
             |access, min_clusters| {
                 let history = set_nn_chain::<_, CompleteLinkage, _, _>(access);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -188,7 +197,10 @@ mod tests {
             crate::distance::Euclidean,
             |access, min_clusters| {
                 let history = set_nn_chain::<_, SingleLinkage, _, _>(access);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -201,7 +213,10 @@ mod tests {
             crate::distance::SquaredEuclidean,
             |access, min_clusters| {
                 let history = set_nn_chain::<_, WardLinkage, _, _>(access);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -214,7 +229,10 @@ mod tests {
             crate::distance::Euclidean,
             |access, min_clusters| {
                 let history = set_nn_chain::<_, HausdorffLinkage, _, _>(access);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -227,7 +245,10 @@ mod tests {
             crate::distance::Euclidean,
             |access, min_clusters| {
                 let history = set_nn_chain::<_, MedoidLinkage, _, _>(access);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -240,7 +261,10 @@ mod tests {
             crate::distance::Euclidean,
             |access, min_clusters| {
                 let history = set_nn_chain::<_, MinimumVarianceIncreaseLinkage, _, _>(access);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -253,7 +277,10 @@ mod tests {
             crate::distance::Euclidean,
             |access, min_clusters| {
                 let history = set_nn_chain::<_, MinimumSumSquaresLinkage, _, _>(access);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -266,7 +293,10 @@ mod tests {
             crate::distance::Euclidean,
             |access, min_clusters| {
                 let history = set_nn_chain::<_, MinimumVarianceLinkage, _, _>(access);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -279,7 +309,10 @@ mod tests {
             crate::distance::Euclidean,
             |access, min_clusters| {
                 let history = set_nn_chain::<_, MinimumSumLinkage, _, _>(access);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -292,7 +325,10 @@ mod tests {
             crate::distance::Euclidean,
             |access, min_clusters| {
                 let history = set_nn_chain::<_, MinimumSumIncreaseLinkage, _, _>(access);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }

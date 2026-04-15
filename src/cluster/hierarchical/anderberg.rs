@@ -1,3 +1,4 @@
+use crate::cluster::hierarchical::agnes::build_condensed_linkage_matrix;
 use crate::cluster::hierarchical::common::{
     condensed_get, condensed_set, shrink_active_end, triangle_index,
 };
@@ -133,20 +134,19 @@ impl<F: Float> AnderbergState<F> {
 ///
 /// Input and output conventions are the same as [`crate::cluster::hierarchical::agnes`].
 #[must_use]
-pub fn anderberg<D, F: Float, L: Linkage<F> + Copy>(data: &D, linkage: L) -> MergeHistory<F>
+pub fn anderberg<D, F: Float, L: Linkage<F> + Copy + Sync>(data: &D, linkage: L) -> MergeHistory<F>
 where
-    D: DistanceData<F>,
+    D: DistanceData<F> + Sync,
 {
     let n = data.len();
     assert!(n > 0, "number of points must be positive");
     let squared = data.is_squared_distance();
-    let mat = (1..n)
-        .flat_map(|x| (0..x).map(move |y| linkage.initial(data.distance(x, y), squared)))
-        .collect();
+    let mat = build_condensed_linkage_matrix(data, linkage);
     let mut state = AnderbergState::new(mat, n);
     for _ in 1..n {
         let (mindist, x, y) = state.find_merge();
-        let (size_x, size_y) = state.commit_merge(x, y, mindist, usize::MAX);
+        let restored = linkage.restore(mindist, squared);
+        let (size_x, size_y) = state.commit_merge(x, y, restored, usize::MAX);
         state.update_lw(linkage, mindist, x, y, size_x, size_y, |_, _| {});
         state.heights[y] = mindist;
         state.heights[x] = F::nan();
@@ -171,7 +171,10 @@ mod tests {
     fn anderberg_average_regression() {
         test_clustering_condensed("Anderberg", "average", Euclidean, |condensed, min_clusters| {
             let history = anderberg(condensed, GroupAverageLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -179,7 +182,10 @@ mod tests {
     fn anderberg_complete_regression() {
         test_clustering_condensed("Anderberg", "complete", Euclidean, |condensed, min_clusters| {
             let history = anderberg(condensed, CompleteLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -187,7 +193,10 @@ mod tests {
     fn anderberg_single_regression() {
         test_clustering_condensed("Anderberg", "single", Euclidean, |condensed, min_clusters| {
             let history = anderberg(condensed, SingleLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -199,7 +208,10 @@ mod tests {
             SquaredEuclidean,
             |condensed, min_clusters| {
                 let history = anderberg(condensed, WardLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -212,7 +224,10 @@ mod tests {
             SquaredEuclidean,
             |condensed, min_clusters| {
                 let history = anderberg(condensed, CentroidLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -225,7 +240,10 @@ mod tests {
             SquaredEuclidean,
             |condensed, min_clusters| {
                 let history = anderberg(condensed, MedianLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -238,7 +256,10 @@ mod tests {
             Euclidean,
             |condensed, min_clusters| {
                 let history = anderberg(condensed, WeightedAverageLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -247,7 +268,10 @@ mod tests {
     fn anderberg_minimum_variance_increase_regression() {
         test_clustering_condensed("Anderberg", "mivar", Euclidean, |condensed, min_clusters| {
             let history = anderberg(condensed, MinimumVarianceIncreaseLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -255,7 +279,10 @@ mod tests {
     fn anderberg_minimum_sum_squares_regression() {
         test_clustering_condensed("Anderberg", "mnssq", Euclidean, |condensed, min_clusters| {
             let history = anderberg(condensed, MinimumSumSquaresLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -263,7 +290,10 @@ mod tests {
     fn anderberg_minimum_variance_regression() {
         test_clustering_condensed("Anderberg", "mnvar", Euclidean, |condensed, min_clusters| {
             let history = anderberg(condensed, MinimumVarianceLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 }

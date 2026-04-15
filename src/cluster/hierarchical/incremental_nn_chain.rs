@@ -1,83 +1,93 @@
+use crate::api::{PrioritySearcher, PrioritySearcherFactory};
+use crate::cluster::hierarchical::common::UnionFind;
 use crate::cluster::hierarchical::{Builder, GeometricLinkage, MergeHistory, idsize};
-use crate::distance::SquaredEuclidean;
-use crate::search::kdtree::{KdTree, KdTreePrioritySearcher, MaxVarianceSplit};
-use crate::{CoordinateQuery, DistanceData, Float, PrioritySearcher, TableWithDistance};
-
-struct UnionFind {
-    parent: Vec<usize>,
-    size: Vec<usize>,
-    cluster_id: Vec<idsize>,
-}
-
-impl UnionFind {
-    fn new(n: usize) -> Self {
-        Self {
-            parent: (0..n).collect(),
-            size: vec![1; n],
-            cluster_id: (0..(n as idsize)).collect(),
-        }
-    }
-
-    fn find(&mut self, x: usize) -> usize {
-        let mut root = x;
-        while self.parent[root] != root {
-            root = self.parent[root];
-        }
-        let mut node = x;
-        while self.parent[node] != root {
-            let next = self.parent[node];
-            self.parent[node] = root;
-            node = next;
-        }
-        root
-    }
-
-    fn cluster_of(&mut self, x: usize) -> idsize {
-        let root = self.find(x);
-        self.cluster_id[root]
-    }
-
-    fn union(&mut self, a: usize, b: usize, new_id: idsize) -> usize {
-        let (mut ra, mut rb) = (self.find(a), self.find(b));
-        if ra == rb {
-            return ra;
-        }
-        if self.size[ra] < self.size[rb] {
-            std::mem::swap(&mut ra, &mut rb);
-        }
-        self.parent[rb] = ra;
-        self.size[ra] += self.size[rb];
-        self.cluster_id[ra] = new_id;
-        ra
-    }
-
-    fn find_root_excluding(&mut self, exclude: Option<usize>) -> usize {
-        for i in 0..self.parent.len() {
-            let root = self.find(i);
-            if root == i && exclude != Some(root) {
-                return root;
-            }
-        }
-        panic!("no active cluster found");
-    }
-}
+use crate::{CoordinateQuery, Float};
 
 fn center<F: Float>(centers: &[Option<Vec<F>>], cid: usize) -> &[F] {
     centers[cid].as_ref().expect("cluster center must be initialized")
 }
 
-fn grow_chain<'a, F: Float, L: GeometricLinkage<F> + Copy>(
-    data: &'a TableWithDistance<'a, F, Vec<F>, SquaredEuclidean, F>, linkage: L,
-    builder: &Builder<F>, centers: &[Option<Vec<F>>], heights: &[F], uf: &mut UnionFind,
-    chain: &mut Vec<usize>, visited: &mut [bool], searcher: &mut KdTreePrioritySearcher<'a, F, F>,
-) -> bool {
+/// Find starting elements (i.e., a root) for the nearest-neighbor chain
+fn find_root_excluding(uf: &mut UnionFind<idsize>, exclude: Option<idsize>) -> idsize {
+    for i in 0..uf.parent.len() {
+        let node = i as idsize;
+        let root = uf.find(node);
+        if root == node && exclude != Some(root) {
+            return root;
+        }
+    }
+    panic!("no active cluster found");
+}
+
+const WITNESS_BIT: idsize = 1 << 31;
+
+struct ClusterFilter<'a> {
+    uf: &'a mut UnionFind<idsize>,
+    cluster_id: &'a [idsize],
+    visited: &'a [bool],
+    node_cluster: &'a mut [idsize],
+}
+
+impl<'a> crate::SearchFilter for ClusterFilter<'a> {
+    fn skip_node(&mut self, points: crate::NodePoints<'_>) -> bool {
+        let vp = points.first_index();
+        let cached = self.node_cluster[vp];
+
+        if cached != idsize::MAX {
+            if cached & WITNESS_BIT != 0 {
+                let witness = (cached & !WITNESS_BIT) as usize;
+                if self.uf.find(vp as idsize) != self.uf.find(witness as idsize) {
+                    return false;
+                }
+            } else {
+                let root = self.uf.find(cached);
+                let cid = self.cluster_id[root as usize];
+                return self.visited[cid as usize];
+            }
+        }
+
+        let mut component = idsize::MAX;
+        for index in points.indices() {
+            let root = self.uf.find(index as idsize);
+            if component == idsize::MAX {
+                component = root;
+            } else if root != component {
+                self.node_cluster[vp] = WITNESS_BIT | (index as idsize);
+                return false;
+            }
+        }
+
+        self.node_cluster[vp] = component;
+        let cid = self.cluster_id[component as usize];
+        self.visited[cid as usize]
+    }
+
+    fn skip_point(&mut self, index: usize) -> bool {
+        let root = self.uf.find(index as idsize);
+        let cid = self.cluster_id[root as usize];
+        self.visited[cid as usize]
+    }
+}
+
+fn grow_chain<'a, D, F, L, S>(
+    data: &'a D, linkage: L, builder: &Builder<F>, centers: &[Option<Vec<F>>], heights: &[F],
+    uf: &mut UnionFind<idsize>, cluster_id: &[idsize], chain: &mut Vec<idsize>,
+    visited: &mut [bool], node_cluster: &mut [idsize], searcher: &mut S,
+) -> bool
+where
+    D: crate::DistanceData<F> + crate::VectorData<F> + ?Sized + 'a,
+    D::Query<'a>: CoordinateQuery<F, F> + 'a,
+    F: Float,
+    L: GeometricLinkage<F> + Copy,
+    S: PrioritySearcher<F, D::Query<'a>>,
+{
     let mut query = data.query();
     let mut a_root;
     let mut b_root;
 
     if chain.len() < 2 {
-        a_root = uf.find_root_excluding(None);
-        b_root = uf.find_root_excluding(Some(a_root));
+        a_root = find_root_excluding(uf, None);
+        b_root = find_root_excluding(uf, Some(a_root));
         chain.clear();
         chain.push(a_root);
     } else {
@@ -90,8 +100,8 @@ fn grow_chain<'a, F: Float, L: GeometricLinkage<F> + Copy>(
         chain.pop();
     }
 
-    let mut a_cid = uf.cluster_of(a_root);
-    let mut b_cid = uf.cluster_of(b_root);
+    let mut a_cid = cluster_id[uf.find(a_root) as usize];
+    let mut b_cid = cluster_id[uf.find(b_root) as usize];
     let mut min_link = {
         let size_a = builder.get_size(a_cid);
         let size_b = builder.get_size(b_cid);
@@ -107,6 +117,9 @@ fn grow_chain<'a, F: Float, L: GeometricLinkage<F> + Copy>(
 
     loop {
         visited.fill(false);
+        visited[a_cid as usize] = true;
+        visited[b_cid as usize] = true;
+
         let size_a = builder.get_size(a_cid);
         let a_center = center(centers, a_cid as usize);
         let cutoff_factor = linkage.cutoff_factor(size_a);
@@ -117,21 +130,12 @@ fn grow_chain<'a, F: Float, L: GeometricLinkage<F> + Copy>(
         let mut c_root = b_root;
         let mut c_cid = b_cid;
 
-        while let Some(candidate) = searcher.next(&query) {
-            let root = uf.find(candidate.index);
-            let cid = uf.cluster_id[root];
-
-            if cid == a_cid || cid == b_cid {
-                let cid_index = cid as usize;
-                if cid_index < visited.len() {
-                    visited[cid_index] = true;
-                }
-                continue;
-            }
-
-            if visited.get(cid as usize).copied().unwrap_or(false) {
-                continue;
-            }
+        while let Some(candidate) = {
+            let mut filter = ClusterFilter { uf, cluster_id, visited, node_cluster };
+            searcher.next_with_filter(&query, &mut filter)
+        } {
+            let root = uf.find(candidate.index as idsize);
+            let cid = cluster_id[root as usize];
 
             let size_i = builder.get_size(cid);
             let threshold = linkage.candidate_threshold(
@@ -141,8 +145,8 @@ fn grow_chain<'a, F: Float, L: GeometricLinkage<F> + Copy>(
                 heights[a_cid as usize],
                 heights[cid as usize],
             );
+            visited[cid as usize] = true;
             if candidate.distance > threshold {
-                visited[cid as usize] = true;
                 continue;
             }
 
@@ -160,8 +164,6 @@ fn grow_chain<'a, F: Float, L: GeometricLinkage<F> + Copy>(
                 c_cid = cid;
                 searcher.decrease_cutoff(cutoff_factor * link);
             }
-
-            visited[cid as usize] = true;
         }
 
         b_root = a_root;
@@ -180,14 +182,16 @@ fn grow_chain<'a, F: Float, L: GeometricLinkage<F> + Copy>(
 
 /// Incremental nearest-neighbor chain clustering for vector data.
 ///
-/// This variant uses incremental VP-tree search to accelerate nearest
+/// This variant uses incremental priority search to accelerate nearest
 /// neighbour discovery for geometric linkage criteria.
 #[must_use]
-pub fn incremental_nn_chain<F: Float, L: GeometricLinkage<F> + Copy + 'static, D>(
-    data: &D, linkage: L,
-) -> MergeHistory<F>
+pub fn incremental_nn_chain<'a, S, D, F, L>(tree: &'a S, data: &'a D, linkage: L) -> MergeHistory<F>
 where
-    D: crate::VectorData<F>,
+    F: Float + 'a,
+    D: crate::DistanceData<F> + crate::VectorData<F> + ?Sized + 'a,
+    D::Query<'a>: CoordinateQuery<F, F> + 'a,
+    S: PrioritySearcherFactory<F, D::Query<'a>>,
+    L: GeometricLinkage<F> + Copy + 'static,
 {
     let n = data.nrows();
     assert!(n > 0, "number of points must be positive");
@@ -199,10 +203,6 @@ where
     );
 
     let points: Vec<Vec<F>> = (0..n).map(|i| data.point(i).to_vec()).collect();
-    let table_data: TableWithDistance<'_, F, Vec<F>, SquaredEuclidean, F> =
-        TableWithDistance::with_distance(&points, SquaredEuclidean);
-    let tree = KdTree::new(&table_data, MaxVarianceSplit);
-
     let mut builder = Builder::<F>::new(n);
     let mut centers: Vec<Option<Vec<F>>> = vec![None; 2 * n - 1];
     for (i, v) in points.iter().enumerate() {
@@ -210,23 +210,27 @@ where
     }
     let mut heights = vec![F::zero(); 2 * n - 1];
 
-    let squared = table_data.is_squared_distance();
-    let mut uf = UnionFind::new(n);
-    let mut chain: Vec<usize> = Vec::with_capacity(n.min(64));
+    let squared = data.is_squared_distance();
+    let mut uf = UnionFind::<idsize>::new(n);
+    let mut cluster_id: Vec<idsize> = (0..(n as idsize)).collect();
+    let mut chain: Vec<idsize> = Vec::with_capacity(n.min(64));
     let mut visited = vec![false; 2 * n - 1];
-    let mut searcher = KdTreePrioritySearcher::new(&tree);
+    let mut node_cluster = vec![idsize::MAX; n];
+    let mut searcher = tree.priority_searcher();
     let mut merged = 0usize;
 
     while merged < n - 1 {
         if !grow_chain(
-            &table_data,
+            data,
             linkage,
             &builder,
             &centers,
             &heights,
             &mut uf,
+            &cluster_id,
             &mut chain,
             &mut visited,
+            &mut node_cluster,
             &mut searcher,
         ) {
             continue;
@@ -239,8 +243,8 @@ where
             continue;
         }
 
-        let a_cid = uf.cluster_of(a_root);
-        let b_cid = uf.cluster_of(b_root);
+        let a_cid = cluster_id[uf.find(a_root) as usize];
+        let b_cid = cluster_id[uf.find(b_root) as usize];
         let size_a = builder.get_size(a_cid);
         let size_b = builder.get_size(b_cid);
         let a_center = center(&centers, a_cid as usize);
@@ -255,7 +259,7 @@ where
         );
 
         let (h1, h2) = if a_cid <= b_cid { (a_cid, b_cid) } else { (b_cid, a_cid) };
-        let new_id = builder.add(h1, linkage.restore_linkage(min_link, squared), h2);
+        let new_id = builder.add(h1, linkage.restore(min_link, squared), h2);
 
         let merged_center = linkage.merge(
             a_center,
@@ -277,7 +281,8 @@ where
         centers[new_id as usize] = Some(merged_center);
         heights[new_id as usize] = merged_height;
 
-        let new_root = uf.union(a_root, b_root, new_id);
+        let (_, new_root) = uf.union(a_root, b_root);
+        cluster_id[new_root as usize] = new_id;
 
         if chain.len() >= 3 {
             chain.truncate(chain.len() - 3);
@@ -300,10 +305,10 @@ mod tests {
     use crate::cluster::hierarchical::test::test_clustering_table;
     use crate::cluster::hierarchical::{
         CentroidLinkage, GroupAverageLinkage, MedianLinkage, MinimumSumSquaresLinkage,
-        MinimumVarianceIncreaseLinkage, MinimumVarianceLinkage, WardLinkage, nn_chain,
+        MinimumVarianceIncreaseLinkage, MinimumVarianceLinkage, WardLinkage,
     };
     use crate::distance::SquaredEuclidean;
-    use crate::{CondensedDistanceMatrix, TableWithDistance};
+    use crate::search::kdtree::{KdTree, MaxVarianceSplit};
 
     #[test]
     fn incremental_nn_chain_average_regression() {
@@ -313,8 +318,12 @@ mod tests {
             "average",
             SquaredEuclidean,
             |access, min_clusters| {
-                let history = incremental_nn_chain(access, GroupAverageLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                let tree = KdTree::new(access, MaxVarianceSplit);
+                let history = incremental_nn_chain(&tree, access, GroupAverageLinkage);
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -326,8 +335,12 @@ mod tests {
             "centroid",
             SquaredEuclidean,
             |access, min_clusters| {
-                let history = incremental_nn_chain(access, CentroidLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                let tree = KdTree::new(access, MaxVarianceSplit);
+                let history = incremental_nn_chain(&tree, access, CentroidLinkage);
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -339,8 +352,12 @@ mod tests {
             "median",
             SquaredEuclidean,
             |access, min_clusters| {
-                let history = incremental_nn_chain(access, MedianLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                let tree = KdTree::new(access, MaxVarianceSplit);
+                let history = incremental_nn_chain(&tree, access, MedianLinkage);
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -352,8 +369,12 @@ mod tests {
             "ward",
             SquaredEuclidean,
             |access, min_clusters| {
-                let history = incremental_nn_chain(access, WardLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                let tree = KdTree::new(access, MaxVarianceSplit);
+                let history = incremental_nn_chain(&tree, access, WardLinkage);
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -365,8 +386,12 @@ mod tests {
             "mnssq",
             SquaredEuclidean,
             |access, min_clusters| {
-                let history = incremental_nn_chain(access, MinimumSumSquaresLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                let tree = KdTree::new(access, MaxVarianceSplit);
+                let history = incremental_nn_chain(&tree, access, MinimumSumSquaresLinkage);
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -378,8 +403,12 @@ mod tests {
             "mnvar",
             SquaredEuclidean,
             |access, min_clusters| {
-                let history = incremental_nn_chain(access, MinimumVarianceLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                let tree = KdTree::new(access, MaxVarianceSplit);
+                let history = incremental_nn_chain(&tree, access, MinimumVarianceLinkage);
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -391,8 +420,12 @@ mod tests {
             "mivar",
             SquaredEuclidean,
             |access, min_clusters| {
-                let history = incremental_nn_chain(access, MinimumVarianceIncreaseLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                let tree = KdTree::new(access, MaxVarianceSplit);
+                let history = incremental_nn_chain(&tree, access, MinimumVarianceIncreaseLinkage);
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }

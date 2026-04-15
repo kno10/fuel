@@ -36,7 +36,10 @@ mod tests {
             crate::distance::Euclidean,
             |access, min_clusters| {
                 let history = medoid_linkage(access);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }

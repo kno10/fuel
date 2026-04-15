@@ -84,23 +84,14 @@ pub trait GeometricLinkage<F: Float>: Linkage<F> {
     ) -> Vec<F> {
         let sx = F::from(sizex).unwrap();
         let sy = F::from(sizey).unwrap();
-        let tot = sx + sy;
         let mut out = x.to_vec();
-        let d = out.len();
-        math::axpby(&mut out, sx / tot, y, sy / tot, d);
+        let dim = out.len();
+        math::axpby(&mut out, sx / (sx + sy), y, sy / (sx + sy), dim);
         out
     }
 
     /// Compute the distance between two aggregated clusters.
     fn linkage(&self, x: &[F], sizex: usize, y: &[F], sizey: usize, heightx: F, heighty: F) -> F;
-
-    /// Restore a linkage value to the original scale.
-    ///
-    /// By default, geometric linkage values are already expressed in the same
-    /// internal distance scale used by the underlying `Linkage`.  This means
-    /// the generic implementation can simply delegate to `Linkage::restore`.
-    #[allow(unused)]
-    fn restore_linkage(&self, d: F, issquare: bool) -> F { self.restore(d, issquare) }
 
     /// Compute the internal cluster summary height for a newly merged cluster.
     ///
@@ -140,6 +131,11 @@ pub trait GeometricLinkage<F: Float>: Linkage<F> {
 /// and enough per-cluster summary data to avoid re-computing prototypes or
 /// accumulated distances during the merge process.
 pub trait SetLinkage<D: DistanceData<F>, F: Float, Summary = ()> {
+    /// Whether this linkage can produce inversions, i.e. a later merge with a
+    /// smaller distance than an earlier merge.
+    #[allow(unused)]
+    fn can_produce_inversions(&self) -> bool { false }
+
     /// Summary information that is maintained for each cluster throughout the
     /// clustering process.  The summary is expected to encode protocol-specific
     /// prototypes or statistics that are reused when merging or comparing

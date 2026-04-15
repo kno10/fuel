@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::time::Instant;
 
-use common::read_numeric_data;
+use common::{CountingDistance, read_numeric_data};
 use fuel::cluster::hierarchical::extraction::cut_dendrogram_by_number_of_clusters;
 use fuel::cluster::hierarchical::{
     CentroidLinkage, GroupAverageLinkage, MedianLinkage, MergeHistory, MinimumSumSquaresLinkage,
@@ -12,7 +12,10 @@ use fuel::cluster::hierarchical::{
     geometric_nn_chain, incremental_nn_chain, muellner, nn_chain,
 };
 use fuel::distance::SquaredEuclidean;
+use fuel::search::vptree::VPTree;
 use fuel::{CondensedDistanceMatrix, TableWithDistance};
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 
 const USAGE: &str = "usage: cargo run --features benchmark --bin geometric_linkage -- <csv_path> <cluster_count> <algorithm> <linkage>\n    algorithm: geometric_nn_chain|incremental_nn_chain|nn_chain|agnes|anderberg|muellner\n    linkage: average|centroid|median|ward|mivar|mnvar|missq|mnssq";
 
@@ -67,8 +70,9 @@ fn run() -> Result<(), Box<dyn Error>> {
     let algorithm = parse_algorithm(&algorithm_name)?;
     let linkage = parse_linkage(&linkage_name)?;
 
-    let data: TableWithDistance<f64, Vec<f64>, SquaredEuclidean, f64> =
-        TableWithDistance::with_distance(&rows, SquaredEuclidean);
+    let distance = CountingDistance::new(SquaredEuclidean);
+    let data: TableWithDistance<f64, Vec<f64>, CountingDistance<SquaredEuclidean>, f64> =
+        TableWithDistance::with_distance(&rows, distance.clone());
 
     println!("dataset={csv_path}");
     println!("rows={n}");
@@ -90,17 +94,27 @@ fn run() -> Result<(), Box<dyn Error>> {
             LinkageKind::MinimumVariance => geometric_nn_chain(&data, MinimumVarianceLinkage),
             LinkageKind::MinimumSumSquares => geometric_nn_chain(&data, MinimumSumSquaresLinkage),
         },
-        Algorithm::IncrementalNNChain => match linkage {
-            LinkageKind::GroupAverage => incremental_nn_chain(&data, GroupAverageLinkage),
-            LinkageKind::Centroid => incremental_nn_chain(&data, CentroidLinkage),
-            LinkageKind::Median => incremental_nn_chain(&data, MedianLinkage),
-            LinkageKind::Ward => incremental_nn_chain(&data, WardLinkage),
-            LinkageKind::MinimumVarianceIncrease => {
-                incremental_nn_chain(&data, MinimumVarianceIncreaseLinkage)
+        Algorithm::IncrementalNNChain => {
+            let mut rng = StdRng::seed_from_u64(0);
+            let tree = VPTree::new(&data, 10, &mut rng);
+            match linkage {
+                LinkageKind::GroupAverage => {
+                    incremental_nn_chain(&tree, &data, GroupAverageLinkage)
+                }
+                LinkageKind::Centroid => incremental_nn_chain(&tree, &data, CentroidLinkage),
+                LinkageKind::Median => incremental_nn_chain(&tree, &data, MedianLinkage),
+                LinkageKind::Ward => incremental_nn_chain(&tree, &data, WardLinkage),
+                LinkageKind::MinimumVarianceIncrease => {
+                    incremental_nn_chain(&tree, &data, MinimumVarianceIncreaseLinkage)
+                }
+                LinkageKind::MinimumVariance => {
+                    incremental_nn_chain(&tree, &data, MinimumVarianceLinkage)
+                }
+                LinkageKind::MinimumSumSquares => {
+                    incremental_nn_chain(&tree, &data, MinimumSumSquaresLinkage)
+                }
             }
-            LinkageKind::MinimumVariance => incremental_nn_chain(&data, MinimumVarianceLinkage),
-            LinkageKind::MinimumSumSquares => incremental_nn_chain(&data, MinimumSumSquaresLinkage),
-        },
+        }
         Algorithm::NNChain => {
             let condensed = CondensedDistanceMatrix::new_from_data(&data);
             match linkage {
@@ -168,6 +182,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     println!("merge_height_sum={merge_height_sum:.15}");
     println!("last_merge_height={last_merge_height:.15}");
     println!("cluster_sizes={}", format_cluster_sizes(&cluster_sizes));
+    println!("distance_count={}", distance.count());
     println!("time_ms={:.3}", elapsed.as_secs_f64() * 1_000.0);
 
     Ok(())

@@ -87,8 +87,7 @@ where
         let (x, y) = if a > b { (a, b) } else { (b, a) };
         let (cx, cy) = (clustermap[x], clustermap[y]);
         let (size_x, size_y) = (builder.get_size(cx), builder.get_size(cy));
-        let new_id =
-            builder.add(cx.min(cy), linkage.restore_linkage(min_dist, squared), cy.max(cx));
+        let new_id = builder.add(cx.min(cy), linkage.restore(min_dist, squared), cy.max(cx));
 
         let merged_center = {
             let cx = clusters[x].as_ref().expect("x center must exist");
@@ -151,7 +150,10 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let history = geometric_nn_chain(access, GroupAverageLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -164,7 +166,10 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let history = geometric_nn_chain(access, CentroidLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -177,7 +182,10 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let history = geometric_nn_chain(access, MedianLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -190,7 +198,10 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let history = geometric_nn_chain(access, WardLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -203,7 +214,10 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let history = geometric_nn_chain(access, MinimumSumSquaresLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -216,7 +230,10 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let history = geometric_nn_chain(access, MinimumVarianceLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -229,7 +246,10 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let history = geometric_nn_chain(access, MinimumVarianceIncreaseLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }

@@ -625,7 +625,7 @@ mod tests {
     #[test]
     fn clusters_with_noise_quality_regression() {
         use crate::cluster::hierarchical::test::{
-            DATASETS, evaluate_clustering_isize, load_dataset,
+            DATASETS, evaluate_clustering_isize, expected_quality, load_dataset,
         };
         use crate::cluster::hierarchical::{GroupAverageLinkage, WardLinkage, agnes};
         use crate::distance::Euclidean;
@@ -640,22 +640,24 @@ mod tests {
                 "nested_clusters" => agnes(&condensed, WardLinkage),
                 _ => agnes(&condensed, GroupAverageLinkage),
             };
-            let labels = extract_clusters_with_noise(&history, dataset.min_clusters, 2);
+            let labels = extract_clusters_with_noise(&history, dataset.clusters, 2);
             let (ari, nmi) =
                 evaluate_clustering_isize(&labels, &truth, Some(crate::cluster::dbscan::NOISE));
+            let (ref_ari, ref_nmi, _) = expected_quality("HDBSCAN", "hdbscan", dataset.name);
+            let tolerance = 1e-6;
             assert!(
-                ari >= dataset.min_ari,
-                "{} ARI too low: {:.3} < {:.3}",
+                (ari - ref_ari).abs() <= tolerance,
+                "{} ARI differs: {:.12} vs {:.12}",
                 dataset.name,
                 ari,
-                dataset.min_ari
+                ref_ari
             );
             assert!(
-                nmi >= dataset.min_nmi,
-                "{} NMI too low: {:.3} < {:.3}",
+                (nmi - ref_nmi).abs() <= tolerance,
+                "{} NMI differs: {:.12} vs {:.12}",
                 dataset.name,
                 nmi,
-                dataset.min_nmi
+                ref_nmi
             );
         }
     }

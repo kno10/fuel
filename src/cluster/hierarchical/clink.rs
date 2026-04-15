@@ -98,7 +98,10 @@ mod tests {
             |access, min_clusters| {
                 let cm = CondensedDistanceMatrix::new_from_data(access);
                 let history = clink(&cm);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }

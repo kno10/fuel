@@ -15,11 +15,51 @@
 //! SciPy (`pdist` output) except that SciPy uses the upper triangle; users can
 //! simply transpose their indices to convert between the two representations.
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 use crate::cluster::hierarchical::common::{shrink_active_end, triangle_index};
 use crate::cluster::hierarchical::{Builder, Linkage, MergeHistory, idsize};
 use crate::{DistanceData, Float};
 
-// (linkage implementations live in `hierarchical::linkage`)
+/// Build a condensed linkage matrix from pairwise distances.
+///
+/// The returned vector has length `n*(n-1)/2` and stores the lower-triangular
+/// distances for pairs `(x, y)` with `0 <= y < x < n`.
+#[cfg(feature = "parallel")]
+pub(crate) fn build_condensed_linkage_matrix<D, F: Float, L: Linkage<F> + Copy + Sync>(
+    data: &D, linkage: L,
+) -> Vec<F>
+where
+    D: DistanceData<F> + Sync,
+{
+    let n = data.len();
+    let squared = data.is_squared_distance();
+
+    (1..n)
+        .into_par_iter()
+        .flat_map_iter(|x| (0..x).map(move |y| linkage.initial(data.distance(x, y), squared)))
+        .collect()
+}
+
+#[cfg(not(feature = "parallel"))]
+pub(crate) fn build_condensed_linkage_matrix<D, F: Float, L: Linkage<F> + Copy>(
+    data: &D, linkage: L,
+) -> Vec<F>
+where
+    D: DistanceData<F>,
+{
+    let n = data.len();
+    let squared = data.is_squared_distance();
+    let mut mat = Vec::with_capacity(n * (n - 1) / 2);
+    for x in 1..n {
+        for y in 0..x {
+            mat.push(linkage.initial(data.distance(x, y), squared));
+        }
+    }
+    mat
+}
+
 /// Perform the AGNES algorithm on a condensed lower‑triangular distance
 /// matrix.
 ///
@@ -38,21 +78,16 @@ use crate::{DistanceData, Float};
 ///
 /// The function converts the provided condensed matrix into an agglomerative
 /// merge history and will `panic!` when the preconditions above are violated.
-pub fn agnes<D, F: Float, L: Linkage<F> + Copy>(data: &D, linkage: L) -> MergeHistory<F>
+pub fn agnes<D, F: Float, L: Linkage<F> + Copy + Sync>(data: &D, linkage: L) -> MergeHistory<F>
 where
-    D: DistanceData<F>,
+    D: DistanceData<F> + Sync,
 {
     let n = data.len();
     assert!(n > 0, "number of points must be positive");
 
     let mut builder = Builder::<F>::new(n);
     let squared = data.is_squared_distance();
-    let mut mat = Vec::with_capacity(n * (n - 1) / 2);
-    for x in 1..n {
-        for y in 0..x {
-            mat.push(linkage.initial(data.distance(x, y), squared));
-        }
-    }
+    let mut mat = build_condensed_linkage_matrix(data, linkage);
     let mut clustermap: Vec<idsize> = (0..(n as idsize)).collect();
     let mut heights = vec![F::zero(); n];
     let mut end = n; // active end, we use shrinking
@@ -169,7 +204,10 @@ mod tests {
     fn agnes_group_average_regression() {
         test_clustering_condensed("AGNES", "average", Euclidean, |condensed, min_clusters| {
             let history = agnes(condensed, GroupAverageLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -181,7 +219,10 @@ mod tests {
             Euclidean,
             |condensed, min_clusters| {
                 let history = agnes(condensed, WeightedAverageLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -194,7 +235,10 @@ mod tests {
             SquaredEuclidean,
             |condensed, min_clusters| {
                 let history = agnes(condensed, CentroidLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -207,7 +251,10 @@ mod tests {
             SquaredEuclidean,
             |condensed, min_clusters| {
                 let history = agnes(condensed, MedianLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -216,7 +263,10 @@ mod tests {
     fn agnes_complete_regression() {
         test_clustering_condensed("AGNES", "complete", Euclidean, |condensed, min_clusters| {
             let history = agnes(condensed, CompleteLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -224,7 +274,10 @@ mod tests {
     fn agnes_single_regression() {
         test_clustering_condensed("AGNES", "single", Euclidean, |condensed, min_clusters| {
             let history = agnes(condensed, SingleLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -232,7 +285,10 @@ mod tests {
     fn agnes_flexible_beta_regression() {
         test_clustering_condensed("AGNES", "flexible", Euclidean, |condensed, min_clusters| {
             let history = agnes(condensed, FlexibleBetaLinkage::new(-0.25));
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -240,7 +296,10 @@ mod tests {
     fn agnes_ward_regression() {
         test_clustering_condensed("AGNES", "ward", SquaredEuclidean, |condensed, min_clusters| {
             let history = agnes(condensed, WardLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -248,7 +307,10 @@ mod tests {
     fn agnes_minimum_variance_increase_regression() {
         test_clustering_condensed("AGNES", "mivar", Euclidean, |condensed, min_clusters| {
             let history = agnes(condensed, MinimumVarianceIncreaseLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -256,7 +318,10 @@ mod tests {
     fn agnes_minimum_sum_squares_regression() {
         test_clustering_condensed("AGNES", "mnssq", Euclidean, |condensed, min_clusters| {
             let history = agnes(condensed, MinimumSumSquaresLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -264,7 +329,10 @@ mod tests {
     fn agnes_minimum_variance_regression() {
         test_clustering_condensed("AGNES", "mnvar", Euclidean, |condensed, min_clusters| {
             let history = agnes(condensed, MinimumVarianceLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 }

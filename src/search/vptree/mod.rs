@@ -39,6 +39,14 @@ where
     F: Float,
 {
     pub fn new(tree: &'a VPTree<F>) -> Self { Self { inner: PrioritySearcher::new(tree) } }
+
+    pub fn reset_with_limits(&mut self, cutoff: F, skip: F) {
+        self.inner.reset_with_limits(cutoff, skip);
+    }
+
+    pub fn all_lower_bound(&self) -> F { self.inner.all_lower_bound() }
+
+    pub fn decrease_cutoff(&mut self, threshold: F) { self.inner.decrease_cutoff(threshold); }
 }
 
 impl<'a, F, Q> crate::PrioritySearcher<F, Q> for VPTreePrioritySearcher<'a, F>

@@ -61,6 +61,8 @@ impl<F: Float> GeometricLinkage<F> for MinimumVarianceIncreaseLinkage {
 }
 
 impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, F> for MinimumVarianceIncreaseLinkage {
+    fn can_produce_inversions(&self) -> bool { true }
+
     fn summarize(data: &D, members: &[idsize]) -> F {
         if members.len() <= 1 {
             return F::zero();

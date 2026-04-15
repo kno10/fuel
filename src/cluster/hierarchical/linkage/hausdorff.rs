@@ -4,6 +4,8 @@ use crate::{DistanceData, Float};
 /// Hausdorff linkage based on the directed-maximum definition.
 pub struct HausdorffLinkage;
 impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for HausdorffLinkage {
+    fn can_produce_inversions(&self) -> bool { true }
+
     fn summarize(_data: &D, _members: &[idsize]) {}
 
     fn cluster_distance(

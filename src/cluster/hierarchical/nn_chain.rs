@@ -1,3 +1,4 @@
+use crate::cluster::hierarchical::agnes::build_condensed_linkage_matrix;
 use crate::cluster::hierarchical::common::{
     condensed_get, condensed_set, find_active, shrink_active_end,
 };
@@ -9,21 +10,16 @@ use crate::{DistanceData, Float};
 /// Input and output conventions are the same as [`crate::cluster::hierarchical::agnes`].
 /// The input matrix uses lower-triangular condensed indexing.
 #[must_use]
-pub fn nn_chain<D, F: Float, L: Linkage<F> + Copy>(data: &D, linkage: L) -> MergeHistory<F>
+pub fn nn_chain<D, F: Float, L: Linkage<F> + Copy + Sync>(data: &D, linkage: L) -> MergeHistory<F>
 where
-    D: DistanceData<F>,
+    D: DistanceData<F> + Sync,
 {
     let n = data.len();
     assert!(n > 0, "number of points must be positive");
 
     let mut builder = Builder::<F>::new(n);
     let squared = data.is_squared_distance();
-    let mut mat = Vec::with_capacity(n * (n - 1) / 2);
-    for x in 1..n {
-        for y in 0..x {
-            mat.push(linkage.initial(data.distance(x, y), squared));
-        }
-    }
+    let mut mat = build_condensed_linkage_matrix(data, linkage);
     let mut clustermap: Vec<idsize> = (0..(n as idsize)).collect();
     let mut heights = vec![F::zero(); n];
     let mut end = n;
@@ -137,7 +133,10 @@ mod tests {
     fn nn_chain_average_regression() {
         test_clustering_condensed("NNChain", "average", Euclidean, |condensed, min_clusters| {
             let history = nn_chain(condensed, GroupAverageLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -145,7 +144,10 @@ mod tests {
     fn nn_chain_complete_regression() {
         test_clustering_condensed("NNChain", "complete", Euclidean, |condensed, min_clusters| {
             let history = nn_chain(condensed, CompleteLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -153,7 +155,10 @@ mod tests {
     fn nn_chain_single_regression() {
         test_clustering_condensed("NNChain", "single", Euclidean, |condensed, min_clusters| {
             let history = nn_chain(condensed, SingleLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -165,7 +170,10 @@ mod tests {
             SquaredEuclidean,
             |condensed, min_clusters| {
                 let history = nn_chain(condensed, WardLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -174,7 +182,10 @@ mod tests {
     fn nn_chain_minimum_variance_increase_regression() {
         test_clustering_condensed("NNChain", "mivar", Euclidean, |condensed, min_clusters| {
             let history = nn_chain(condensed, MinimumVarianceIncreaseLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -182,7 +193,10 @@ mod tests {
     fn nn_chain_minimum_sum_squares_regression() {
         test_clustering_condensed("NNChain", "mnssq", Euclidean, |condensed, min_clusters| {
             let history = nn_chain(condensed, MinimumSumSquaresLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -190,7 +204,10 @@ mod tests {
     fn nn_chain_minimum_variance_regression() {
         test_clustering_condensed("NNChain", "mnvar", Euclidean, |condensed, min_clusters| {
             let history = nn_chain(condensed, MinimumVarianceLinkage);
-            cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+            {
+                let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                (labels, history.last().unwrap().distance)
+            }
         });
     }
 
@@ -202,7 +219,10 @@ mod tests {
             SquaredEuclidean,
             |condensed, min_clusters| {
                 let history = nn_chain(condensed, CentroidLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -215,7 +235,10 @@ mod tests {
             SquaredEuclidean,
             |condensed, min_clusters| {
                 let history = nn_chain(condensed, MedianLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }
@@ -228,7 +251,10 @@ mod tests {
             Euclidean,
             |condensed, min_clusters| {
                 let history = nn_chain(condensed, WeightedAverageLinkage);
-                cut_dendrogram_by_number_of_clusters(&history, min_clusters)
+                {
+                    let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
+                    (labels, history.last().unwrap().distance)
+                }
             },
         );
     }

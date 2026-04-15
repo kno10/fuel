@@ -36,11 +36,7 @@ impl<F: Float> GeometricLinkage<F> for WardLinkage {
             let diff = *xi - *yi;
             sum += diff * diff;
         }
-        F::half() * sx * sy / (sx + sy) * sum
-    }
-
-    fn restore_linkage(&self, d: F, issquare: bool) -> F {
-        if issquare { F::four() * d } else { F::two() * d.sqrt() }
+        sx * sy / (sx + sy) * sum
     }
 
     fn cutoff_factor(&self, size_a: usize) -> F {
