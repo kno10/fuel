@@ -2,7 +2,12 @@ use crate::cluster::hierarchical::linkage::ward::{cross_squared_sum, pairwise_sq
 use crate::cluster::hierarchical::{GeometricLinkage, Linkage, SetLinkage, idsize};
 use crate::{DistanceData, Float};
 
-/// Minimum variance linkage (MIVAR).
+/// Minimum variance increase linkage (MIVAR).
+///
+/// This variant applies a corrected clustering objective and can produce
+/// inversions.
+/// It supports stored-matrix algorithms as well as geometric and set-based
+/// approaches.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct MinimumVarianceIncreaseLinkage;
 

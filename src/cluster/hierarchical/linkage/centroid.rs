@@ -1,7 +1,11 @@
 /// Centroid linkage (UPGMC).
 ///
-/// Uses cluster sizes in the Lance–Williams formula and corresponds to the
+/// Uses cluster sizes in the Lance-Williams formula and corresponds to the
 /// squared distance between cluster centroids when using Euclidean distance.
+/// The recurrence is:
+/// $\frac{n_x d_x + n_y d_y - \frac{n_x n_y}{n_x + n_y} d_{xy}}{n_x + n_y}$.
+/// This method can produce inversions.
+/// It supports stored-matrix algorithms and geometric stored-data approaches.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct CentroidLinkage;
 

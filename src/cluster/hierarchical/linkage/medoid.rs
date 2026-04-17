@@ -1,8 +1,11 @@
 use crate::cluster::hierarchical::{SetLinkage, idsize};
 use crate::{DistanceData, Float};
 
-/// Distance/prototype for medoid linkage.  The prototype is the medoid of the
-/// union of the two clusters.  Linkage distance is the distance between the two medoids.  This is a
+/// Distance/prototype for medoid linkage.
+///
+/// The prototype is the medoid of the union of the two clusters.  The linkage
+/// distance is the distance between the two medoids.
+/// This method is only implemented as a set-based linkage.
 pub struct MedoidLinkage;
 impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, idsize> for MedoidLinkage {
     fn summarize(data: &D, members: &[idsize]) -> idsize {

@@ -2,6 +2,11 @@ use crate::cluster::hierarchical::{SetLinkage, idsize};
 use crate::{DistanceData, Float};
 
 /// Hausdorff linkage based on the directed-maximum definition.
+///
+/// The linkage is the Hausdorff distance between clusters:
+/// $\max\{ \max_{x\in X} \min_{y\in Y} d(x,y),\ \max_{y\in Y} \min_{x\in X} d(x,y) \}$.
+/// This method can produce inversions and is only implemented as a set-based
+/// linkage.
 pub struct HausdorffLinkage;
 impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, ()> for HausdorffLinkage {
     fn can_produce_inversions(&self) -> bool { true }

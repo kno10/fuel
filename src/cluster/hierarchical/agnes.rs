@@ -1,16 +1,22 @@
 //! Agglomerative hierarchical clustering (AGNES) ported from the old Java
 //! code base.  The algorithm works on a *condensed* distance matrix (the
 //! strictly triangular part, stored as a contiguous slice) and supports a
-//! variety of Lance–Williams linkage criteria.  The output format is the same
-//! as `scipy.cluster.hierarchy.linkage`: a sequence of `(i, j, dist, size)`
-//! quadruples where `i` and `j` are cluster identifiers (original points have
-//! ids `0..n-1`, newly merged clusters are assigned `n..` in merge order),
-//! `dist` is the merge distance, and `size` is the number of original points in
-//! the newly created cluster.
+//! variety of Lance-Williams linkage criteria.
+//!
+//! This is the baseline stored-matrix implementation in the library.  It
+//! performs the generic O(n^3) merge process over the full condensed matrix
+//! and is the reference against which NN-cache and heap-based optimizations
+//! are compared.
+//!
+//! The output format is the same as `scipy.cluster.hierarchy.linkage`: a
+//! sequence of `(i, j, dist, size)` quadruples where `i` and `j` are cluster
+//! identifiers (original points have ids `0..n-1`, newly merged clusters are
+//! assigned `n..` in merge order), `dist` is the merge distance, and `size` is
+//! the number of original points in the newly created cluster.
 //!
 //! The input matrix is assumed to encode distances for pairs `(p,q)` with
 //! `0 <= q < p < n`.  The index of such a pair in the slice is
-//! `p*(p-1)/2 + q` which corresponds to the lower‑triangular ordering used by
+//! `p*(p-1)/2 + q` which corresponds to the lower-triangular ordering used by
 //! the Java implementation.  This is equivalent to the condensed form used by
 //! SciPy (`pdist` output) except that SciPy uses the upper triangle; users can
 //! simply transpose their indices to convert between the two representations.
@@ -60,14 +66,14 @@ where
     mat
 }
 
-/// Perform the AGNES algorithm on a condensed lower‑triangular distance
+/// Perform the AGNES algorithm on a condensed lower-triangular distance
 /// matrix.
 ///
 /// - `distances` must have length `n*(n-1)/2` and encode the pairwise
 ///   distances for `(p,q)` with `0 <= q < p < n` in row-major order
 ///   (`triangle_index(p,q)`).
 /// - `n` is the number of original objects.
-/// - `linkage` selects the Lance–Williams linkage criterion to use.
+/// - `linkage` selects the Lance-Williams linkage criterion to use.
 ///
 /// Returns a `MergeHistory` in `SciPy` linkage format.
 ///

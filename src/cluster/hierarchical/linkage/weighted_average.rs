@@ -1,4 +1,9 @@
 /// Weighted average linkage (WPGMA).
+///
+/// The cluster recurrence is the unweighted average of the two distances:
+/// $\frac{dx + dy}{2}$.
+/// This method never produces inversions and is supported by stored-matrix
+/// algorithms.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct WeightedAverageLinkage;
 

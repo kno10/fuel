@@ -1,4 +1,11 @@
 /// Group-average linkage (UPGMA).
+///
+/// The cluster distance is defined as the average pairwise distance between
+/// clusters:
+/// $\frac{n_x d_x + n_y d_y}{n_x + n_y}$.
+/// This method never produces inversions.
+/// It supports stored-matrix algorithms, geometric stored-data approaches,
+/// and set-based implementations.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct GroupAverageLinkage;
 

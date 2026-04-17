@@ -9,7 +9,7 @@ use fuel::cluster::hierarchical::extraction::cut_dendrogram_by_number_of_cluster
 use fuel::cluster::hierarchical::{
     CentroidLinkage, GroupAverageLinkage, MedianLinkage, MergeHistory, MinimumSumSquaresLinkage,
     MinimumVarianceIncreaseLinkage, MinimumVarianceLinkage, WardLinkage, agnes, anderberg,
-    geometric_nn_chain, incremental_nn_chain, muellner, nn_chain,
+    geometric_nn_chain, incremental_nn_chain, muellner, nn_chain, set_muellner,
 };
 use fuel::distance::SquaredEuclidean;
 use fuel::search::vptree::VPTree;
@@ -17,7 +17,7 @@ use fuel::{CondensedDistanceMatrix, TableWithDistance};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-const USAGE: &str = "usage: cargo run --features benchmark --bin geometric_linkage -- <csv_path> <cluster_count> <algorithm> <linkage>\n    algorithm: geometric_nn_chain|incremental_nn_chain|nn_chain|agnes|anderberg|muellner\n    linkage: average|centroid|median|ward|mivar|mnvar|missq|mnssq";
+const USAGE: &str = "usage: cargo run --features benchmark --bin geometric_linkage -- <csv_path> <cluster_count> <algorithm> <linkage>\n    algorithm: geometric_nn_chain|incremental_nn_chain|nn_chain|agnes|anderberg|muellner|set_muellner\n    linkage: average|centroid|median|ward|mivar|mnvar|missq|mnssq";
 
 #[derive(Clone, Copy, Debug)]
 enum Algorithm {
@@ -27,6 +27,7 @@ enum Algorithm {
     Agnes,
     Anderberg,
     Muellner,
+    SetMuellner,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -171,6 +172,18 @@ fn run() -> Result<(), Box<dyn Error>> {
                 LinkageKind::MinimumSumSquares => muellner(&condensed, MinimumSumSquaresLinkage),
             }
         }
+        Algorithm::SetMuellner => match linkage {
+            LinkageKind::GroupAverage => set_muellner::<_, GroupAverageLinkage, _, _>(&data),
+            LinkageKind::Ward => set_muellner::<_, WardLinkage, _, _>(&data),
+            LinkageKind::MinimumVarianceIncrease => {
+                set_muellner::<_, MinimumVarianceIncreaseLinkage, _, _>(&data)
+            }
+            LinkageKind::MinimumVariance => set_muellner::<_, MinimumVarianceLinkage, _, _>(&data),
+            LinkageKind::MinimumSumSquares => {
+                set_muellner::<_, MinimumSumSquaresLinkage, _, _>(&data)
+            }
+            _ => panic!("set_muellner does not support the chosen linkage"),
+        },
     };
     let elapsed = start.elapsed();
 
@@ -198,6 +211,7 @@ fn parse_algorithm(name: &str) -> Result<Algorithm, Box<dyn Error>> {
         "agnes" => Ok(Algorithm::Agnes),
         "anderberg" => Ok(Algorithm::Anderberg),
         "muellner" => Ok(Algorithm::Muellner),
+        "set_muellner" | "set-muellner" | "setmuellner" => Ok(Algorithm::SetMuellner),
         _ => Err(format!("unknown algorithm: {name}").into()),
     }
 }

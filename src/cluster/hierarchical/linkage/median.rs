@@ -1,4 +1,9 @@
 /// Median linkage (WPGMC).
+///
+/// The recurrence is:
+/// $\frac{dx + dy}{2} - \frac{d_{xy}}{4}$.
+/// This method can produce inversions and supports stored-matrix algorithms
+/// with geometric stored-data centroid merging.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct MedianLinkage;
 

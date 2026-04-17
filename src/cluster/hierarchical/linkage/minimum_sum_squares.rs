@@ -6,6 +6,10 @@ use crate::{DistanceData, Float};
 ///
 /// This global objective is defined by the sum of squared deviations of the
 /// merged cluster around its centroid.
+/// The recurrence is equivalent to updating the within-cluster squared error
+/// for the merged cluster.
+/// This method is supported by stored-matrix algorithms, geometric stored-data
+/// approaches, and set-based implementations.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct MinimumSumSquaresLinkage;
 

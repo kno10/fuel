@@ -1,3 +1,13 @@
+//! Anderberg's nearest-neighbor accelerated agglomerative clustering.
+//!
+//! This method is a nearest-neighbor cache specialization of `AGNES`.  It
+//! maintains a current best neighbor for each active cluster and updates only
+//! the affected entries after each merge.
+//!
+//! Compared to plain `AGNES`, it avoids repeated full scans of the condensed
+//! distance matrix, but it still relies on an explicit stored matrix and the
+//! generic Lance-Williams recurrence.
+
 use crate::cluster::hierarchical::agnes::build_condensed_linkage_matrix;
 use crate::cluster::hierarchical::common::{
     condensed_get, condensed_set, shrink_active_end, triangle_index,
@@ -5,21 +15,21 @@ use crate::cluster::hierarchical::common::{
 use crate::cluster::hierarchical::{Builder, Linkage, MergeHistory, idsize};
 use crate::{DistanceData, Float};
 
-fn find_best<F: Float>(distances: &[F], clustermap: &[idsize], best: &mut [(F, usize)], j: usize) {
-    let mut best_pair = (F::infinity(), usize::MAX);
+fn find_best<F: Float>(distances: &[F], clustermap: &[idsize], best: &mut [(F, idsize)], j: usize) {
+    let mut best_pair = (F::infinity(), idsize::MAX);
     for i in 0..j {
         if clustermap[i] == idsize::MAX {
             continue;
         }
         let d = distances[triangle_index(j, i)];
         if d <= best_pair.0 {
-            best_pair = (d, i);
+            best_pair = (d, i as idsize);
         }
     }
     best[j] = best_pair;
 }
 
-fn initialize_nn_cache<F: Float>(distances: &[F], clustermap: &[idsize], best: &mut [(F, usize)]) {
+fn initialize_nn_cache<F: Float>(distances: &[F], clustermap: &[idsize], best: &mut [(F, idsize)]) {
     for x in 1..best.len() {
         if clustermap[x] != idsize::MAX {
             find_best(distances, clustermap, best, x);
@@ -33,7 +43,7 @@ pub(crate) struct AnderbergState<F: Float> {
     pub(crate) clustermap: Vec<idsize>,
     pub(crate) heights: Vec<F>,
     pub(crate) builder: Builder<F>,
-    pub(crate) best: Vec<(F, usize)>,
+    pub(crate) best: Vec<(F, idsize)>,
     pub(crate) end: usize,
 }
 
@@ -42,7 +52,7 @@ impl<F: Float> AnderbergState<F> {
         let clustermap: Vec<idsize> = (0..(n as idsize)).collect();
         let heights = vec![F::zero(); n];
         let builder = Builder::<F>::new(n);
-        let mut best = vec![(F::infinity(), usize::MAX); n];
+        let mut best = vec![(F::infinity(), idsize::MAX); n];
         initialize_nn_cache(&mat, &clustermap, &mut best);
         Self { mat, clustermap, heights, builder, best, end: n }
     }
@@ -53,11 +63,12 @@ impl<F: Float> AnderbergState<F> {
     pub(crate) fn find_merge(&self) -> (F, usize, usize) {
         let mut be = (F::infinity(), usize::MAX, usize::MAX);
         for cx in 1..self.end {
-            if self.clustermap[cx] == idsize::MAX || self.best[cx].1 == usize::MAX {
+            if self.clustermap[cx] == idsize::MAX || self.best[cx].1 == idsize::MAX {
                 continue;
             }
+            let cy = self.best[cx].1 as usize;
             if self.best[cx].0 <= be.0 {
-                be = (self.best[cx].0, cx, self.best[cx].1);
+                be = (self.best[cx].0, cx, cy);
             }
         }
         assert!(be.1 != usize::MAX, "no merge candidate found");
@@ -65,7 +76,7 @@ impl<F: Float> AnderbergState<F> {
     }
 
     /// Record the merge of clusters at positions x and y.
-    /// Returns `(size_x, size_y)` — cluster sizes before the merge.
+    /// Returns `(size_x, size_y)` - cluster sizes before the merge.
     pub(crate) fn commit_merge(
         &mut self, x: usize, y: usize, dist: F, prototype: usize,
     ) -> (usize, usize) {
@@ -74,7 +85,7 @@ impl<F: Float> AnderbergState<F> {
         let (a, b) = if cid_y <= cid_x { (cid_y, cid_x) } else { (cid_x, cid_y) };
         self.clustermap[y] = self.builder.add_with_prototype(a, dist, b, prototype);
         self.clustermap[x] = idsize::MAX;
-        self.best[x] = (F::infinity(), usize::MAX);
+        self.best[x] = (F::infinity(), idsize::MAX);
         if x == self.end - 1 {
             shrink_active_end(&self.clustermap, &mut self.end);
         }
@@ -88,7 +99,7 @@ impl<F: Float> AnderbergState<F> {
         mut on_update: OnUpdate,
     ) where
         L: Linkage<F> + Copy,
-        OnUpdate: FnMut(&mut [(F, usize)], usize),
+        OnUpdate: FnMut(&mut [(F, idsize)], usize),
     {
         for j in 0..self.end {
             if j == x || j == y || self.clustermap[j] == idsize::MAX {
@@ -111,10 +122,10 @@ impl<F: Float> AnderbergState<F> {
 
     fn update_best(&mut self, x: usize, y: usize, j: usize, d: F) -> bool {
         if y < j && d <= self.best[j].0 {
-            self.best[j] = (d, y);
+            self.best[j] = (d, y as idsize);
             return true;
         }
-        if self.best[j].1 == x || self.best[j].1 == y {
+        if self.best[j].1 == x as idsize || self.best[j].1 == y as idsize {
             let old = self.best[j];
             find_best(&self.mat, &self.clustermap, &mut self.best, j);
             return self.best[j] != old;

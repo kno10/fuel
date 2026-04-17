@@ -1,3 +1,17 @@
+//! Nearest-neighbor chain clustering on condensed distance matrices.
+//!
+//! This algorithm grows a chain of nearest neighbors and closes the chain when
+//! it returns to a previous cluster.  It avoids scanning all active pairs for
+//! every merge, which can make it faster for some linkages.
+//!
+//! On linkages that permit inversions, the NN-chain heuristic may produce a
+//! different merge order than strict agglomerative clustering, because the
+//! chain closure does not always select the globally minimal active pair.
+//!
+//! Results should therefore be compared carefully for linkages such as
+//! `CentroidLinkage` and `MedianLinkage` that are not guaranteed to be
+//! reducible.
+
 use crate::cluster::hierarchical::agnes::build_condensed_linkage_matrix;
 use crate::cluster::hierarchical::common::{
     condensed_get, condensed_set, find_active, shrink_active_end,

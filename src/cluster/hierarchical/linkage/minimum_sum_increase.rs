@@ -4,9 +4,11 @@ use crate::{DistanceData, Float};
 /// Variant of minimum-sum linkage used by HACAM that later applies an
 /// additional "total distance" correction during the merge algorithm.
 ///
+/// This linkage originates from hierarchical clustering around medoids (HACAM).
 /// The raw distance/prototype computation is identical to
-/// [`MinimumSumLinkage`]; the increase is handled by subtracting the
-/// component totals stored in the cluster summaries.
+/// [`MinimumSumLinkage`]; the merge distance is corrected by subtracting the
+/// stored intra-cluster totals, similar to Ward's method.
+/// This method is only implemented as a set-based linkage.
 pub struct MinimumSumIncreaseLinkage;
 
 impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, (F, idsize)> for MinimumSumIncreaseLinkage {

@@ -1,3 +1,13 @@
+//! Incremental nearest-neighbor chain clustering with spatial searchers.
+//!
+//! This implementation uses `PrioritySearcher` structures to locate candidate
+//! cluster centers and is designed for geometric stored-data linkages.
+//!
+//! Because the algorithm depends on search bounds, it may not be strict for
+//! linkages such as `CentroidLinkage` and `MedianLinkage`.  In these cases the
+//! algorithm can accept a non-optimal chain closure and thus diverge from the
+//! strict agglomerative ordering.
+
 use crate::api::{PrioritySearcher, PrioritySearcherFactory};
 use crate::cluster::hierarchical::common::UnionFind;
 use crate::cluster::hierarchical::{Builder, GeometricLinkage, MergeHistory, idsize};

@@ -1,4 +1,10 @@
 /// Flexible-beta linkage with parameter β.
+///
+/// The recurrence is defined by
+/// $\alpha dx + \alpha dy + \beta d_{xy}$ with
+/// $\alpha = \frac{1-\beta}{2}$.
+/// This method produces inversions when $\beta < 0$ and is supported by
+/// stored-matrix algorithms.
 use crate::Float;
 
 #[derive(Clone, Copy, Debug)]

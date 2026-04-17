@@ -1,39 +1,17 @@
-use std::cmp::Ordering;
-use std::collections::BinaryHeap;
+//! Müllner's generic-linkage algorithm with heap-backed candidate selection.
+//!
+//! This approach is built on top of the Anderberg nearest-neighbor cache and
+//! adds a priority heap for candidate retrieval.  It is typically faster than
+//! plain `Anderberg` for many linkages because it avoids repeated scans of the
+//! full nearest-neighbor cache during merge selection.
+//!
+//! `Müllner` can be understood as a refinement of `Anderberg`, which itself is
+//! a nearest-neighbor accelerated variant of `AGNES`.
 
 use crate::cluster::hierarchical::agnes::build_condensed_linkage_matrix;
 use crate::cluster::hierarchical::anderberg::AnderbergState;
 use crate::cluster::hierarchical::{Linkage, MergeHistory, idsize};
-use crate::{DistanceData, Float};
-
-#[derive(Clone, Copy, Debug)]
-struct HeapEntry<F: Float> {
-    dist: F,
-    x: usize,
-    y: usize,
-}
-
-impl<F: Float> PartialEq for HeapEntry<F> {
-    fn eq(&self, other: &Self) -> bool {
-        self.dist == other.dist && self.x == other.x && self.y == other.y
-    }
-}
-
-impl<F: Float> Eq for HeapEntry<F> {}
-
-impl<F: Float> PartialOrd for HeapEntry<F> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
-}
-
-impl<F: Float> Ord for HeapEntry<F> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match self.dist.partial_cmp(&other.dist).unwrap_or(Ordering::Equal) {
-            Ordering::Less => Ordering::Greater,
-            Ordering::Greater => Ordering::Less,
-            Ordering::Equal => self.x.cmp(&other.x).then_with(|| self.y.cmp(&other.y)),
-        }
-    }
-}
+use crate::{CandidateHeap, DistPair, DistanceData, Float};
 
 /// Perform hierarchical clustering using Müllner's generic-linkage approach
 /// with an Anderberg nearest-neighbor cache and a heap for candidate retrieval.
@@ -48,48 +26,51 @@ where
     let mat = build_condensed_linkage_matrix(data, linkage);
     let mut state = AnderbergState::new(mat, n);
 
-    let mut heap = BinaryHeap::with_capacity(n);
+    let mut heap = CandidateHeap::<F>::with_capacity(n);
     for x in 1..state.n() {
-        push_candidate(&mut heap, &state.best, x);
+        push_candidate(&mut heap, &state.best, x as idsize);
     }
 
     for _ in 1..n {
         let (mindist, x, y) = pop_valid_merge(&mut heap, &state.best, &state.clustermap);
+        let (x, y) = (x as usize, y as usize);
         let restored = linkage.restore(mindist, squared);
         let (size_x, size_y) = state.commit_merge(x, y, restored, usize::MAX);
         state.update_lw(linkage, mindist, x, y, size_x, size_y, |best, j| {
-            push_candidate(&mut heap, best, j);
+            push_candidate(&mut heap, best, j as idsize);
         });
         state.heights[y] = mindist;
         state.heights[x] = F::nan();
         state.refresh_best(y);
-        push_candidate(&mut heap, &state.best, y);
+        push_candidate(&mut heap, &state.best, y as idsize);
     }
 
     state.builder.into_merges()
 }
 
-fn push_candidate<F: Float>(heap: &mut BinaryHeap<HeapEntry<F>>, best: &[(F, usize)], x: usize) {
-    let y = best[x].1;
-    if y != usize::MAX {
-        heap.push(HeapEntry { dist: best[x].0, x, y });
+fn push_candidate<F: Float>(heap: &mut CandidateHeap<F>, best: &[(F, idsize)], x: idsize) {
+    let y = best[x as usize].1;
+    if y != idsize::MAX {
+        heap.push(DistPair::new(best[x as usize].0, x as usize));
     }
 }
 
 fn pop_valid_merge<F: Float>(
-    heap: &mut BinaryHeap<HeapEntry<F>>, best: &[(F, usize)], clustermap: &[idsize],
-) -> (F, usize, usize) {
+    heap: &mut CandidateHeap<F>, best: &[(F, idsize)], clustermap: &[idsize],
+) -> (F, idsize, idsize) {
     while let Some(entry) = heap.pop() {
-        if entry.y == usize::MAX
-            || clustermap[entry.x] == idsize::MAX
-            || clustermap[entry.y] == idsize::MAX
-        {
+        let x = entry.index as idsize;
+        if clustermap[x as usize] == idsize::MAX {
             continue;
         }
-        if best[entry.x].1 != entry.y || best[entry.x].0 != entry.dist {
+        if best[x as usize].0 != entry.distance {
             continue;
         }
-        return (entry.dist, entry.x.max(entry.y), entry.x.min(entry.y));
+        let y = best[x as usize].1;
+        if y == idsize::MAX || clustermap[y as usize] == idsize::MAX {
+            continue;
+        }
+        return (entry.distance, x.max(y), x.min(y));
     }
 
     panic!("no merge candidate found");

@@ -1,3 +1,13 @@
+//! Geometric nearest-neighbor chain clustering using stored-data centroids.
+//!
+//! This variant is a stored-data approach for vector data and squared Euclidean
+//! linkage functions.  It avoids the full condensed distance matrix by
+//! maintaining only cluster centres and merge heights.
+//!
+//! Because it relies on centroid merging and the König-Huygens identity, it is
+//! only suitable for geometric linkages such as `CentroidLinkage`,
+//! `GroupAverageLinkage`, `WardLinkage`, and similar centroid-based methods.
+
 use crate::cluster::hierarchical::common::{find_active, shrink_active_end};
 use crate::cluster::hierarchical::{Builder, GeometricLinkage, MergeHistory, idsize};
 use crate::{DistanceData, Float};

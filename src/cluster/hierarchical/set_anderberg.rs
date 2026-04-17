@@ -1,3 +1,10 @@
+//! Set-based Anderberg clustering with a nearest-neighbor cache.
+//!
+//! This method combines the set-based `SetLinkage` abstraction with the
+//! Anderberg nearest-neighbor acceleration.  It is suitable for linkages that
+//! require explicit cluster membership and summary statistics, while still
+//! limiting the amount of work performed after each merge.
+
 use crate::cluster::hierarchical::anderberg::AnderbergState;
 use crate::cluster::hierarchical::common::{
     initialize_set_clusters, set_update_cache, triangle_index, update_set_entry,
@@ -54,7 +61,7 @@ fn update_matrices<D, L, F, S>(
                 continue;
             }
             update_set_entry::<D, L, F, S>(data, &mut state.mat, members, summaries, y, b);
-            set_update_cache::<F>(
+            let _ = set_update_cache::<F>(
                 &state.mat,
                 &state.clustermap,
                 &mut state.best,
@@ -72,7 +79,7 @@ fn update_matrices<D, L, F, S>(
         }
         update_set_entry::<D, L, F, S>(data, &mut state.mat, members, summaries, a, y);
         let d = state.mat[triangle_index(a, y)];
-        set_update_cache::<F>(&state.mat, &state.clustermap, &mut state.best, x, y, a, d);
+        let _ = set_update_cache::<F>(&state.mat, &state.clustermap, &mut state.best, x, y, a, d);
     }
 }
 

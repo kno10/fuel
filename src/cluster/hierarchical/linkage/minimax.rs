@@ -1,6 +1,12 @@
 use crate::cluster::hierarchical::{SetLinkage, idsize};
 use crate::{DistanceData, Float};
 
+/// Minimax linkage selects a prototype minimizing the maximum distance to
+/// all points in the merged cluster.
+///
+/// The merged distance is
+/// $\min_{z\in X\cup Y}\max(\max_{x\in X} d(z,x),\ \max_{y\in Y} d(z,y))$.
+/// This method is only implemented as a set-based linkage.
 pub struct MinimaxLinkage;
 impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, idsize> for MinimaxLinkage {
     fn summarize(data: &D, members: &[idsize]) -> idsize {

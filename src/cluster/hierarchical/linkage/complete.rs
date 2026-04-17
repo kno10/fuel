@@ -1,4 +1,9 @@
 /// Complete-linkage criterion (maximum distance).
+///
+/// The cluster distance is defined as
+/// $\max_{i\in X, j\in Y} d(i, j)$.
+/// This method never produces inversions.
+/// It is supported both by stored-matrix algorithms and as a set-based linkage.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct CompleteLinkage;
 

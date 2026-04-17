@@ -1,10 +1,17 @@
+//! Set-based NN-chain clustering using explicit membership and linkage
+//! summaries.
+//!
+//! This is the set-based counterpart of `NNChain`, useful when the linkage
+//! criterion cannot be expressed purely as a generic Lance-Williams update.
+//! It may still exhibit different results on linkages with inversions.
+
 use crate::cluster::hierarchical::common::{
     condensed_get, find_active, initialize_set_clusters, shrink_active_end, update_set_entry,
 };
 use crate::cluster::hierarchical::{Builder, MergeHistory, SetLinkage, idsize};
 use crate::{DistanceData, Float};
 
-/// Nearest‑neighbor chain heuristic agglomeration using an arbitrary set‑based
+/// Nearest-neighbor chain heuristic agglomeration using an arbitrary set-based
 /// linkage criterion.
 #[must_use]
 pub fn set_nn_chain<D, L, F, S>(data: &D) -> MergeHistory<F>

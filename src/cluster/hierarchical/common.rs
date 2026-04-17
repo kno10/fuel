@@ -1,8 +1,9 @@
-//! Helper utilities used by the AGNES implementation.
+//! Shared helper utilities for hierarchical clustering algorithms.
 //!
-//! The algorithm relies on a small helper for building the merge history
-//! while tracking cluster sizes, along with a convenience function for
-//! computing indices into the condensed distance matrix.
+//! This module contains common utilities used by AGNES, Anderberg-family
+//! implementations, set-based clustering, and other hierarchical methods.
+//! It includes helpers for condensed distance indexing, nearest-neighbor cache
+//! maintenance, and common set-clustering support.
 
 use num_traits::NumCast;
 
@@ -125,30 +126,35 @@ pub(crate) fn update_set_entry<D, L, F, S>(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn set_update_cache<F>(
-    distances: &[F], clustermap: &[idsize], best: &mut [(F, usize)], x: usize, y: usize, j: usize,
+    distances: &[F], clustermap: &[idsize], best: &mut [(F, idsize)], x: usize, y: usize, j: usize,
     d: F,
-) where
+) -> bool
+where
     F: Float,
 {
     if y < j {
         let old = best[j];
         if d <= old.0 {
-            best[j] = (d, y);
-            return;
+            best[j] = (d, y as idsize);
+            return true;
         }
     }
 
-    if best[j].1 == x || best[j].1 == y {
+    if best[j].1 == x as idsize || best[j].1 == y as idsize {
+        let old = best[j];
         set_find_best::<F>(distances, clustermap, best, j);
+        return best[j] != old;
     }
+
+    false
 }
 
 pub(crate) fn set_find_best<F>(
-    distances: &[F], clustermap: &[idsize], best: &mut [(F, usize)], j: usize,
+    distances: &[F], clustermap: &[idsize], best: &mut [(F, idsize)], j: usize,
 ) where
     F: Float,
 {
-    let mut best_pair = (F::infinity(), usize::MAX);
+    let mut best_pair = (F::infinity(), idsize::MAX);
 
     for i in 0..j {
         if clustermap[i] == idsize::MAX {
@@ -156,7 +162,7 @@ pub(crate) fn set_find_best<F>(
         }
         let raw = distances[triangle_index(j, i)];
         if raw < best_pair.0 {
-            best_pair = (raw, i);
+            best_pair = (raw, i as idsize);
         }
     }
 

@@ -4,6 +4,10 @@ use crate::{DistanceData, Float};
 /// Linkage criterion that chooses the candidate minimizing the total
 /// distance to all points in the two clusters (the usual "minimum-sum").
 ///
+/// This linkage originates from the HACAM method (hierarchical clustering
+/// around medoids). The criterion selects the medoid
+/// $z \in X \cup Y$ minimizing $\sum_{p\in X\cup Y} d(z, p)$.
+/// This method is only implemented as a set-based linkage.
 /// The returned prototype is the index of the chosen medoid.
 pub struct MinimumSumLinkage;
 impl<D: DistanceData<F>, F: Float> SetLinkage<D, F, idsize> for MinimumSumLinkage {

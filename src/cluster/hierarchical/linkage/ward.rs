@@ -3,9 +3,11 @@ use crate::{DistanceData, Float};
 
 /// Ward linkage (minimize increase of sum-of-squares).
 ///
-/// This method is special in that it operates naturally on *squared*
-/// distances; therefore both `initial` and `restore` are overridden.  It also
-/// implements `GeometricLinkage` to provide centroid merging support.
+/// The recurrence corresponds to the increase in within-cluster variance:
+/// $\frac{(n_x+n_k)d_x + (n_y+n_k)d_y - n_k d_{xy}}{n_x+n_y+n_k}$.
+/// This method operates naturally on squared Euclidean distances.
+/// It never produces inversions and supports stored-matrix, geometric, and
+/// set-based implementations.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct WardLinkage;
 

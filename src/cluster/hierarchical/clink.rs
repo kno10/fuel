@@ -1,3 +1,9 @@
+//! CLINK is a specialized pointer-based algorithm for complete linkage.
+//!
+//! It operates only on complete linkage and uses the pointer representation
+//! originally described for CLINK/SLINK, avoiding the generic condensed matrix
+//! implementation.
+
 use crate::cluster::hierarchical::MergeHistory;
 use crate::cluster::hierarchical::pointer::{PointerRepresentation, pointer_to_merge_history};
 use crate::{DistanceData, Float};

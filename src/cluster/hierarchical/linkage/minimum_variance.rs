@@ -6,6 +6,9 @@ use crate::{DistanceData, Float};
 ///
 /// This global objective is defined by the average squared deviation of the
 /// merged cluster around its centroid.
+/// The resulting recurrence is a variance-based Lance-Williams update.
+/// This method never produces inversions and supports stored-matrix,
+/// geometric, and set-based implementations.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct MinimumVarianceLinkage;
 

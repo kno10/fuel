@@ -4,6 +4,28 @@
 //! standard linkage methods.  The design is generic so that algorithms such as
 //! AGNES can accept *any* `Linkage` implementation, and new methods can be
 //! added simply by defining additional types.
+//!
+//! The table below summarises the implemented linkages, their recurrence,
+//! whether they can produce inversions, and the approaches they support.
+//!
+//! | Linkage | Recurrence | Inversions | Supported approaches |
+//! |---|---|---|---|
+//! | `SingleLinkage` | $\min(dx, dy)$ | no | stored-matrix, set-based |
+//! | `CompleteLinkage` | $\max(dx, dy)$ | no | stored-matrix, set-based |
+//! | `GroupAverageLinkage` | $\frac{n_x dx + n_y dy}{n_x + n_y}$ | no | stored-matrix, geometric, set-based |
+//! | `WeightedAverageLinkage` | $\tfrac{1}{2}(dx + dy)$ | no | stored-matrix |
+//! | `CentroidLinkage` | $\frac{n_x dx + n_y dy - \frac{n_x n_y}{n_x + n_y} d_{xy}}{n_x + n_y}$ | yes | stored-matrix, geometric |
+//! | `MedianLinkage` | $\tfrac{1}{2}(dx + dy) - \tfrac{1}{4} d_{xy}$ | yes | stored-matrix, geometric |
+//! | `WardLinkage` | $\frac{(n_x+n_k)dx + (n_y+n_k)dy - n_k d_{xy}}{n_x+n_y+n_k}$ | no | stored-matrix, geometric, set-based |
+//! | `MinimumSumSquaresLinkage` | within-cluster sum of squared deviations | no | stored-matrix, geometric, set-based |
+//! | `MinimumVarianceLinkage` | average cluster variance objective | no | stored-matrix, geometric, set-based |
+//! | `MinimumVarianceIncreaseLinkage` | variance increase variant | yes | stored-matrix, geometric, set-based |
+//! | `FlexibleBetaLinkage` | $\alpha dx + \alpha dy + \beta d_{xy}$ | yes if $\beta < 0$ | stored-matrix |
+//! | `MinimaxLinkage` | $\min_{z\in X\cup Y} \max(d(z,X), d(z,Y))$ | no | set-based only |
+//! | `HausdorffLinkage` | directed Hausdorff maximum min-distance | yes | set-based only |
+//! | `MedoidLinkage` | prototype medoid of union | no | set-based only |
+//! | `MinimumSumLinkage` | minimum total distance medoid | no | set-based only |
+//! | `MinimumSumIncreaseLinkage` | minimum-sum with correction | no | set-based only |
 
 pub mod centroid;
 pub mod complete;
@@ -28,10 +50,10 @@ pub mod minimum_sum_increase;
 use crate::cluster::hierarchical::idsize;
 use crate::{DistanceData, Float, math};
 
-/// Basic linkage trait corresponds to the Lance–Williams recurrence.
+/// Basic linkage trait corresponds to the Lance-Williams recurrence.
 ///
-/// The previous implementation was hard‑wired to `f64`.  this trait is now
-/// parameterised by a floating‑point type `F` so that the same algorithms can
+/// The previous implementation was hard-wired to `f64`.  this trait is now
+/// parameterised by a floating-point type `F` so that the same algorithms can
 /// be driven by `f32` or any other type implementing `num_traits::Float`.
 pub trait Linkage<F: Float>: Copy {
     /// Whether this linkage can produce inversions, i.e. a later merge with a

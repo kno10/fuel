@@ -1,3 +1,13 @@
+//! Set-based AGNES using explicit cluster memberships and summary-based
+//! distance updates.
+//!
+//! This approach is useful for linkages that cannot be expressed as a generic
+//! sparse Lance-Williams recurrence, such as `MedoidLinkage`, `MinimaxLinkage`,
+//! `MinimumSumLinkage`, and `HausdorffLinkage`.
+//!
+//! It is implemented by maintaining cluster member lists, cluster summaries,
+//! and recomputing distances through `SetLinkage::cluster_distance`.
+
 use crate::cluster::hierarchical::common::{
     initialize_set_clusters, set_find_best_active_pair, shrink_active_end, update_set_entry,
 };

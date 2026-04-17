@@ -1,3 +1,9 @@
+//! SLINK is the specialized pointer-based algorithm for single-linkage.
+//!
+//! It produces the same result as `AGNES` for single linkage on unique
+//! distances, and it uses the classic pointer representation to achieve
+//! linear memory and quadratic time.
+
 use crate::cluster::hierarchical::MergeHistory;
 use crate::cluster::hierarchical::pointer::{PointerRepresentation, pointer_to_merge_history};
 use crate::{DistanceData, Float};
