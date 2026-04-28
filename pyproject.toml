@@ -1,0 +1,20 @@
+[build-system]
+requires = ["maturin>=1.7,<3"]
+build-backend = "maturin"
+
+[project]
+name = "fuel"
+version = "0.1.0"
+description = "Fast Unsupervised Learning"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+dependencies = ["numpy"]
+
+[tool.maturin]
+features = ["python","parallel"]
+python-source = "python"
+python-packages = ["fuel"]
+strip = false # TODO: change later
+module-name = "fuel._fuel"
+profile = "release"
+editable-profile = "release"

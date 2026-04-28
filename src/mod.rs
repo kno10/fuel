@@ -11,4 +11,8 @@ pub mod outlier;
 pub mod search;
 pub mod statistics;
 
+//#[cfg(feature = "python")]
+#[path = "../python/mod.rs"]
+mod python;
+
 pub use crate::api::*;

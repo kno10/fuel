@@ -1,3 +1,5 @@
 /target
 /debug
 /.cargo
+__pycache__
+*.so

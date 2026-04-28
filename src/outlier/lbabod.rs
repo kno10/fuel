@@ -184,11 +184,6 @@ mod tests {
         let data = TableWithDistance::with_distance(&points, Euclidean);
 
         let kernel = crate::kernel::polynomial::PolynomialKernel::new(2, 1.0, 0.0);
-        let _fast = crate::outlier::fast_abod::fast_angle_based_outlier_detection_kernel(
-            &data,
-            10,
-            |x, y| kernel.similarity(x, y),
-        );
         let result = locality_based_abod_kernel(&data, 10, 10, |x, y| kernel.similarity(x, y));
 
         let reference = load_reference_scores();

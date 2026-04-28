@@ -1,3 +1,5 @@
+use ndarray::ArrayView2;
+
 use crate::api::float::Float;
 use crate::api::query::{CoordinateQuery, IndexQuery};
 
@@ -54,6 +56,13 @@ pub trait VectorData<C>: Data {
         debug_assert_eq!(d, self.dims());
         out[..d].copy_from_slice(self.point(idx));
     }
+
+    /// Optional direct access to the underlying data as an ndarray view.
+    ///
+    /// Implementations may return `None` if a contiguous 2-D ndarray view is
+    /// not available.  This is a performance hint for algorithms that can
+    /// avoid an explicit copy when the data is already ndarray-backed.
+    fn as_ndarray(&self) -> Option<ArrayView2<'_, C>> { None }
 
     // TODO: also allow direct access to single coordinates?
 }

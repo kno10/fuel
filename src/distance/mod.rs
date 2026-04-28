@@ -80,7 +80,7 @@ pub trait DistanceFunction<T: ?Sized, F: Float> {
     fn is_squared_distance(&self) -> bool { false }
 }
 
-impl<T: ?Sized, D, F: Float> DistanceFunction<T, F> for Box<D>
+impl<T: ?Sized, D: ?Sized, F: Float> DistanceFunction<T, F> for Box<D>
 where
     D: DistanceFunction<T, F>,
 {

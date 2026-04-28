@@ -138,6 +138,8 @@ impl<F: Float> IndexQuery<F> for SquareMatrixQuery<'_, F> {
         debug_assert!(idx < self.data.n);
         self.index = idx;
     }
+
+    fn query_index(&self) -> usize { self.index }
 }
 
 impl<F: Float, Q: DistanceSearch<F> + ?Sized> RangeSearch<F, Q> for SquareDistanceMatrix<F> {

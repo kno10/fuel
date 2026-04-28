@@ -138,6 +138,8 @@ where
         self.index = idx;
         self.coords = None;
     }
+
+    fn query_index(&self) -> usize { self.index }
 }
 
 impl<'q, 'd, C, T, DF, F> CoordinateSearch<C, F> for TableQuery<'q, 'd, C, T, DF, F>

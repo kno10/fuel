@@ -48,7 +48,7 @@ where
     } else {
         init.init::<A>(data, cent, k);
         // Initial assignment, first iteration:
-        for (i, assign_i) in assign.iter_mut().enumerate().take(n) {
+        for i in 0..n {
             data.load_into(i, scratch, d);
             let (mut a, mut s) = (0, math::sqdist(cent.center(0), scratch, d));
             for j in 1..k {
@@ -58,7 +58,7 @@ where
                 }
             }
             csize[a] += 1;
-            *assign_i = a;
+            assign[i] = a;
             math::add_assign(sums.center_mut(a), scratch, d);
             lastsum += s;
         }
@@ -82,6 +82,24 @@ where
     let mut sums = Centers::<N>::new(k, d);
     let (mut assign, mut csize, mut lastsum) =
         lloyd_initial_assignment::<N, A, I>(data, k, init, &mut cent, &mut sums, &mut scratch);
+    // For C-contiguous data, borrow rows directly from the dataset (zero copy).
+    // For non-standard-layout data (e.g. Fortran-order numpy arrays from Python),
+    // build a flat C-contiguous copy via load_into, which handles arbitrary strides.
+    let flat_buf: Option<Vec<N>> = if data.as_ndarray().map_or(false, |v| v.is_standard_layout()) {
+        None
+    } else {
+        let mut buf = vec![N::zero(); n * d];
+        for i in 0..n {
+            data.load_into(i, &mut buf[i * d..(i + 1) * d], d);
+        }
+        Some(buf)
+    };
+    let rows: Vec<&[N]> = (0..n)
+        .map(|i| match flat_buf.as_ref() {
+            None => data.point(i),
+            Some(buf) => &buf[i * d..(i + 1) * d],
+        })
+        .collect();
     let mut iter = 1; // Initial iteration above!
     while iter < maxiter {
         iter += 1;
@@ -110,22 +128,25 @@ where
             }
         }
         let (mut changed, mut sum) = (0, N::zero());
-        for (i, assign_i) in assign.iter_mut().enumerate().take(n) {
-            let aa = *assign_i;
-            data.load_into(i, &mut scratch, d);
-            let (mut a, mut s) = (0, math::sqdist(cent.center(0), &scratch, d));
-            for j in 1..k {
-                let tmp = math::sqdist(cent.center(j), &scratch, d);
-                if tmp < s || (j == aa && tmp == s) {
-                    (a, s) = (j, tmp);
+        let centers = cent.row_slices();
+        let matrix = math::pairwise_sqdist(&centers, &rows, d);
+        for i in 0..n {
+            let aa = assign[i];
+            let mut a = aa;
+            let mut s = matrix[aa * n + i];
+            for j in 0..k {
+                let tmp = matrix[j * n + i];
+                if tmp < s {
+                    a = j;
+                    s = tmp;
                 }
             }
             if a != aa {
-                *assign_i = a;
+                assign[i] = a;
                 csize[aa] -= 1;
                 csize[a] += 1;
-                math::sub_assign(sums.center_mut(aa), &scratch, d);
-                math::add_assign(sums.center_mut(a), &scratch, d);
+                math::sub_assign(sums.center_mut(aa), rows[i], d);
+                math::add_assign(sums.center_mut(a), rows[i], d);
                 changed += 1;
             }
             sum += s;
@@ -176,5 +197,86 @@ mod tests {
             (res2.centers, res2.assignments, res2.iterations, res2.inertia.unwrap_or_default());
 
         assert!(niter2 <= niter1, "tolerance should not increase iteration count");
+    }
+
+    /// End-to-end f32 test with d=8 (AVX2 path), k=10 (> MR_SDIST_F32=4).
+    /// Reproduces the MNIST scenario dimensionality- and k-wise.
+    /// lloyd must match lloyd_naive on same seed/data.
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn test_f32_d8_k10_matches_naive() {
+        use ndarray::Array2;
+
+        use crate::cluster::kmeans::lloyd_naive;
+
+        // Generate f32 data: 200 points, d=8
+        let mat_f64 = gen_test_data((200, 8), Pcg32::seed_from_u64(55));
+        let mat_f32 = mat_f64.mapv(|x| x as f32);
+        let dataset = NdArrayDataset::new(&mat_f32);
+
+        let mut init1 = RandomSample::new(Pcg32::seed_from_u64(55));
+        let res1 = lloyd::<f32, _, _>(&dataset, 10, &mut init1, 200, 0.0);
+
+        let mut init2 = RandomSample::new(Pcg32::seed_from_u64(55));
+        let res2 = lloyd_naive::<f32, _, _>(&dataset, 10, &mut init2, 200, 0.0);
+
+        let loss1 = compute_loss(&dataset, &res1.centers, &res1.assignments);
+        let loss2 = compute_loss(&dataset, &res2.centers, &res2.assignments);
+
+        assert!(
+            res1.iterations > 2,
+            "lloyd converged in {} iterations - likely all-zero distance matrix",
+            res1.iterations
+        );
+        assert_eq!(
+            res1.iterations, res2.iterations,
+            "lloyd={} naive={} iteration mismatch",
+            res1.iterations, res2.iterations
+        );
+        assert!(
+            (loss1 - loss2).abs() < 1e-3 * (loss2.abs() + 1.0),
+            "loss mismatch: lloyd={loss1} naive={loss2}"
+        );
+
+        // Also verify inertia is non-zero (the MNIST failure symptom)
+        assert!(loss1 > 0.0, "inertia is zero - distance matrix is all-zero");
+        let _ = Array2::<f32>::zeros((1, 1)); // suppress unused import warning
+    }
+
+    /// Same as above but with d=784, matching MNIST dimensionality exactly.
+    /// This catches bugs that only appear for large d in the AVX2 micro-kernel.
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn test_f32_d784_k10_matches_naive() {
+        use crate::cluster::kmeans::lloyd_naive;
+
+        let mat_f64 = gen_test_data((200, 784), Pcg32::seed_from_u64(77));
+        let mat_f32 = mat_f64.mapv(|x| x as f32);
+        let dataset = NdArrayDataset::new(&mat_f32);
+
+        let mut init1 = RandomSample::new(Pcg32::seed_from_u64(77));
+        let res1 = lloyd::<f32, _, _>(&dataset, 10, &mut init1, 200, 0.0);
+
+        let mut init2 = RandomSample::new(Pcg32::seed_from_u64(77));
+        let res2 = lloyd_naive::<f32, _, _>(&dataset, 10, &mut init2, 200, 0.0);
+
+        let loss1 = compute_loss(&dataset, &res1.centers, &res1.assignments);
+        let loss2 = compute_loss(&dataset, &res2.centers, &res2.assignments);
+
+        assert!(
+            res1.iterations > 2,
+            "lloyd converged in {} iterations - likely all-zero distance matrix",
+            res1.iterations
+        );
+        assert_eq!(
+            res1.iterations, res2.iterations,
+            "lloyd={} naive={} iteration mismatch",
+            res1.iterations, res2.iterations
+        );
+        assert!(
+            (loss1 - loss2).abs() < 1e-3 * (loss2.abs() + 1.0),
+            "loss mismatch: lloyd={loss1} naive={loss2}"
+        );
+        assert!(loss1 > 0.0, "inertia is zero");
     }
 }

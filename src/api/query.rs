@@ -5,6 +5,9 @@ pub trait IndexQuery<F: Float>: DistanceSearch<F> {
     /// Update the query to use the given dataset index.
     fn set_index(&mut self, idx: usize);
 
+    /// Return the current index used by the query.
+    fn query_index(&self) -> usize;
+
     /// Update the query and return it for chaining.
     fn with_index(mut self, idx: usize) -> Self
     where

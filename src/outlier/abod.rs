@@ -1,87 +1,8 @@
 use crate::outlier::common::{OutlierResult, make_outlier_result};
 use crate::{DistanceData, Float, VectorData};
 
-fn dot_product<F: Float>(left: &[F], right: &[F]) -> F {
-    left.iter().zip(right.iter()).map(|(&a, &b)| a * b).sum()
-}
-
-fn squared_norm<F: Float>(vector: &[F]) -> F { vector.iter().map(|&x| x * x).sum() }
-
-pub(crate) fn abod_score_for_neighbor_set<D, F>(data: &D, center: usize, neighbors: &[usize]) -> F
-where
-    F: Float,
-    D: DistanceData<F> + VectorData<F>,
-{
-    let xi = data.point(center);
-    let dims = xi.len();
-
-    // Build normalized difference vectors and norms.
-    let mut diffs = Vec::with_capacity(neighbors.len());
-    let mut norms = Vec::with_capacity(neighbors.len());
-
-    for &j in neighbors {
-        if j == center {
-            continue;
-        }
-        let xj = data.point(j);
-        let mut diff = Vec::with_capacity(dims);
-        for d in 0..dims {
-            diff.push(xj[d] - xi[d]);
-        }
-        let norm = squared_norm(&diff).sqrt();
-        if norm <= F::zero() {
-            continue;
-        }
-        diffs.push(diff);
-        norms.push(norm);
-    }
-
-    let n = diffs.len();
-    if n < 2 {
-        return F::infinity();
-    }
-
-    let mut mean = F::zero();
-    let mut m2 = F::zero();
-    let mut total_weight = F::zero();
-
-    for a in 0..n {
-        for b in (a + 1)..n {
-            let dot = dot_product(&diffs[a], &diffs[b]);
-            let d_ab = norms[a] * norms[a];
-            let d_ac = norms[b] * norms[b];
-            if d_ab.is_nan() || d_ab <= F::zero() || d_ac.is_nan() || d_ac <= F::zero() {
-                continue;
-            }
-            let div = F::one() / (d_ab * d_ac);
-            let value = dot * div;
-            let weight = (div).sqrt();
-            total_weight += weight;
-            if total_weight.partial_cmp(&F::zero()) != Some(std::cmp::Ordering::Greater) {
-                continue;
-            }
-            let delta = value - mean;
-            let mult = weight / total_weight;
-            mean += delta * mult;
-            let delta2 = value - mean;
-            m2 += weight * delta * delta2;
-        }
-    }
-
-    if total_weight.partial_cmp(&F::zero()) != Some(std::cmp::Ordering::Greater) {
-        return F::infinity();
-    }
-
-    let variance = m2 / total_weight;
-    if variance <= F::zero() {
-        return F::infinity();
-    }
-
-    variance
-}
-
 /// Exact ABOD (angle-based outlier factor) using a kernel similarity function.
-pub fn angle_based_outlier_detection_kernel<D, F, K>(data: &D, kernel: K) -> OutlierResult<F>
+pub fn angle_based_outlier_detection<D, F, K>(data: &D, kernel: K) -> OutlierResult<F>
 where
     F: Float,
     D: DistanceData<F> + VectorData<F> + Sync,
@@ -184,26 +105,6 @@ where
     variance
 }
 
-/// Exact ABOD (angle-based outlier factor) with all points.
-pub fn angle_based_outlier_detection<D, F>(data: &D) -> OutlierResult<F>
-where
-    F: Float,
-    D: DistanceData<F> + VectorData<F> + Sync,
-{
-    let size = data.len();
-    if size == 0 {
-        return make_outlier_result(Vec::new(), "ABOD", false, F::zero(), F::zero(), F::infinity());
-    }
-
-    let mut scores = Vec::with_capacity(size);
-    for i in 0..size {
-        let neighbors: Vec<usize> = (0..size).filter(|&j| j != i).collect();
-        scores.push(abod_score_for_neighbor_set(data, i, &neighbors));
-    }
-
-    make_outlier_result(scores, "ABOD", false, F::zero(), F::zero(), F::infinity())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,7 +119,7 @@ mod tests {
         let data = TableWithDistance::with_distance(&points, Euclidean);
 
         let kernel = crate::kernel::polynomial::PolynomialKernel::new(2, 1.0, 0.0);
-        let result = angle_based_outlier_detection_kernel(&data, |x, y| kernel.similarity(x, y));
+        let result = angle_based_outlier_detection(&data, |x, y| kernel.similarity(x, y));
 
         let reference = load_reference_scores();
         let expected = reference.get("ABOD-poly2").expect("No reference for ABOD-poly2");

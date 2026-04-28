@@ -2,9 +2,6 @@
 //!
 //! Used as a fallback when AVX2 is not available or when the element type
 //! does not have a dedicated intrinsic path.
-
-use std::any::TypeId;
-
 use crate::Float;
 
 #[inline(always)]
@@ -91,18 +88,16 @@ where
 
     #[cfg(any(target_feature = "fma", target_feature = "neon", target_feature = "vfp4"))]
     {
-        if TypeId::of::<N>() == TypeId::of::<f32>() || TypeId::of::<N>() == TypeId::of::<f64>() {
-            for i in 0..d {
-                unsafe {
-                    let fma =
-                        num_traits::Float::mul_add(*v1.get_unchecked(i), a, *v2.get_unchecked(i));
-                    *v1.get_unchecked_mut(i) = fma * b;
-                }
+        for i in 0..d {
+            unsafe {
+                let fma = num_traits::Float::mul_add(*v1.get_unchecked(i), a, *v2.get_unchecked(i));
+                *v1.get_unchecked_mut(i) = fma * b;
             }
-            return;
         }
+        return;
     }
 
+    #[cfg(not(any(target_feature = "fma", target_feature = "neon", target_feature = "vfp4")))]
     for i in 0..d {
         unsafe {
             *v1.get_unchecked_mut(i) = (*v1.get_unchecked(i) * a + *v2.get_unchecked(i)) * b;
@@ -117,6 +112,22 @@ where
 {
     assert!(v1.len() >= d && v2.len() >= d);
     (0..d).map(|i| unsafe { *v1.get_unchecked(i) * *v2.get_unchecked(i) }).sum()
+}
+
+#[inline(always)]
+pub fn pairwise_sqdist_between<N, D1, D2>(
+    points1: &[D1], points2: &[D2], d: usize, out: &mut [N], nrows: usize, ncols: usize,
+) where
+    N: Float,
+    D1: AsRef<[N]>,
+    D2: AsRef<[N]>,
+{
+    assert_eq!(out.len(), nrows * ncols);
+    for i in 0..nrows {
+        for j in 0..ncols {
+            out[i * ncols + j] = sqdist(points1[i].as_ref(), points2[j].as_ref(), d);
+        }
+    }
 }
 
 #[inline(always)]

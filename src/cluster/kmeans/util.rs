@@ -1,4 +1,4 @@
-use ndarray::{Array2, ArrayBase, Data, Ix2, RawData};
+use ndarray::{Array2, ArrayBase, ArrayView2, Data, Ix2, RawData};
 
 use crate::{Float, VectorData as Dataset, math};
 
@@ -163,6 +163,14 @@ where
 {
     #[inline]
     pub fn new(k: usize, d: usize) -> Self { Self { k, d, centers: vec![N::zero(); k * d] } }
+
+    #[inline]
+    pub fn as_ndarray(&self) -> ArrayView2<'_, N> {
+        ArrayView2::from_shape((self.k, self.d), &self.centers).unwrap()
+    }
+
+    #[inline]
+    pub fn row_slices(&self) -> Vec<&[N]> { (0..self.k).map(|i| self.center(i)).collect() }
 
     #[inline(always)]
     pub fn center(&self, i: usize) -> &[N] {
