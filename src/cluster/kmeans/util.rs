@@ -152,9 +152,7 @@ where
 /// Centers storage
 #[derive(Clone)]
 pub struct Centers<N> {
-    k: usize,
-    d: usize,
-    centers: Vec<N>,
+    centers: Array2<N>,
 }
 
 impl<N> Centers<N>
@@ -162,33 +160,30 @@ where
     N: Float,
 {
     #[inline]
-    pub fn new(k: usize, d: usize) -> Self { Self { k, d, centers: vec![N::zero(); k * d] } }
-
-    #[inline]
-    pub fn as_ndarray(&self) -> ArrayView2<'_, N> {
-        ArrayView2::from_shape((self.k, self.d), &self.centers).unwrap()
+    pub fn new(k: usize, d: usize) -> Self {
+        Self { centers: Array2::from_elem((k, d), N::zero()) }
     }
 
     #[inline]
-    pub fn row_slices(&self) -> Vec<&[N]> { (0..self.k).map(|i| self.center(i)).collect() }
+    pub fn as_ndarray(&self) -> ArrayView2<'_, N> { self.centers.view() }
 
     #[inline(always)]
     pub fn center(&self, i: usize) -> &[N] {
-        //&self.centers[i*self.d..i*self.d+self.d]
-        unsafe { std::slice::from_raw_parts(self.centers.as_ptr().add(i * self.d), self.d) }
+        let cols = self.centers.ncols();
+        let slice = self.centers.as_slice_memory_order().unwrap();
+        &slice[i * cols..i * cols + cols]
     }
 
     #[inline(always)]
     pub fn center_mut(&mut self, i: usize) -> &mut [N] {
-        //&mut self.centers[i*self.d..i*self.d+self.d]
-        unsafe { std::slice::from_raw_parts_mut(self.centers.as_mut_ptr().add(i * self.d), self.d) }
+        let cols = self.centers.ncols();
+        let slice = self.centers.as_slice_memory_order_mut().unwrap();
+        &mut slice[i * cols..i * cols + cols]
     }
 
     /// Make a dense matrix from the aligned rows
     #[inline]
-    pub fn into_ndarray(self) -> Array2<N> {
-        Array2::from_shape_vec((self.k, self.d), self.centers).unwrap()
-    }
+    pub fn into_ndarray(self) -> Array2<N> { self.centers }
 }
 
 // additional helper methods used for tolerance checks
@@ -200,10 +195,10 @@ where
     #[inline]
     pub fn frobenius_norm(&self) -> N {
         let mut sum = N::zero();
-        for i in 0..self.k {
+        for i in 0..self.centers.nrows() {
             let row = self.center(i);
             // dot(row, row) yields squared norm of the row
-            sum += math::dot(row, row, self.d);
+            sum += math::dot(row, row, self.centers.ncols());
         }
         sum.sqrt()
     }
@@ -212,8 +207,8 @@ where
     #[inline]
     pub fn diff_frobenius_norm(&self, other: &Self) -> N {
         let mut sum = N::zero();
-        for i in 0..self.k {
-            sum += math::sqdist(self.center(i), other.center(i), self.d);
+        for i in 0..self.centers.nrows() {
+            sum += math::sqdist(self.center(i), other.center(i), self.centers.ncols());
         }
         sum.sqrt()
     }

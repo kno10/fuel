@@ -1,4 +1,4 @@
-use ndarray::ArrayView2;
+use ndarray::{Array2, ArrayView2, CowArray, Ix2};
 
 use crate::api::float::Float;
 use crate::api::query::{CoordinateQuery, IndexQuery};
@@ -63,6 +63,26 @@ pub trait VectorData<C>: Data {
     /// not available.  This is a performance hint for algorithms that can
     /// avoid an explicit copy when the data is already ndarray-backed.
     fn as_ndarray(&self) -> Option<ArrayView2<'_, C>> { None }
+
+    /// Returns the data as a C-contiguous 2-D ndarray, borrowing if the
+    /// underlying storage is already standard-layout, or allocating a flat
+    /// copy otherwise.
+    fn to_ndarray(&self) -> CowArray<'_, C, Ix2>
+    where
+        C: Copy + Default,
+    {
+        if let Some(v) = self.as_ndarray() {
+            if v.is_standard_layout() {
+                return v.into();
+            }
+        }
+        let (n, d) = (self.nrows(), self.dims());
+        let mut buf = vec![C::default(); n * d];
+        for i in 0..n {
+            self.load_into(i, &mut buf[i * d..(i + 1) * d], d);
+        }
+        Array2::from_shape_vec((n, d), buf).expect("flat buffer shape mismatch").into()
+    }
 
     // TODO: also allow direct access to single coordinates?
 }

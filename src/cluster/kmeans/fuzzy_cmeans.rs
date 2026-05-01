@@ -25,8 +25,15 @@ where
     let mut sums = Centers::<N>::new(k, d);
 
     // start with a crisp initial assignment to seed both centers and U
-    let (mut assign, _csize, _lastsum) =
-        lloyd_initial_assignment::<N, A, I>(data, k, init, &mut cent, &mut sums, &mut scratch);
+    let (mut assign, _csize, _lastsum) = lloyd_initial_assignment::<N, A, I>(
+        data,
+        None,
+        k,
+        init,
+        &mut cent,
+        &mut sums,
+        &mut scratch,
+    );
 
     // initialize membership matrix U (row-major n*k)
     let mut u = vec![N::zero(); n * k];

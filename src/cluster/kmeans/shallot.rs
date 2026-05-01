@@ -14,7 +14,7 @@ pub fn shallot<N, I, A>(data: &A, k: usize, init: &mut I, maxiter: usize, tol: N
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync + Sync,
 {
     // implementation unchanged
     let (n, d) = (data.nrows(), data.ncols());
@@ -100,90 +100,200 @@ where
                 cdist[triindex(i, a)].partial_cmp(&cdist[triindex(i, b)]).unwrap()
             });
         }
-        let mut changed = 0;
-        for i in 0..n {
-            let aa = assign[i];
-            // Update bounds
-            let mut upper_i = bounds[i].0 + cmov[aa];
-            let mut lower_i = bounds[i].1 - if aa != most { cmov1 } else { cmov2 };
-            // Check bounds
-            if upper_i <= lower_i || upper_i <= cnear[aa] {
-                bounds[i] = (upper_i, lower_i); // update
-                continue;
-            }
-            // Make upper bound tight first:
-            data.load_into(i, &mut scratch, d);
-            let daa = math::sqdist(cent.center(aa), &scratch, d); // squared
-            upper_i = daa.sqrt(); // bounds are non-squared
-            if upper_i <= lower_i || upper_i <= cnear[aa] {
-                bounds[i] = (upper_i, lower_i); // update
-                continue;
-            }
-            let rhalf = upper_i + cnear[aa]; // cnear is already half
-            // First other candidate from center
-            if cdist[triindex(aa, csort[aa * (k - 1)])] > rhalf {
-                continue;
-            }
-            // Shallot modification #1: try old second-nearest first:
-            let bb = assign2[i];
-            let dbb = math::sqdist(cent.center(bb), &scratch, d); // squared
-            // Closest two known centers:
-            let (mut ra, mut rb, mut dra2, mut drb2) = (aa, bb, daa, dbb);
-            if dbb < daa {
-                (ra, rb, dra2, drb2) = (bb, aa, dbb, daa);
-                upper_i = dra2.sqrt();
-            }
-            // Shallot improvement 1.5:
-            // note that db2 is still squared, cdist is half the distance
-            // 0.5*(u+l), with l=min(u+d(x,p), 2u+2*cdist[z])
-            let lp = upper_i + drb2.sqrt(); // l for p
-            let lv = N::from(2).unwrap() * (upper_i + cdist[triindex(ra, csort[ra * (k - 1)])]); // l for v2(z)y
-            let mut l = N::min(lp, lv);
-            let mut rhalf = N::min(upper_i + cnear[ra], N::from(0.5).unwrap() * (upper_i + l));
-            // Recompute other distances
-            // Find closest center, and distance to two closest centers
-            let (mut a, mut s) = (ra, dra2);
-            let (mut b, mut s2) = (if lp < lv { rb } else { csort[ra * (k - 1)] }, l * l);
-            for &j in &csort[ra * (k - 1)..(ra + 1) * (k - 1)] {
-                if cdist[triindex(ra, j)] > rhalf {
-                    break;
+        let changed = 'iter: {
+            #[cfg(feature = "parallel")]
+            if n >= crate::math::PARALLEL_ROW_THRESHOLD {
+                use rayon::prelude::*;
+                let chunk_size = n.div_ceil(rayon::current_num_threads());
+                let deltas: Vec<(usize, Vec<N>, Vec<i64>)> = assign
+                    .par_chunks_mut(chunk_size)
+                    .zip(bounds.par_chunks_mut(chunk_size))
+                    .zip(assign2.par_chunks_mut(chunk_size))
+                    .enumerate()
+                    .map(|(ti, ((assign_chunk, bounds_chunk), assign2_chunk))| {
+                        let i0 = ti * chunk_size;
+                        let chunk_n = assign_chunk.len();
+                        let mut scratch = vec![N::zero(); d];
+                        let mut delta_sums = vec![N::zero(); k * d];
+                        let mut delta_csize = vec![0i64; k];
+                        let mut local_changed = 0usize;
+                        for ci in 0..chunk_n {
+                            let i = i0 + ci;
+                            let aa = assign_chunk[ci];
+                            let mut upper_i = bounds_chunk[ci].0 + cmov[aa];
+                            let mut lower_i =
+                                bounds_chunk[ci].1 - if aa != most { cmov1 } else { cmov2 };
+                            if upper_i <= lower_i || upper_i <= cnear[aa] {
+                                bounds_chunk[ci] = (upper_i, lower_i);
+                                continue;
+                            }
+                            data.load_into(i, &mut scratch, d);
+                            let daa = math::sqdist(cent.center(aa), &scratch, d);
+                            upper_i = daa.sqrt();
+                            if upper_i <= lower_i || upper_i <= cnear[aa] {
+                                bounds_chunk[ci] = (upper_i, lower_i);
+                                continue;
+                            }
+                            let rhalf = upper_i + cnear[aa];
+                            if cdist[triindex(aa, csort[aa * (k - 1)])] > rhalf {
+                                continue;
+                            }
+                            let bb = assign2_chunk[ci];
+                            let dbb = math::sqdist(cent.center(bb), &scratch, d);
+                            let (mut ra, mut rb, mut dra2, mut drb2) = (aa, bb, daa, dbb);
+                            if dbb < daa {
+                                (ra, rb, dra2, drb2) = (bb, aa, dbb, daa);
+                                upper_i = dra2.sqrt();
+                            }
+                            let lp = upper_i + drb2.sqrt();
+                            let lv = N::from(2).unwrap()
+                                * (upper_i + cdist[triindex(ra, csort[ra * (k - 1)])]);
+                            let mut l = N::min(lp, lv);
+                            let mut rhalf =
+                                N::min(upper_i + cnear[ra], N::from(0.5).unwrap() * (upper_i + l));
+                            let (mut a, mut s) = (ra, dra2);
+                            let (mut b, mut s2) =
+                                (if lp < lv { rb } else { csort[ra * (k - 1)] }, l * l);
+                            for &j in &csort[ra * (k - 1)..(ra + 1) * (k - 1)] {
+                                if cdist[triindex(ra, j)] > rhalf {
+                                    break;
+                                }
+                                let tmp = if j == rb {
+                                    drb2
+                                } else {
+                                    math::sqdist(cent.center(j), &scratch, d)
+                                };
+                                if tmp < s {
+                                    (a, s, b, s2) = (j, tmp, a, s);
+                                    if s2 < l * l {
+                                        l = tmp.sqrt();
+                                        rhalf =
+                                            N::min(rhalf, N::from(0.5).unwrap() * (upper_i + l));
+                                    }
+                                } else if tmp < s2 {
+                                    (b, s2) = (j, tmp);
+                                    l = tmp.sqrt();
+                                    rhalf = N::min(rhalf, N::from(0.5).unwrap() * (upper_i + l));
+                                }
+                            }
+                            lower_i = if b == aa { upper_i } else { s2.sqrt() };
+                            if a != aa {
+                                upper_i = s.sqrt();
+                            }
+                            bounds_chunk[ci] = (upper_i, lower_i);
+                            if a != aa {
+                                assign_chunk[ci] = a;
+                                delta_csize[aa] -= 1;
+                                delta_csize[a] += 1;
+                                math::sub_assign(&mut delta_sums[aa * d..aa * d + d], &scratch, d);
+                                math::add_assign(&mut delta_sums[a * d..a * d + d], &scratch, d);
+                                local_changed += 1;
+                            }
+                            if b != bb {
+                                assign2_chunk[ci] = b;
+                            }
+                        }
+                        (local_changed, delta_sums, delta_csize)
+                    })
+                    .collect();
+                let mut total = 0_usize;
+                for (c, ds, dc) in deltas {
+                    total += c;
+                    for j in 0..k {
+                        math::add_assign(sums.center_mut(j), &ds[j * d..j * d + d], d);
+                        csize[j] = (csize[j] as i64 + dc[j]) as usize;
+                    }
                 }
-                let tmp = if j == rb { drb2 } else { math::sqdist(cent.center(j), &scratch, d) };
-                if tmp < s {
-                    (a, s, b, s2) = (j, tmp, a, s);
-                    if s2 < l * l {
+                break 'iter total;
+            }
+            // serial path (no parallel feature, or n below threshold)
+            let mut c = 0;
+            for i in 0..n {
+                let aa = assign[i];
+                // Update bounds
+                let mut upper_i = bounds[i].0 + cmov[aa];
+                let mut lower_i = bounds[i].1 - if aa != most { cmov1 } else { cmov2 };
+                // Check bounds
+                if upper_i <= lower_i || upper_i <= cnear[aa] {
+                    bounds[i] = (upper_i, lower_i); // update
+                    continue;
+                }
+                // Make upper bound tight first:
+                data.load_into(i, &mut scratch, d);
+                let daa = math::sqdist(cent.center(aa), &scratch, d); // squared
+                upper_i = daa.sqrt(); // bounds are non-squared
+                if upper_i <= lower_i || upper_i <= cnear[aa] {
+                    bounds[i] = (upper_i, lower_i); // update
+                    continue;
+                }
+                let rhalf = upper_i + cnear[aa]; // cnear is already half
+                // First other candidate from center.
+                if cdist[triindex(aa, csort[aa * (k - 1)])] > rhalf {
+                    continue;
+                }
+                // Shallot modification #1: try old second-nearest first:
+                let bb = assign2[i];
+                let dbb = math::sqdist(cent.center(bb), &scratch, d); // squared
+                // Closest two known centers.
+                let (mut ra, mut rb, mut dra2, mut drb2) = (aa, bb, daa, dbb);
+                if dbb < daa {
+                    (ra, rb, dra2, drb2) = (bb, aa, dbb, daa);
+                    upper_i = dra2.sqrt();
+                }
+                // Shallot improvement 1.5:
+                // note that db2 is still squared, cdist is half the distance
+                // 0.5*(u+l), with l=min(u+d(x,p), 2u+2*cdist[z])
+                let lp = upper_i + drb2.sqrt(); // l for p
+                let lv = N::from(2).unwrap() * (upper_i + cdist[triindex(ra, csort[ra * (k - 1)])]); // l for v2(z)y
+                let mut l = N::min(lp, lv);
+                let mut rhalf = N::min(upper_i + cnear[ra], N::from(0.5).unwrap() * (upper_i + l));
+                // Recompute other distances
+                // Find closest center, and distance to two closest centers
+                let (mut a, mut s) = (ra, dra2);
+                let (mut b, mut s2) = (if lp < lv { rb } else { csort[ra * (k - 1)] }, l * l);
+                for &j in &csort[ra * (k - 1)..(ra + 1) * (k - 1)] {
+                    if cdist[triindex(ra, j)] > rhalf {
+                        break;
+                    }
+                    let tmp =
+                        if j == rb { drb2 } else { math::sqdist(cent.center(j), &scratch, d) };
+                    if tmp < s {
+                        (a, s, b, s2) = (j, tmp, a, s);
+                        if s2 < l * l {
+                            // Second Shallot improvement: r shrinking
+                            l = tmp.sqrt();
+                            rhalf = N::min(rhalf, N::from(0.5).unwrap() * (upper_i + l));
+                        }
+                    } else if tmp < s2 {
+                        (b, s2) = (j, tmp);
                         // Second Shallot improvement: r shrinking
                         l = tmp.sqrt();
                         rhalf = N::min(rhalf, N::from(0.5).unwrap() * (upper_i + l));
                     }
-                } else if tmp < s2 {
-                    (b, s2) = (j, tmp);
-                    // Second Shallot improvement: r shrinking
-                    l = tmp.sqrt();
-                    rhalf = N::min(rhalf, N::from(0.5).unwrap() * (upper_i + l));
+                }
+                // simpler: bounds[i] = (s.sqrt(), s2.sqrt());
+                // We are lazy to call sqrt()
+                // Compute lower first, as it needs the previous upper
+                lower_i = if b == aa { upper_i } else { s2.sqrt() };
+                if a != aa {
+                    upper_i = s.sqrt()
+                };
+                bounds[i] = (upper_i, lower_i); // update
+                if a != aa {
+                    assign[i] = a;
+                    csize[aa] -= 1;
+                    csize[a] += 1;
+                    math::sub_assign(sums.center_mut(aa), &scratch, d);
+                    math::add_assign(sums.center_mut(a), &scratch, d);
+                    c += 1;
+                }
+                if b != bb {
+                    assert!(b < k);
+                    assign2[i] = b;
                 }
             }
-            // simpler: bounds[i] = (s.sqrt(), s2.sqrt());
-            // We are lazy to call sqrt()
-            // Compute lower first, as it needs the previous upper
-            lower_i = if b == aa { upper_i } else { s2.sqrt() };
-            if a != aa {
-                upper_i = s.sqrt()
-            };
-            bounds[i] = (upper_i, lower_i); // update
-            if a != aa {
-                assign[i] = a;
-                csize[aa] -= 1;
-                csize[a] += 1;
-                math::sub_assign(sums.center_mut(aa), &scratch, d);
-                math::add_assign(sums.center_mut(a), &scratch, d);
-                changed += 1;
-            }
-            if b != bb {
-                assert!(b < k);
-                assign2[i] = b;
-            }
-        }
+            c
+        };
         if changed == 0 {
             break;
         }

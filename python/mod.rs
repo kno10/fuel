@@ -3,6 +3,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyModule;
 use rand::SeedableRng;
 use rand_pcg::Pcg32;
+use rayon;
 
 use crate::Float;
 use crate::distance::{
@@ -13,6 +14,9 @@ use crate::distance::{
 
 // FIXME: inline the make_rng function in all the call sites instead! Do not just remove this comment.
 fn make_rng(seed: Option<u64>) -> Pcg32 { Pcg32::seed_from_u64(seed.unwrap_or(0)) }
+
+#[pyfunction]
+fn get_rayon_parallellism() -> PyResult<usize> { Ok(rayon::current_num_threads()) }
 
 /// Parse a distance name into a boxed dynamic distance function.
 ///
@@ -61,6 +65,7 @@ mod spherical;
 #[pymodule]
 #[pyo3(module = "fuel", name = "_fuel")]
 fn _fuel<'py>(_py: Python<'py>, m: &'py Bound<'py, PyModule>) -> PyResult<()> {
+    m.add_wrapped(wrap_pyfunction!(get_rayon_parallellism))?;
     kmeans::register(m)?;
     spherical::register(m)?;
     em::register(m)?;

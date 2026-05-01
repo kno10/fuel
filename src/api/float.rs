@@ -1,3 +1,5 @@
+use ndarray::ArrayView2;
+
 /// Compile-time-dispatched vector math operations.
 ///
 /// Implemented for [`f32`] and [`f64`] with architecture-appropriate SIMD backends
@@ -9,9 +11,14 @@
 pub trait VecOps: Copy + Sized + 'static {
     /// Squared Euclidean distance between two length-`d` vectors.
     fn vec_sqdist(v1: &[Self], v2: &[Self], d: usize) -> Self;
-    /// Pairwise squared distances between two sets of length-`d` vectors.
-    fn vec_pairwise_sqdist<D1: AsRef<[Self]>, D2: AsRef<[Self]>>(
-        points1: &[D1], points2: &[D2], d: usize, out: &mut [Self], nrows: usize, ncols: usize,
+    /// Pairwise squared distances between two 2D point sets.
+    fn vec_pairwise_sqdist<'a>(
+        points1: ArrayView2<'a, Self>, points2: ArrayView2<'a, Self>, d: usize, out: &mut [Self],
+        nrows: usize, ncols: usize,
+    );
+    /// Squared distances from one `center` to each of the `n` rows in `points`.
+    fn vec_row_sqdist<'a>(
+        center: &[Self], points: ArrayView2<'a, Self>, d: usize, out: &mut [Self], n: usize,
     );
     /// L1 (Manhattan) distance between two length-`d` vectors.
     fn vec_l1dist(v1: &[Self], v2: &[Self], d: usize) -> Self;

@@ -126,7 +126,7 @@ pub fn kgeometric_sh<N, I, A>(
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync,
 {
     let (n, d) = (data.nrows(), data.ncols());
     let mut scratch = vec![N::zero(); d];
@@ -187,44 +187,109 @@ where
         // Semi-Hamerly reassignment: the distance to the assigned center is
         // always kept exact (required for Weiszfeld); only a lower bound on
         // the second-closest center is used to skip the full comparison.
-        let mut changed = 0;
-        for i in 0..n {
-            let aa = assign[i];
-            // lower bound on the distance to the second-closest center
-            let lower_i = lower[i] - if aa != most { cmov1 } else { cmov2 };
-
-            data.load_into(i, &mut scratch, d);
-            // always compute the exact distance to the currently assigned center
-            let actual = math::sqdist(cent.center(aa), &scratch, d).sqrt();
-            prev_dist[i] = actual;
-
-            // If the exact distance to the assigned center is at most the lower
-            // bound on the second-closest center, the assignment cannot change.
-            if actual <= lower_i {
-                lower[i] = lower_i;
-                continue;
-            }
-
-            let (mut a, mut s, mut b, mut s2) = (aa, actual, k, N::infinity());
-            for j in 0..k {
-                if j != aa {
-                    let tmp = math::sqdist(cent.center(j), &scratch, d).sqrt();
-                    if tmp < s {
-                        (a, s, b, s2) = (j, tmp, a, s);
-                    } else if tmp < s2 {
-                        (b, s2) = (j, tmp);
+        let changed = 'iter: {
+            #[cfg(feature = "parallel")]
+            if n >= crate::math::PARALLEL_ROW_THRESHOLD {
+                use rayon::prelude::*;
+                let chunk_size = n.div_ceil(rayon::current_num_threads());
+                let deltas: Vec<(usize, Vec<i64>)> = assign
+                    .par_chunks_mut(chunk_size)
+                    .zip(lower.par_chunks_mut(chunk_size))
+                    .zip(prev_dist.par_chunks_mut(chunk_size))
+                    .enumerate()
+                    .map(|(ti, ((assign_chunk, lower_chunk), prev_dist_chunk))| {
+                        let i0 = ti * chunk_size;
+                        let chunk_n = assign_chunk.len();
+                        let mut scratch = vec![N::zero(); d];
+                        let mut delta_csize = vec![0i64; k];
+                        let mut local_changed = 0usize;
+                        for ci in 0..chunk_n {
+                            let i = i0 + ci;
+                            let aa = assign_chunk[ci];
+                            // lower bound on the distance to the second-closest center
+                            let lower_i = lower_chunk[ci] - if aa != most { cmov1 } else { cmov2 };
+                            data.load_into(i, &mut scratch, d);
+                            // always compute exact distance to the currently assigned center
+                            let actual = math::sqdist(cent.center(aa), &scratch, d).sqrt();
+                            prev_dist_chunk[ci] = actual;
+                            // If actual <= lower bound, assignment cannot change.
+                            if actual <= lower_i {
+                                lower_chunk[ci] = lower_i;
+                                continue;
+                            }
+                            let (mut a, mut s, mut b, mut s2) = (aa, actual, k, N::infinity());
+                            for j in 0..k {
+                                if j != aa {
+                                    let tmp = math::sqdist(cent.center(j), &scratch, d).sqrt();
+                                    if tmp < s {
+                                        (a, s, b, s2) = (j, tmp, a, s);
+                                    } else if tmp < s2 {
+                                        (b, s2) = (j, tmp);
+                                    }
+                                }
+                            }
+                            lower_chunk[ci] = if b == aa { actual } else { s2 };
+                            if a != aa {
+                                assign_chunk[ci] = a;
+                                delta_csize[aa] -= 1;
+                                delta_csize[a] += 1;
+                                local_changed += 1;
+                            }
+                            prev_dist_chunk[ci] = s;
+                        }
+                        (local_changed, delta_csize)
+                    })
+                    .collect();
+                let mut total = 0usize;
+                for (c, dc) in deltas {
+                    total += c;
+                    for j in 0..k {
+                        csize[j] = (csize[j] as i64 + dc[j]) as usize;
                     }
                 }
+                break 'iter total;
             }
-            lower[i] = if b == aa { actual } else { s2 };
-            if a != aa {
-                assign[i] = a;
-                csize[aa] -= 1;
-                csize[a] += 1;
-                changed += 1;
+            // serial path (no parallel feature, or n below threshold)
+            let mut c = 0;
+            for i in 0..n {
+                let aa = assign[i];
+                // lower bound on the distance to the second-closest center
+                let lower_i = lower[i] - if aa != most { cmov1 } else { cmov2 };
+
+                data.load_into(i, &mut scratch, d);
+                // always compute the exact distance to the currently assigned center
+                let actual = math::sqdist(cent.center(aa), &scratch, d).sqrt();
+                prev_dist[i] = actual;
+
+                // If the exact distance to the assigned center is at most the lower
+                // bound on the second-closest center, the assignment cannot change.
+                if actual <= lower_i {
+                    lower[i] = lower_i;
+                    continue;
+                }
+
+                let (mut a, mut s, mut b, mut s2) = (aa, actual, k, N::infinity());
+                for j in 0..k {
+                    if j != aa {
+                        let tmp = math::sqdist(cent.center(j), &scratch, d).sqrt();
+                        if tmp < s {
+                            (a, s, b, s2) = (j, tmp, a, s);
+                        } else if tmp < s2 {
+                            (b, s2) = (j, tmp);
+                        }
+                    }
+                }
+                lower[i] = if b == aa { actual } else { s2 };
+                if a != aa {
+                    assign[i] = a;
+                    csize[aa] -= 1;
+                    csize[a] += 1;
+                    c += 1;
+                }
+                prev_dist[i] = s;
             }
-            prev_dist[i] = s;
-        }
+            c
+        };
         if changed == 0 {
             break;
         }

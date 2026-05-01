@@ -50,21 +50,23 @@ where
         }
     } else {
         init.init::<A>(data, cent, k);
-        // Initial assignment, first iteration:
+        let rows = data.to_ndarray();
+        let centers = cent.as_ndarray();
+        let mut matrix = vec![N::zero(); k.checked_mul(n).expect("point count overflow")];
+        N::vec_pairwise_sqdist(centers, rows.view(), d, &mut matrix, k, n);
         for i in 0..n {
-            data.load_into(i, scratch, d);
             let bounds_i = &mut bounds[i * k..i * k + k];
             let (mut a, mut s) = (0, N::infinity());
-            for (j, bound_j) in bounds_i.iter_mut().enumerate() {
-                let tmp = math::sqdist(cent.center(j), scratch, d).sqrt();
-                *bound_j = tmp;
+            for j in 0..k {
+                let tmp = matrix[j * n + i].sqrt();
+                bounds_i[j] = tmp;
                 if tmp < s {
                     (a, s) = (j, tmp);
                 }
             }
             csize[a] += 1;
             assign[i] = a;
-            math::add_assign(sums.center_mut(a), scratch, d);
+            math::add_assign(sums.center_mut(a), rows.row(i).to_slice().unwrap(), d);
         }
     }
     (assign, csize, bounds)
@@ -80,7 +82,7 @@ pub fn simp_elkan<N, I, A>(
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync,
 {
     let (n, d) = (data.nrows(), data.ncols());
     let mut scratch = vec![N::zero(); d];
@@ -115,49 +117,120 @@ where
                 break;
             }
         }
-        let mut changed = 0;
-        for i in 0..n {
-            let aa = assign[i];
-            // Update bounds
-            let bounds_i = &mut bounds[i * k..i * k + k];
-            let mut upper_i = bounds_i[aa] + cmov[aa];
-            math::sub_assign(bounds_i, &cmov, k); // we overwrite [aa] below!
-            // Check bounds
-            let (mut loaded, mut upper_tight, mut a) = (false, false, aa);
-            for j in 0..k {
-                if j == aa || upper_i <= bounds_i[j] {
-                    continue;
-                }
-                // Make upper bound tight first:
-                if !upper_tight {
-                    if !loaded {
-                        data.load_into(i, &mut scratch, d);
-                        loaded = true;
+        let changed = 'iter: {
+            #[cfg(feature = "parallel")]
+            if n >= crate::math::PARALLEL_ROW_THRESHOLD {
+                use rayon::prelude::*;
+                let chunk_size = n.div_ceil(rayon::current_num_threads());
+                let deltas: Vec<(usize, Vec<N>, Vec<i64>)> = assign
+                    .par_chunks_mut(chunk_size)
+                    .zip(bounds.par_chunks_mut(chunk_size * k))
+                    .enumerate()
+                    .map(|(ti, (assign_chunk, bounds_chunk))| {
+                        let i0 = ti * chunk_size;
+                        let chunk_n = assign_chunk.len();
+                        let mut scratch = vec![N::zero(); d];
+                        let mut delta_sums = vec![N::zero(); k * d];
+                        let mut delta_csize = vec![0i64; k];
+                        let mut local_changed = 0usize;
+                        for ci in 0..chunk_n {
+                            let i = i0 + ci;
+                            let aa = assign_chunk[ci];
+                            let bounds_i = &mut bounds_chunk[ci * k..ci * k + k];
+                            let mut upper_i = bounds_i[aa] + cmov[aa];
+                            math::sub_assign(bounds_i, &cmov, k);
+                            let (mut loaded, mut upper_tight, mut a) = (false, false, aa);
+                            for j in 0..k {
+                                if j == aa || upper_i <= bounds_i[j] {
+                                    continue;
+                                }
+                                if !upper_tight {
+                                    if !loaded {
+                                        data.load_into(i, &mut scratch, d);
+                                        loaded = true;
+                                    }
+                                    upper_i = math::sqdist(cent.center(aa), &scratch, d).sqrt();
+                                    bounds_i[aa] = upper_i;
+                                    upper_tight = true;
+                                    if upper_i <= bounds_i[j] {
+                                        continue;
+                                    }
+                                }
+                                bounds_i[j] = math::sqdist(cent.center(j), &scratch, d).sqrt();
+                                if bounds_i[j] < upper_i {
+                                    a = j;
+                                    upper_i = bounds_i[j];
+                                }
+                            }
+                            bounds_i[a] = upper_i;
+                            if a != aa {
+                                assign_chunk[ci] = a;
+                                delta_csize[aa] -= 1;
+                                delta_csize[a] += 1;
+                                math::sub_assign(&mut delta_sums[aa * d..aa * d + d], &scratch, d);
+                                math::add_assign(&mut delta_sums[a * d..a * d + d], &scratch, d);
+                                local_changed += 1;
+                            }
+                        }
+                        (local_changed, delta_sums, delta_csize)
+                    })
+                    .collect();
+                let mut total = 0_usize;
+                for (c, ds, dc) in deltas {
+                    total += c;
+                    for j in 0..k {
+                        math::add_assign(sums.center_mut(j), &ds[j * d..j * d + d], d);
+                        csize[j] = (csize[j] as i64 + dc[j]) as usize;
                     }
-                    upper_i = math::sqdist(cent.center(aa), &scratch, d).sqrt();
-                    bounds_i[aa] = upper_i;
-                    upper_tight = true;
-                    if upper_i <= bounds_i[j] {
+                }
+                break 'iter total;
+            }
+            // serial path (no parallel feature, or n below threshold)
+            let mut c = 0;
+            for i in 0..n {
+                let aa = assign[i];
+                // Update bounds
+                let bounds_i = &mut bounds[i * k..i * k + k];
+                let mut upper_i = bounds_i[aa] + cmov[aa];
+                math::sub_assign(bounds_i, &cmov, k); // we overwrite [aa] below!
+                // Check bounds.
+                let (mut loaded, mut upper_tight, mut a) = (false, false, aa);
+                for j in 0..k {
+                    if j == aa || upper_i <= bounds_i[j] {
                         continue;
                     }
+                    // Make upper bound tight first:
+                    if !upper_tight {
+                        if !loaded {
+                            data.load_into(i, &mut scratch, d);
+                            loaded = true;
+                        }
+                        upper_i = math::sqdist(cent.center(aa), &scratch, d).sqrt();
+                        bounds_i[aa] = upper_i;
+                        upper_tight = true;
+                        if upper_i <= bounds_i[j] {
+                            continue;
+                        }
+                    }
+                    // Make lower tight
+                    bounds_i[j] = math::sqdist(cent.center(j), &scratch, d).sqrt();
+                    if bounds_i[j] < upper_i {
+                        a = j;
+                        upper_i = bounds_i[j];
+                    }
                 }
-                // Make lower tight
-                bounds_i[j] = math::sqdist(cent.center(j), &scratch, d).sqrt();
-                if bounds_i[j] < upper_i {
-                    a = j;
-                    upper_i = bounds_i[j];
+                bounds_i[a] = upper_i; // store upper bound
+                if a != aa {
+                    assign[i] = a;
+                    csize[aa] -= 1;
+                    csize[a] += 1;
+                    math::sub_assign(sums.center_mut(aa), &scratch, d);
+                    math::add_assign(sums.center_mut(a), &scratch, d);
+                    c += 1;
                 }
             }
-            bounds_i[a] = upper_i; // store upper bound
-            if a != aa {
-                assign[i] = a;
-                csize[aa] -= 1;
-                csize[a] += 1;
-                math::sub_assign(sums.center_mut(aa), &scratch, d);
-                math::add_assign(sums.center_mut(a), &scratch, d);
-                changed += 1;
-            }
-        }
+            c
+        };
         if changed == 0 {
             break;
         }

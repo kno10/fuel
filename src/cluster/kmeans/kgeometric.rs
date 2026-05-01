@@ -187,7 +187,7 @@ pub fn kgeometric<N, I, A>(
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync,
 {
     let (n, d) = (data.nrows(), data.ncols());
     let mut scratch = vec![N::zero(); d];
@@ -241,36 +241,93 @@ where
         cent = new_cent;
 
         // reassign
-        let mut changed = 0;
-        // prepare new cache vector if we're already caching distances
-        let mut next_prev: Option<Vec<N>> = prev_sq.as_ref().map(|_| vec![N::zero(); n]);
-        for (i, assign_i) in assign.iter_mut().enumerate().take(n) {
-            let aa = *assign_i;
-            data.load_into(i, &mut scratch, d);
-            // Reassignment must be exact against the current centers.
-            let (mut a, mut s_sq) = (aa, math::sqdist(cent.center(aa), &scratch, d));
-            for j in 0..k {
-                if j == aa {
-                    continue;
+        let changed = 'iter: {
+            #[cfg(feature = "parallel")]
+            if n >= crate::math::PARALLEL_ROW_THRESHOLD {
+                use rayon::prelude::*;
+                let chunk_size = n.div_ceil(rayon::current_num_threads());
+                let mut next_prev_data = vec![N::zero(); n];
+                let deltas: Vec<(usize, Vec<i64>)> = assign
+                    .par_chunks_mut(chunk_size)
+                    .zip(next_prev_data.par_chunks_mut(chunk_size))
+                    .enumerate()
+                    .map(|(ti, (assign_chunk, next_prev_chunk))| {
+                        let i0 = ti * chunk_size;
+                        let chunk_n = assign_chunk.len();
+                        let mut scratch = vec![N::zero(); d];
+                        let mut delta_csize = vec![0i64; k];
+                        let mut local_changed = 0usize;
+                        for ci in 0..chunk_n {
+                            let i = i0 + ci;
+                            let aa = assign_chunk[ci];
+                            data.load_into(i, &mut scratch, d);
+                            // Reassignment must be exact against the current centers.
+                            let (mut a, mut s_sq) =
+                                (aa, math::sqdist(cent.center(aa), &scratch, d));
+                            for j in 0..k {
+                                if j == aa {
+                                    continue;
+                                }
+                                let tmp_sq = math::sqdist(cent.center(j), &scratch, d);
+                                if tmp_sq < s_sq {
+                                    (a, s_sq) = (j, tmp_sq);
+                                }
+                            }
+                            next_prev_chunk[ci] = s_sq;
+                            if a != aa {
+                                assign_chunk[ci] = a;
+                                delta_csize[aa] -= 1;
+                                delta_csize[a] += 1;
+                                local_changed += 1;
+                            }
+                        }
+                        (local_changed, delta_csize)
+                    })
+                    .collect();
+                let mut total = 0usize;
+                for (c, dc) in deltas {
+                    total += c;
+                    for j in 0..k {
+                        csize[j] = (csize[j] as i64 + dc[j]) as usize;
+                    }
                 }
-                let tmp_sq = math::sqdist(cent.center(j), &scratch, d);
-                if tmp_sq < s_sq {
-                    (a, s_sq) = (j, tmp_sq);
+                // always populate the cache so Weiszfeld can reuse distances
+                prev_sq = Some(next_prev_data);
+                break 'iter total;
+            }
+            // serial path (no parallel feature, or n below threshold)
+            let mut c = 0;
+            // prepare new cache vector if we're already caching distances
+            let mut next_prev: Option<Vec<N>> = prev_sq.as_ref().map(|_| vec![N::zero(); n]);
+            for (i, assign_i) in assign.iter_mut().enumerate().take(n) {
+                let aa = *assign_i;
+                data.load_into(i, &mut scratch, d);
+                // Reassignment must be exact against the current centers.
+                let (mut a, mut s_sq) = (aa, math::sqdist(cent.center(aa), &scratch, d));
+                for j in 0..k {
+                    if j == aa {
+                        continue;
+                    }
+                    let tmp_sq = math::sqdist(cent.center(j), &scratch, d);
+                    if tmp_sq < s_sq {
+                        (a, s_sq) = (j, tmp_sq);
+                    }
+                }
+                if let Some(ref mut nxt) = next_prev {
+                    nxt[i] = s_sq;
+                }
+                if a != aa {
+                    *assign_i = a;
+                    csize[aa] -= 1;
+                    csize[a] += 1;
+                    c += 1;
                 }
             }
-            if let Some(ref mut nxt) = next_prev {
-                nxt[i] = s_sq;
-            }
-            if a != aa {
-                *assign_i = a;
-                csize[aa] -= 1;
-                csize[a] += 1;
-                changed += 1;
-            }
-        }
-        // swap caches so the newly computed distances are used in the next
-        // iteration; if we hadn't cached before we still won't in future.
-        prev_sq = next_prev;
+            // swap caches so the newly computed distances are used in the next
+            // iteration; if we hadn't cached before we still won't in future.
+            prev_sq = next_prev;
+            c
+        };
         if changed == 0 {
             break;
         }

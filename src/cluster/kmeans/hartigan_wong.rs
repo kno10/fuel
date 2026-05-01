@@ -28,7 +28,7 @@ where
         N,
         A,
         I,
-    >(data, k, init, &mut cent, &mut sums, &mut scratch);
+    >(data, None, k, init, &mut cent, &mut sums, &mut scratch);
 
     // Data structures needed by AS 136.
     let mut second = vec![0_usize; n]; // IC2
@@ -283,7 +283,7 @@ where
         N,
         A,
         I,
-    >(data, k, init, &mut cent, &mut sums, &mut scratch);
+    >(data, None, k, init, &mut cent, &mut sums, &mut scratch);
 
     let mut best2_idx = vec![0_usize; n];
     let mut best2_dist = vec![N::infinity(); n];

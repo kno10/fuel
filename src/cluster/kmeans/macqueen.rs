@@ -23,6 +23,7 @@ where
     let (mut assign, mut csize, mut lastsum) =
         crate::cluster::kmeans::lloyd::lloyd_initial_assignment::<N, A, I>(
             data,
+            None,
             k,
             init,
             &mut cent,

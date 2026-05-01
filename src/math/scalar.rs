@@ -2,6 +2,8 @@
 //!
 //! Used as a fallback when AVX2 is not available or when the element type
 //! does not have a dedicated intrinsic path.
+use ndarray::{ArrayView1, ArrayView2};
+
 use crate::Float;
 
 #[inline(always)]
@@ -11,6 +13,20 @@ where
 {
     assert!(v1.len() >= d && v2.len() >= d);
     (0..d).map(|i| unsafe { *v1.get_unchecked(i) - *v2.get_unchecked(i) }).map(|x| x * x).sum()
+}
+
+#[inline(always)]
+pub fn sqdist_view<N>(v1: ArrayView1<'_, N>, v2: ArrayView1<'_, N>, d: usize) -> N
+where
+    N: Float,
+{
+    assert!(v1.len() >= d && v2.len() >= d);
+    let mut sum = N::zero();
+    for i in 0..d {
+        let diff = v1[i] - v2[i];
+        sum += diff * diff;
+    }
+    sum
 }
 
 #[inline(always)]
@@ -115,17 +131,33 @@ where
 }
 
 #[inline(always)]
-pub fn pairwise_sqdist_between<N, D1, D2>(
-    points1: &[D1], points2: &[D2], d: usize, out: &mut [N], nrows: usize, ncols: usize,
+pub fn pairwise_sqdist_between<N>(
+    points1: ArrayView2<'_, N>, points2: ArrayView2<'_, N>, d: usize, out: &mut [N], nrows: usize,
+    ncols: usize,
 ) where
     N: Float,
-    D1: AsRef<[N]>,
-    D2: AsRef<[N]>,
 {
     assert_eq!(out.len(), nrows * ncols);
-    for i in 0..nrows {
-        for j in 0..ncols {
-            out[i * ncols + j] = sqdist(points1[i].as_ref(), points2[j].as_ref(), d);
+    let points1_contig = points1.is_standard_layout();
+    let points2_contig = points2.is_standard_layout();
+
+    if points1_contig && points2_contig {
+        for i in 0..nrows {
+            let row1_view = points1.row(i);
+            let row1 = row1_view.as_slice().unwrap();
+            for j in 0..ncols {
+                let row2_view = points2.row(j);
+                let row2 = row2_view.as_slice().unwrap();
+                out[i * ncols + j] = sqdist(row1, row2, d);
+            }
+        }
+    } else {
+        for i in 0..nrows {
+            let row1 = points1.row(i);
+            for j in 0..ncols {
+                let row2 = points2.row(j);
+                out[i * ncols + j] = sqdist_view(row1, row2, d);
+            }
         }
     }
 }
@@ -170,5 +202,21 @@ where
         unsafe {
             *v.get_unchecked_mut(i) += s;
         }
+    }
+}
+
+/// Squared distances from a single `center` to each of the `n` rows in `points`.
+pub fn rowdist<N>(center: &[N], points: ArrayView2<'_, N>, d: usize, out: &mut [N], n: usize)
+where
+    N: Float,
+{
+    assert_eq!(out.len(), n);
+    for j in 0..n {
+        let row = points.row(j);
+        out[j] = if let Some(s) = row.as_slice() {
+            sqdist(center, s, d)
+        } else {
+            sqdist_view(ArrayView1::from(center), row, d)
+        };
     }
 }

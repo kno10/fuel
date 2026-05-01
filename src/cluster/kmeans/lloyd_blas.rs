@@ -44,39 +44,14 @@ where
 
     let (n, d) = (data.nrows(), data.ncols());
 
-    enum DataMatrix<'a, N> {
-        View(ndarray::ArrayView2<'a, N>),
-        Owned(Array2<N>),
-    }
-
-    impl<'a, N> DataMatrix<'a, N> {
-        fn view(&self) -> ndarray::ArrayView2<'_, N> {
-            match self {
-                DataMatrix::View(view) => *view,
-                DataMatrix::Owned(matrix) => matrix.view(),
-            }
-        }
-    }
-
-    let data_matrix = if let Some(view) = data.as_ndarray() {
-        DataMatrix::View(view)
-    } else {
-        let mut matrix = Array2::<N>::zeros((n, d));
-        for i in 0..n {
-            let mut row = matrix.row_mut(i);
-            data.load_into(i, row.as_slice_mut().unwrap(), d);
-        }
-        DataMatrix::Owned(matrix)
-    };
-
-    let data_view = data_matrix.view();
-    let mut x_norms = Vec::with_capacity(n);
-    for row in data_view.axis_iter(Axis(0)) {
-        x_norms.push(row.dot(&row));
-    }
-
     let mut cent = Centers::<N>::new(k, d);
     init.init::<A>(data, &mut cent, k);
+
+    let data = data.to_ndarray();
+    let mut x_norms = Vec::with_capacity(n);
+    for row in data.axis_iter(Axis(0)) {
+        x_norms.push(row.dot(&row));
+    }
 
     let mut assign = vec![0_usize; n];
     let mut counts = vec![0_usize; k];
@@ -97,7 +72,7 @@ where
 
         let center_norms: Vec<N> = cent_mat.axis_iter(Axis(0)).map(|row| row.dot(&row)).collect();
 
-        let gram = data_view.dot(&cent_mat.t());
+        let gram = data.dot(&cent_mat.t());
 
         assign.fill(0);
         for slot in counts.iter_mut() {
@@ -118,7 +93,7 @@ where
             }
             assign[i] = best_j;
             counts[best_j] += 1;
-            let row = data_view.row(i);
+            let row = data.row(i);
             let mut target = sums.row_mut(best_j);
             for l in 0..d {
                 target[l] += row[l];

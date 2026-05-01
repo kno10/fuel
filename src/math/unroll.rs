@@ -4,6 +4,8 @@
 //! the compiler a fixed-width inner loop body suitable for auto-vectorisation
 //! (e.g. ARM NEON / VFPv4).
 
+use ndarray::{ArrayView1, ArrayView2};
+
 use crate::Float;
 
 const LANES: usize = 8;
@@ -224,12 +226,11 @@ where
 // The inner NR=LANES=8 loop is a fixed-width body that compilers can auto-vectorise
 // with NEON, VFPv4, or any SIMD backend, given -C target-cpu=native.
 #[inline(always)]
-pub(super) fn pairwise_sqdist_between<N, D1, D2>(
-    points1: &[D1], points2: &[D2], d: usize, out: &mut [N], nrows: usize, ncols: usize,
+pub(super) fn pairwise_sqdist_between<N>(
+    points1: ArrayView2<'_, N>, points2: ArrayView2<'_, N>, d: usize, out: &mut [N], nrows: usize,
+    ncols: usize,
 ) where
     N: Float,
-    D1: AsRef<[N]>,
-    D2: AsRef<[N]>,
 {
     assert_eq!(out.len(), nrows * ncols);
 
@@ -242,7 +243,7 @@ pub(super) fn pairwise_sqdist_between<N, D1, D2>(
         let ii = ii_block * MR;
         let nr = (nrows - ii).min(MR);
         for i_local in 0..nr {
-            let row = points1[ii + i_local].as_ref();
+            let row = points1.row(ii + i_local);
             for k in 0..d {
                 a_full[ii_block * MR * d + k * MR + i_local] = row[k];
             }
@@ -262,7 +263,7 @@ pub(super) fn pairwise_sqdist_between<N, D1, D2>(
             *x = N::zero();
         }
         for j_local in 0..nc {
-            let row = points2[jj + j_local].as_ref();
+            let row = points2.row(jj + j_local);
             for k in 0..d {
                 b_panel[k * NR + j_local] = row[k];
             }
@@ -367,5 +368,81 @@ where
         unsafe {
             *v.get_unchecked_mut(i) += s;
         }
+    }
+}
+/// Squared distances from a single `center` to each of the `n` rows in `points`.
+/// Dispatches on memory layout: C-order, Fortran-order, or general strides.
+pub(super) fn rowdist<N>(center: &[N], points: ArrayView2<'_, N>, d: usize, out: &mut [N], n: usize)
+where
+    N: Float,
+{
+    assert_eq!(out.len(), n);
+    let strides = points.strides();
+
+    if strides[1] == 1 {
+        // C-order: rows are contiguous; auto-vectorises over d, one point at a time.
+        for j in 0..n {
+            let row = points.row(j);
+            out[j] = sqdist(center, row.as_slice().expect("C-order row is contiguous"), d);
+        }
+        return;
+    }
+
+    if strides[0] == 1 && strides[1] > 0 {
+        // Fortran-order: columns are contiguous; NR-wide inner loop without packing.
+        let col_stride = strides[1] as usize;
+        let data_ptr = points.as_ptr();
+        let n_b_blocks = (n + NR - 1) / NR;
+        let mut tile = [N::zero(); NR];
+        for jj_block in 0..n_b_blocks {
+            let jj = jj_block * NR;
+            let nc = (n - jj).min(NR);
+            for t in tile[..nc].iter_mut() {
+                *t = N::zero();
+            }
+            for k in 0..d {
+                let av = center[k];
+                for j_local in 0..nc {
+                    let bv = unsafe { *data_ptr.add(jj + j_local + k * col_stride) };
+                    let diff = av - bv;
+                    tile[j_local] = tile[j_local] + diff * diff;
+                }
+            }
+            out[jj..jj + nc].copy_from_slice(&tile[..nc]);
+        }
+        return;
+    }
+
+    // General strides: pack into b_panel and use NR-wide inner loop.
+    let n_b_blocks = (n + NR - 1) / NR;
+    let mut b_panel = vec![N::zero(); NR * d];
+    let mut tile = [N::zero(); NR];
+
+    for jj_block in 0..n_b_blocks {
+        let jj = jj_block * NR;
+        let nc = (n - jj).min(NR);
+
+        for x in b_panel.iter_mut() {
+            *x = N::zero();
+        }
+        for j_local in 0..nc {
+            let row = points.row(jj + j_local);
+            for k in 0..d {
+                b_panel[k * NR + j_local] = row[k];
+            }
+        }
+
+        for x in tile.iter_mut() {
+            *x = N::zero();
+        }
+        for k in 0..d {
+            let av = center[k];
+            let b_base = k * NR;
+            for j in 0..NR {
+                let diff = av - b_panel[b_base + j];
+                tile[j] += diff * diff;
+            }
+        }
+        out[jj..jj + nc].copy_from_slice(&tile[..nc]);
     }
 }

@@ -7,7 +7,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, RngExt, SeedableRng, rng};
 
 use crate::cluster::kmeans::util::*;
-use crate::{Float, VectorData as Dataset, math};
+use crate::{Float, VectorData as Dataset};
 
 /// k-geometric++ initialization (weights proportional to Euclidean, not sq.).
 /// Used by the k-geometric median algorithm.
@@ -67,21 +67,23 @@ where
         F: FnMut(usize, usize, N),
     {
         let (n, d) = (data.nrows(), data.ncols());
-        let mut scratch = vec![N::zero(); d];
         data.load_into(self.rng.random_range(0..n), cent.center_mut(0), d);
         let mut dsq = vec![N::infinity(); n];
+
+        let rows = data.to_ndarray();
+        let mut tmp_dists = vec![N::zero(); n];
+
         for i in 0..k - 1 {
+            N::vec_row_sqdist(cent.center(i), rows.view(), d, &mut tmp_dists, n);
             let mut sum = N::zero();
-            let last = &cent.center(i);
-            for (j, dsq_j) in dsq.iter_mut().enumerate().take(n) {
-                data.load_into(j, &mut scratch, d);
-                let dj = math::sqdist(last, &scratch, d);
-                *dsq_j = N::min(*dsq_j, dj);
-                // weight proportional to distance
-                sum += dsq_j.sqrt();
+            for (j, dsq_j) in dsq.iter_mut().enumerate() {
+                let dj = tmp_dists[j];
                 if let Some(cb) = callback.as_mut() {
                     cb(i, j, dj);
                 }
+                *dsq_j = N::min(*dsq_j, dj);
+                // weight proportional to distance
+                sum += dsq_j.sqrt();
             }
             let c;
             'outer: loop {
@@ -95,13 +97,14 @@ where
                 }
                 sum -= r;
             }
-            data.load_into(c, cent.center_mut(i + 1), d);
+            cent.center_mut(i + 1)[..d].copy_from_slice(rows.row(c).to_slice().unwrap());
         }
-        let last = &cent.center(k - 1);
-        for j in 0..n {
-            data.load_into(j, &mut scratch, d);
-            if let Some(cb) = callback.as_mut() {
-                cb(k - 1, j, math::sqdist(last, &scratch, d));
+        if callback.is_some() {
+            N::vec_row_sqdist(cent.center(k - 1), rows.view(), d, &mut tmp_dists, n);
+            for j in 0..n {
+                if let Some(cb) = callback.as_mut() {
+                    cb(k - 1, j, tmp_dists[j]);
+                }
             }
         }
     }

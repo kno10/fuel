@@ -4,8 +4,8 @@ use rayon::prelude::*;
 
 use crate::{
     Data, DistPair, DistanceData, DistanceSearch, Float, IndexQuery, KnnSearch,
-    LinearScanPrioritySearcher, PrioritySearcherFactory, RangeSearch, linear_scan_knn,
-    linear_scan_range,
+    LinearScanPrioritySearcher, PrioritySearcherFactory, RangeSearch, VectorData, linear_scan_knn,
+    linear_scan_range, math,
 };
 
 /// Compute a dense pairwise matrix. Can be used with both distances and similarity functions such as kernels.
@@ -93,6 +93,35 @@ impl<F: Float> SquareDistanceMatrix<F> {
         let points: Vec<usize> = (0..n).collect();
         Self::new_from_array2(
             compute_pairwise_dense(&points, &|i, j| data.distance(*i, *j)),
+            data.is_squared_distance(),
+        )
+    }
+
+    /// Construct a square distance matrix from coordinate data using optimized
+    /// pairwise squared-distance kernels.
+    ///
+    /// This is intended for Euclidean and squared Euclidean distances. For
+    /// Euclidean distance the result is converted to the true L2 norm by taking
+    /// `sqrt` after the squared-distance kernel.
+    pub fn new_from_table_with_distance<'a, C, T, DF>(
+        data: &crate::api::TableWithDistance<'a, C, T, DF, F>,
+    ) -> Self
+    where
+        C: Float + Copy + Default + Into<F>,
+        T: AsRef<[C]>,
+        DF: crate::distance::DistanceFunction<[C], F>,
+    {
+        let rows = data.to_ndarray();
+        let matrix_c = math::pairwise_sqdist(&rows, &rows);
+        let mut matrix: Vec<F> = matrix_c.into_iter().map(|value| value.into()).collect();
+        if !data.is_squared_distance() {
+            for value in matrix.iter_mut() {
+                *value = value.sqrt();
+            }
+        }
+        let n = rows.nrows();
+        Self::new_from_array2(
+            Array2::from_shape_vec((n, n), matrix).expect("pairwise matrix shape is valid"),
             data.is_squared_distance(),
         )
     }
