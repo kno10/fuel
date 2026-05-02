@@ -671,6 +671,98 @@ data_outlier_n!(
     approximate_local_correlation_integral,
     f64
 );
+
+// ---- COF -------------------------------------------------------------------
+
+tree_outlier_k!(connectivity_outlier_factor_f32, connectivity_outlier_factor, f32);
+tree_outlier_k!(connectivity_outlier_factor_f64, connectivity_outlier_factor, f64);
+
+// ---- VoV -------------------------------------------------------------------
+
+tree_outlier_k!(variance_of_volume_f32, variance_of_volume, f32);
+tree_outlier_k!(variance_of_volume_f64, variance_of_volume, f64);
+
+// ---- KDEOS -----------------------------------------------------------------
+
+macro_rules! tree_outlier_kdeos {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, kmin, kmax, kernel="gaussian", min_bandwidth=0.0, scale=1.0, idim=None, seed=None, distance=None))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, kmin: usize, kmax: usize,
+            kernel: &str, min_bandwidth: f64, scale: f64, idim: Option<usize>,
+            seed: Option<u64>, distance: Option<&str>,
+        ) -> PyResult<Py<PyAny>> {
+            let array = data.as_array();
+            let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
+            let tree = build_vptree(&dataset, seed);
+            let kernel = parse_kernel_density_function(kernel)?;
+            let result =
+                outlier::kdeos::kdeos::<_, _, $dtype>(&tree, &dataset, kmin, kmax, kernel, min_bandwidth, scale, idim);
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+tree_outlier_kdeos!(kdeos_f32, f32);
+tree_outlier_kdeos!(kdeos_f64, f64);
+
+// ---- ISOS ------------------------------------------------------------------
+
+macro_rules! apply_isos {
+    ($E:ty, $tree:expr, $dataset:expr, $k:expr) => {
+        outlier::intrinsic_stochastic_outlier_selection::<_, _, _, $E>($tree, $dataset, $k)
+    };
+}
+
+macro_rules! tree_outlier_isos {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, k, estimator=None, seed=None, distance=None))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize,
+            estimator: Option<&str>, seed: Option<u64>, distance: Option<&str>,
+        ) -> PyResult<Py<PyAny>> {
+            let array = data.as_array();
+            let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
+            let tree = build_vptree(&dataset, seed);
+            let result = dispatch_id_estimator!(estimator, apply_isos!(&tree, &dataset, k));
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+tree_outlier_isos!(intrinsic_stochastic_outlier_selection_f32, f32);
+tree_outlier_isos!(intrinsic_stochastic_outlier_selection_f64, f64);
+
+// ---- LBABOD kernel variant -------------------------------------------------
+
+#[pyfunction]
+#[pyo3(signature = (data, k, l, kernel="poly2", distance=None))]
+fn locality_based_abod_kernel_f32<'py>(
+    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, k: usize, l: usize, kernel: &str,
+    distance: Option<&str>,
+) -> PyResult<Py<PyAny>> {
+    let array = data.as_array();
+    let dataset = build_outlier_dataset::<f32>(&array, distance)?;
+    let kfn = parse_abod_kernel::<f32>(kernel)?;
+    let result = outlier::locality_based_abod_kernel::<_, f32, _>(&dataset, k, l, kfn);
+    result_to_py_outlier(py, result)
+}
+
+#[pyfunction]
+#[pyo3(signature = (data, k, l, kernel="poly2", distance=None))]
+fn locality_based_abod_kernel_f64<'py>(
+    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, k: usize, l: usize, kernel: &str,
+    distance: Option<&str>,
+) -> PyResult<Py<PyAny>> {
+    let array = data.as_array();
+    let dataset = build_outlier_dataset::<f64>(&array, distance)?;
+    let kfn = parse_abod_kernel::<f64>(kernel)?;
+    let result = outlier::locality_based_abod_kernel::<_, f64, _>(&dataset, k, l, kfn);
+    result_to_py_outlier(py, result)
+}
+
 pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(angle_based_outlier_detection_f32))?;
     m.add_wrapped(wrap_pyfunction!(angle_based_outlier_detection_f64))?;
@@ -736,5 +828,15 @@ pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(stochastic_outlier_selection_f64))?;
     m.add_wrapped(wrap_pyfunction!(weighted_knn_f32))?;
     m.add_wrapped(wrap_pyfunction!(weighted_knn_f64))?;
+    m.add_wrapped(wrap_pyfunction!(connectivity_outlier_factor_f32))?;
+    m.add_wrapped(wrap_pyfunction!(connectivity_outlier_factor_f64))?;
+    m.add_wrapped(wrap_pyfunction!(variance_of_volume_f32))?;
+    m.add_wrapped(wrap_pyfunction!(variance_of_volume_f64))?;
+    m.add_wrapped(wrap_pyfunction!(kdeos_f32))?;
+    m.add_wrapped(wrap_pyfunction!(kdeos_f64))?;
+    m.add_wrapped(wrap_pyfunction!(intrinsic_stochastic_outlier_selection_f32))?;
+    m.add_wrapped(wrap_pyfunction!(intrinsic_stochastic_outlier_selection_f64))?;
+    m.add_wrapped(wrap_pyfunction!(locality_based_abod_kernel_f32))?;
+    m.add_wrapped(wrap_pyfunction!(locality_based_abod_kernel_f64))?;
     Ok(())
 }

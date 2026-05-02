@@ -186,3 +186,33 @@ def random(data, *, seed=None):
     if _f32(data):
         return _fuel.random_f32(data, seed)
     return _fuel.random_f64(data, seed)
+
+
+def connectivity_outlier_factor(data, k, *, seed=None, distance=None):
+    return _call(_fuel.connectivity_outlier_factor_f32,
+                 _fuel.connectivity_outlier_factor_f64,
+                 data, k, seed, distance)
+
+
+def variance_of_volume(data, k, *, seed=None, distance=None):
+    return _call(_fuel.variance_of_volume_f32, _fuel.variance_of_volume_f64,
+                 data, k, seed, distance)
+
+
+def kdeos(data, kmin, kmax, *, kernel='gaussian', min_bandwidth=0.0, scale=1.0,
+          idim=None, seed=None, distance=None):
+    return _call(_fuel.kdeos_f32, _fuel.kdeos_f64,
+                 data, kmin, kmax, kernel, min_bandwidth, scale, idim, seed, distance)
+
+
+def intrinsic_stochastic_outlier_selection(data, k, *, estimator=None, seed=None,
+                                           distance=None):
+    return _call(_fuel.intrinsic_stochastic_outlier_selection_f32,
+                 _fuel.intrinsic_stochastic_outlier_selection_f64,
+                 data, k, estimator, seed, distance)
+
+
+def locality_based_abod_kernel(data, k, l, *, kernel='poly2', distance=None):
+    return _call(_fuel.locality_based_abod_kernel_f32,
+                 _fuel.locality_based_abod_kernel_f64,
+                 data, k, l, kernel, distance)

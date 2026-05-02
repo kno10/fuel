@@ -279,11 +279,13 @@ def fuzzycmeans(data, *, k, m, max_iter=300, tol=1e-4,
 
 
 _SPHERICAL_VARIANTS = {
-    'lloyd':    (_fuel.spherical_lloyd_f32,    _fuel.spherical_lloyd_f64),
-    'elkan':    (_fuel.spherical_elkan_f32,    _fuel.spherical_elkan_f64),
-    'hamerly':  (_fuel.spherical_hamerly_f32,  _fuel.spherical_hamerly_f64),
-    'shamerly': (_fuel.spherical_shamerly_f32, _fuel.spherical_shamerly_f64),
-    'selkan':   (_fuel.spherical_selkan_f32,   _fuel.spherical_selkan_f64),
+    'lloyd':       (_fuel.spherical_lloyd_f32,       _fuel.spherical_lloyd_f64),
+    'elkan':       (_fuel.spherical_elkan_f32,       _fuel.spherical_elkan_f64),
+    'simp_elkan':  (_fuel.spherical_simp_elkan_f32,  _fuel.spherical_simp_elkan_f64),
+    'hamerly':     (_fuel.spherical_hamerly_f32,     _fuel.spherical_hamerly_f64),
+    'simp_hamerly':(_fuel.spherical_simp_hamerly_f32,_fuel.spherical_simp_hamerly_f64),
+    'shamerly':    (_fuel.spherical_shamerly_f32,    _fuel.spherical_shamerly_f64),
+    'selkan':      (_fuel.spherical_selkan_f32,      _fuel.spherical_selkan_f64),
 }
 
 
@@ -301,7 +303,7 @@ def spherical_kmeans(data, *, k, variant='lloyd', max_iter=300,
         Input data matrix.
     k : int
         Number of clusters.
-    variant : {'lloyd', 'elkan', 'hamerly', 'shamerly', 'selkan'},
+    variant : {'lloyd', 'elkan', 'simp_elkan', 'hamerly', 'simp_hamerly', 'shamerly', 'selkan'},
         default 'lloyd'
         Algorithm variant.
     max_iter : int, default 300
@@ -328,11 +330,13 @@ def spherical_kmeans(data, *, k, variant='lloyd', max_iter=300,
         )
     if _f32_sparse(data):
         sparse_variants = {
-            'lloyd':    (_fuel.spherical_lloyd_sparse_f32,    _fuel.spherical_lloyd_sparse_f64),
-            'elkan':    (_fuel.spherical_elkan_sparse_f32,    _fuel.spherical_elkan_sparse_f64),
-            'hamerly':  (_fuel.spherical_hamerly_sparse_f32,  _fuel.spherical_hamerly_sparse_f64),
-            'shamerly': (_fuel.spherical_shamerly_sparse_f32, _fuel.spherical_shamerly_sparse_f64),
-            'selkan':   (_fuel.spherical_selkan_sparse_f32,   _fuel.spherical_selkan_sparse_f64),
+            'lloyd':        (_fuel.spherical_lloyd_sparse_f32,        _fuel.spherical_lloyd_sparse_f64),
+            'elkan':        (_fuel.spherical_elkan_sparse_f32,        _fuel.spherical_elkan_sparse_f64),
+            'simp_elkan':   (_fuel.spherical_simp_elkan_sparse_f32,   _fuel.spherical_simp_elkan_sparse_f64),
+            'hamerly':      (_fuel.spherical_hamerly_sparse_f32,      _fuel.spherical_hamerly_sparse_f64),
+            'simp_hamerly': (_fuel.spherical_simp_hamerly_sparse_f32, _fuel.spherical_simp_hamerly_sparse_f64),
+            'shamerly':     (_fuel.spherical_shamerly_sparse_f32,     _fuel.spherical_shamerly_sparse_f64),
+            'selkan':       (_fuel.spherical_selkan_sparse_f32,       _fuel.spherical_selkan_sparse_f64),
         }
         f32_fn, f64_fn = sparse_variants[v]
         return f32_fn(data, params)

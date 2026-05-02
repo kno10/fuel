@@ -55,7 +55,10 @@ where
     }
 }
 
+mod dbscan;
 mod em;
+mod evaluation;
+mod hdbscan;
 mod hierarchical;
 mod kmeans;
 mod outlier;
@@ -66,9 +69,12 @@ mod spherical;
 #[pyo3(module = "fuel", name = "_fuel")]
 fn _fuel<'py>(_py: Python<'py>, m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(get_rayon_parallellism))?;
+    dbscan::register(m)?;
     kmeans::register(m)?;
     spherical::register(m)?;
     em::register(m)?;
+    evaluation::register(m)?;
+    hdbscan::register(m)?;
     hierarchical::register(m)?;
     outlier::register(m)?;
     Ok(())
