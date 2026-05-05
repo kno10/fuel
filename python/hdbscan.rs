@@ -92,11 +92,8 @@ macro_rules! hdbscan_hierarchy_methods {
                 &self, py: Python<'py>, min_cluster_size: usize, hierarchical: bool,
             ) -> PyResult<Py<PyAny>> {
                 use pyo3::types::{PyDict, PyList};
-                let r = extract_hdbscan_hierarchy_hdbscan(
-                    &self.inner,
-                    min_cluster_size,
-                    hierarchical,
-                );
+                let r =
+                    extract_hdbscan_hierarchy_hdbscan(&self.inner, min_cluster_size, hierarchical);
                 let nodes_list = PyList::empty(py);
                 for node in r.hierarchy.nodes {
                     let d = PyDict::new(py);
@@ -180,18 +177,8 @@ macro_rules! hdbscan_brute_force_wrapper {
 
 hdbscan_brute_force_wrapper!(hdbscan_prim_f32, hdbscan::hdbscan_prim, f32, HdbscanHierarchyF32);
 hdbscan_brute_force_wrapper!(hdbscan_prim_f64, hdbscan::hdbscan_prim, f64, HdbscanHierarchyF64);
-hdbscan_brute_force_wrapper!(
-    slink_hdbscan_f32,
-    hdbscan::slink_hdbscan,
-    f32,
-    HdbscanHierarchyF32
-);
-hdbscan_brute_force_wrapper!(
-    slink_hdbscan_f64,
-    hdbscan::slink_hdbscan,
-    f64,
-    HdbscanHierarchyF64
-);
+hdbscan_brute_force_wrapper!(slink_hdbscan_f32, hdbscan::slink_hdbscan, f32, HdbscanHierarchyF32);
+hdbscan_brute_force_wrapper!(slink_hdbscan_f64, hdbscan::slink_hdbscan, f64, HdbscanHierarchyF64);
 
 // ---- tree-accelerated algorithms (no slack) --------------------------------
 

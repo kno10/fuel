@@ -6,33 +6,33 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyModule};
 
 use crate::cluster::hierarchical::MergeHistory;
-use crate::evaluation::outlier::{
-    average_precision::average_precision,
-    discounted_cumulative_gain::{dcg, normalized_discounted_cumulative_gain},
-    maximum_f1::maximum_f1,
-    precision_at_k::{precision_at_k, r_precision},
-    precision_recall_curve::{auprc, pr_curve},
-    precision_recall_gain::prg_auc,
-    receiver_operating_curve::auc,
-};
+use crate::evaluation::cluster::external::contingency_table::ClusterContingencyTable;
 use crate::evaluation::cluster::external::{
     BCubed, Entropy, MaximumMatchingAccuracy, PairCounting, PairSetsIndex, SetMatchingPurity,
-    contingency_table::ClusterContingencyTable,
 };
-use crate::evaluation::cluster::internal::{
-    c_index::c_index,
-    cluster_radius::cluster_radius,
-    concordance::concordant_pairs_gamma_tau,
-    cophenetic::{cophenetic_correlation, cophenetic_distances},
-    davies_bouldin::davies_bouldin_index,
-    dbcv::dbcv,
-    helpers::NoiseHandling,
-    neighbor_consistency::neighbor_consistency_knn,
-    pbm_index::pbm_index,
-    silhouette::{silhouette, simplified_silhouette},
-    squared_errors::squared_errors,
-    variance_ratio::variance_ratio_criterion,
+use crate::evaluation::cluster::internal::c_index::c_index;
+use crate::evaluation::cluster::internal::cluster_radius::cluster_radius;
+use crate::evaluation::cluster::internal::concordance::concordant_pairs_gamma_tau;
+use crate::evaluation::cluster::internal::cophenetic::{
+    cophenetic_correlation, cophenetic_distances,
 };
+use crate::evaluation::cluster::internal::davies_bouldin::davies_bouldin_index;
+use crate::evaluation::cluster::internal::dbcv::dbcv;
+use crate::evaluation::cluster::internal::helpers::NoiseHandling;
+use crate::evaluation::cluster::internal::neighbor_consistency::neighbor_consistency_knn;
+use crate::evaluation::cluster::internal::pbm_index::pbm_index;
+use crate::evaluation::cluster::internal::silhouette::{silhouette, simplified_silhouette};
+use crate::evaluation::cluster::internal::squared_errors::squared_errors;
+use crate::evaluation::cluster::internal::variance_ratio::variance_ratio_criterion;
+use crate::evaluation::outlier::average_precision::average_precision;
+use crate::evaluation::outlier::discounted_cumulative_gain::{
+    dcg, normalized_discounted_cumulative_gain,
+};
+use crate::evaluation::outlier::maximum_f1::maximum_f1;
+use crate::evaluation::outlier::precision_at_k::{precision_at_k, r_precision};
+use crate::evaluation::outlier::precision_recall_curve::{auprc, pr_curve};
+use crate::evaluation::outlier::precision_recall_gain::prg_auc;
+use crate::evaluation::outlier::receiver_operating_curve::auc;
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -491,13 +491,9 @@ fn cophenetic_corr<'py>(
 
 // ---- outlier evaluation ----------------------------------------------------
 
-fn scores_from_array(arr: &PyReadonlyArray1<'_, f64>) -> Vec<f64> {
-    arr.as_array().to_vec()
-}
+fn scores_from_array(arr: &PyReadonlyArray1<'_, f64>) -> Vec<f64> { arr.as_array().to_vec() }
 
-fn binary_labels_from_array(arr: &PyReadonlyArray1<'_, u8>) -> Vec<u8> {
-    arr.as_array().to_vec()
-}
+fn binary_labels_from_array(arr: &PyReadonlyArray1<'_, u8>) -> Vec<u8> { arr.as_array().to_vec() }
 
 #[pyfunction]
 fn outlier_auc(
@@ -566,8 +562,7 @@ fn outlier_maximum_f1(
 
 #[pyfunction]
 fn outlier_precision_at_k(
-    _py: Python<'_>, scores: PyReadonlyArray1<'_, f64>, labels: PyReadonlyArray1<'_, u8>,
-    k: usize,
+    _py: Python<'_>, scores: PyReadonlyArray1<'_, f64>, labels: PyReadonlyArray1<'_, u8>, k: usize,
 ) -> PyResult<f64> {
     Ok(precision_at_k(&scores_from_array(&scores), &binary_labels_from_array(&labels), k))
 }

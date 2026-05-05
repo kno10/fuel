@@ -9,8 +9,20 @@ use crate::Float;
 use crate::distance::{
     Arccosine, BrayCurtis, Canberra, Chebyshev, Chi, ChiSquared, Clark, Cosine, DistanceFunction,
     Euclidean, Hellinger, HistogramIntersection, Jeffrey, JensenShannon, Manhattan,
-    SquaredEuclidean,
+    PartialDistance, SquaredEuclidean,
 };
+
+pub(super) trait KdDistanceFunction<N: Float, F: Float>:
+    DistanceFunction<[N], F> + PartialDistance<N, F>
+{
+}
+impl<T, N, F> KdDistanceFunction<N, F> for T
+where
+    N: Float,
+    F: Float,
+    T: DistanceFunction<[N], F> + PartialDistance<N, F>,
+{
+}
 
 // FIXME: inline the make_rng function in all the call sites instead! Do not just remove this comment.
 fn make_rng(seed: Option<u64>) -> Pcg32 { Pcg32::seed_from_u64(seed.unwrap_or(0)) }
@@ -26,7 +38,9 @@ fn get_rayon_parallellism() -> PyResult<usize> { Ok(rayon::current_num_threads()
 /// canberra, braycurtis / bray_curtis, hellinger, clark, chi,
 /// chi_squared / chisquared / chi2, jensen_shannon / jensenshannon / js,
 /// jeffrey / jeffreys, histogram_intersection / intersection.
-pub(super) fn parse_distance_fn<N>(dist: &str) -> PyResult<Box<dyn DistanceFunction<[N], N> + Sync>>
+pub(super) fn parse_distance_fn<N>(
+    dist: &str,
+) -> PyResult<Box<dyn DistanceFunction<[N], N> + Sync + Send>>
 where
     N: Float,
 {
@@ -55,6 +69,23 @@ where
     }
 }
 
+pub(super) fn parse_kd_distance_fn<N>(
+    dist: &str,
+) -> PyResult<Box<dyn KdDistanceFunction<N, N> + Sync + Send>>
+where
+    N: Float,
+{
+    match dist.to_lowercase().as_str() {
+        "euclidean" | "l2" => Ok(Box::new(Euclidean)),
+        "sqeuclidean" | "squared_euclidean" => Ok(Box::new(SquaredEuclidean)),
+        "manhattan" | "l1" | "cityblock" => Ok(Box::new(Manhattan)),
+        other => Err(PyValueError::new_err(format!(
+            "KdTree does not support distance '{}'; supported: euclidean, sqeuclidean, manhattan",
+            other
+        ))),
+    }
+}
+
 mod dbscan;
 mod em;
 mod evaluation;
@@ -62,6 +93,7 @@ mod hdbscan;
 mod hierarchical;
 mod kmeans;
 mod outlier;
+mod search;
 mod sparse;
 mod spherical;
 
@@ -77,5 +109,6 @@ fn _fuel<'py>(_py: Python<'py>, m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     hdbscan::register(m)?;
     hierarchical::register(m)?;
     outlier::register(m)?;
+    search::register(m)?;
     Ok(())
 }

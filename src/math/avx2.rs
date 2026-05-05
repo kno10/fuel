@@ -27,9 +27,7 @@ const MR_SDIST_F64: usize = 4; // 4 accumulators; b(1)+d(1)+acc0..3(4) = 6 YMM u
 const PREFETCH_DIST: usize = 12;
 
 #[inline(always)]
-fn pack_panel_f32(
-    panel: &mut [f32], points: ArrayView2<'_, f32>, jj: usize, nc: usize, d: usize,
-) {
+fn pack_panel_f32(panel: &mut [f32], points: ArrayView2<'_, f32>, jj: usize, nc: usize, d: usize) {
     debug_assert!(panel.len() >= NR_F32 * d);
 
     for j_local in 0..nc {
@@ -47,9 +45,7 @@ fn pack_panel_f32(
 }
 
 #[inline(always)]
-fn pack_panel_f64(
-    panel: &mut [f64], points: ArrayView2<'_, f64>, jj: usize, nc: usize, d: usize,
-) {
+fn pack_panel_f64(panel: &mut [f64], points: ArrayView2<'_, f64>, jj: usize, nc: usize, d: usize) {
     debug_assert!(panel.len() >= NR_F64 * d);
 
     for j_local in 0..nc {
@@ -135,9 +131,7 @@ pub(super) fn sqdist_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
         }
         i += 32;
     }
-    let mut acc = unsafe {
-        _mm256_add_ps(_mm256_add_ps(acc0, acc1), _mm256_add_ps(acc2, acc3))
-    };
+    let mut acc = unsafe { _mm256_add_ps(_mm256_add_ps(acc0, acc1), _mm256_add_ps(acc2, acc3)) };
     while i + 8 <= d {
         unsafe {
             let a = _mm256_loadu_ps(v1.as_ptr().add(i));
@@ -191,9 +185,7 @@ pub(super) fn sqdist_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
         }
         i += 16;
     }
-    let mut acc = unsafe {
-        _mm256_add_pd(_mm256_add_pd(acc0, acc1), _mm256_add_pd(acc2, acc3))
-    };
+    let mut acc = unsafe { _mm256_add_pd(_mm256_add_pd(acc0, acc1), _mm256_add_pd(acc2, acc3)) };
     while i + 4 <= d {
         unsafe {
             let a = _mm256_loadu_pd(v1.as_ptr().add(i));
@@ -228,23 +220,36 @@ pub(super) fn l1dist_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
     let mut acc3 = unsafe { _mm256_setzero_ps() };
     while i + 32 <= d {
         unsafe {
-            let d0 = _mm256_sub_ps(_mm256_loadu_ps(v1.as_ptr().add(i)), _mm256_loadu_ps(v2.as_ptr().add(i)));
+            let d0 = _mm256_sub_ps(
+                _mm256_loadu_ps(v1.as_ptr().add(i)),
+                _mm256_loadu_ps(v2.as_ptr().add(i)),
+            );
             acc0 = _mm256_add_ps(acc0, _mm256_and_ps(d0, abs_mask));
-            let d1 = _mm256_sub_ps(_mm256_loadu_ps(v1.as_ptr().add(i + 8)), _mm256_loadu_ps(v2.as_ptr().add(i + 8)));
+            let d1 = _mm256_sub_ps(
+                _mm256_loadu_ps(v1.as_ptr().add(i + 8)),
+                _mm256_loadu_ps(v2.as_ptr().add(i + 8)),
+            );
             acc1 = _mm256_add_ps(acc1, _mm256_and_ps(d1, abs_mask));
-            let d2 = _mm256_sub_ps(_mm256_loadu_ps(v1.as_ptr().add(i + 16)), _mm256_loadu_ps(v2.as_ptr().add(i + 16)));
+            let d2 = _mm256_sub_ps(
+                _mm256_loadu_ps(v1.as_ptr().add(i + 16)),
+                _mm256_loadu_ps(v2.as_ptr().add(i + 16)),
+            );
             acc2 = _mm256_add_ps(acc2, _mm256_and_ps(d2, abs_mask));
-            let d3 = _mm256_sub_ps(_mm256_loadu_ps(v1.as_ptr().add(i + 24)), _mm256_loadu_ps(v2.as_ptr().add(i + 24)));
+            let d3 = _mm256_sub_ps(
+                _mm256_loadu_ps(v1.as_ptr().add(i + 24)),
+                _mm256_loadu_ps(v2.as_ptr().add(i + 24)),
+            );
             acc3 = _mm256_add_ps(acc3, _mm256_and_ps(d3, abs_mask));
         }
         i += 32;
     }
-    let mut acc = unsafe {
-        _mm256_add_ps(_mm256_add_ps(acc0, acc1), _mm256_add_ps(acc2, acc3))
-    };
+    let mut acc = unsafe { _mm256_add_ps(_mm256_add_ps(acc0, acc1), _mm256_add_ps(acc2, acc3)) };
     while i + 8 <= d {
         unsafe {
-            let diff = _mm256_sub_ps(_mm256_loadu_ps(v1.as_ptr().add(i)), _mm256_loadu_ps(v2.as_ptr().add(i)));
+            let diff = _mm256_sub_ps(
+                _mm256_loadu_ps(v1.as_ptr().add(i)),
+                _mm256_loadu_ps(v2.as_ptr().add(i)),
+            );
             acc = _mm256_add_ps(acc, _mm256_and_ps(diff, abs_mask));
         }
         i += 8;
@@ -268,23 +273,36 @@ pub(super) fn l1dist_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
     let mut acc3 = unsafe { _mm256_setzero_pd() };
     while i + 16 <= d {
         unsafe {
-            let d0 = _mm256_sub_pd(_mm256_loadu_pd(v1.as_ptr().add(i)), _mm256_loadu_pd(v2.as_ptr().add(i)));
+            let d0 = _mm256_sub_pd(
+                _mm256_loadu_pd(v1.as_ptr().add(i)),
+                _mm256_loadu_pd(v2.as_ptr().add(i)),
+            );
             acc0 = _mm256_add_pd(acc0, _mm256_and_pd(d0, abs_mask));
-            let d1 = _mm256_sub_pd(_mm256_loadu_pd(v1.as_ptr().add(i + 4)), _mm256_loadu_pd(v2.as_ptr().add(i + 4)));
+            let d1 = _mm256_sub_pd(
+                _mm256_loadu_pd(v1.as_ptr().add(i + 4)),
+                _mm256_loadu_pd(v2.as_ptr().add(i + 4)),
+            );
             acc1 = _mm256_add_pd(acc1, _mm256_and_pd(d1, abs_mask));
-            let d2 = _mm256_sub_pd(_mm256_loadu_pd(v1.as_ptr().add(i + 8)), _mm256_loadu_pd(v2.as_ptr().add(i + 8)));
+            let d2 = _mm256_sub_pd(
+                _mm256_loadu_pd(v1.as_ptr().add(i + 8)),
+                _mm256_loadu_pd(v2.as_ptr().add(i + 8)),
+            );
             acc2 = _mm256_add_pd(acc2, _mm256_and_pd(d2, abs_mask));
-            let d3 = _mm256_sub_pd(_mm256_loadu_pd(v1.as_ptr().add(i + 12)), _mm256_loadu_pd(v2.as_ptr().add(i + 12)));
+            let d3 = _mm256_sub_pd(
+                _mm256_loadu_pd(v1.as_ptr().add(i + 12)),
+                _mm256_loadu_pd(v2.as_ptr().add(i + 12)),
+            );
             acc3 = _mm256_add_pd(acc3, _mm256_and_pd(d3, abs_mask));
         }
         i += 16;
     }
-    let mut acc = unsafe {
-        _mm256_add_pd(_mm256_add_pd(acc0, acc1), _mm256_add_pd(acc2, acc3))
-    };
+    let mut acc = unsafe { _mm256_add_pd(_mm256_add_pd(acc0, acc1), _mm256_add_pd(acc2, acc3)) };
     while i + 4 <= d {
         unsafe {
-            let diff = _mm256_sub_pd(_mm256_loadu_pd(v1.as_ptr().add(i)), _mm256_loadu_pd(v2.as_ptr().add(i)));
+            let diff = _mm256_sub_pd(
+                _mm256_loadu_pd(v1.as_ptr().add(i)),
+                _mm256_loadu_pd(v2.as_ptr().add(i)),
+            );
             acc = _mm256_add_pd(acc, _mm256_and_pd(diff, abs_mask));
         }
         i += 4;
@@ -305,16 +323,31 @@ pub(super) fn mul_f32(v1: &mut [f32], v2: &[f32], a: f32, d: usize) {
     let mut i = 0;
     while i + 32 <= d {
         unsafe {
-            _mm256_storeu_ps(v1.as_mut_ptr().add(i), _mm256_mul_ps(_mm256_loadu_ps(v2.as_ptr().add(i)), scalar));
-            _mm256_storeu_ps(v1.as_mut_ptr().add(i + 8), _mm256_mul_ps(_mm256_loadu_ps(v2.as_ptr().add(i + 8)), scalar));
-            _mm256_storeu_ps(v1.as_mut_ptr().add(i + 16), _mm256_mul_ps(_mm256_loadu_ps(v2.as_ptr().add(i + 16)), scalar));
-            _mm256_storeu_ps(v1.as_mut_ptr().add(i + 24), _mm256_mul_ps(_mm256_loadu_ps(v2.as_ptr().add(i + 24)), scalar));
+            _mm256_storeu_ps(
+                v1.as_mut_ptr().add(i),
+                _mm256_mul_ps(_mm256_loadu_ps(v2.as_ptr().add(i)), scalar),
+            );
+            _mm256_storeu_ps(
+                v1.as_mut_ptr().add(i + 8),
+                _mm256_mul_ps(_mm256_loadu_ps(v2.as_ptr().add(i + 8)), scalar),
+            );
+            _mm256_storeu_ps(
+                v1.as_mut_ptr().add(i + 16),
+                _mm256_mul_ps(_mm256_loadu_ps(v2.as_ptr().add(i + 16)), scalar),
+            );
+            _mm256_storeu_ps(
+                v1.as_mut_ptr().add(i + 24),
+                _mm256_mul_ps(_mm256_loadu_ps(v2.as_ptr().add(i + 24)), scalar),
+            );
         }
         i += 32;
     }
     while i + 8 <= d {
         unsafe {
-            _mm256_storeu_ps(v1.as_mut_ptr().add(i), _mm256_mul_ps(_mm256_loadu_ps(v2.as_ptr().add(i)), scalar));
+            _mm256_storeu_ps(
+                v1.as_mut_ptr().add(i),
+                _mm256_mul_ps(_mm256_loadu_ps(v2.as_ptr().add(i)), scalar),
+            );
         }
         i += 8;
     }
@@ -330,16 +363,31 @@ pub(super) fn mul_f64(v1: &mut [f64], v2: &[f64], a: f64, d: usize) {
     let mut i = 0;
     while i + 16 <= d {
         unsafe {
-            _mm256_storeu_pd(v1.as_mut_ptr().add(i), _mm256_mul_pd(_mm256_loadu_pd(v2.as_ptr().add(i)), scalar));
-            _mm256_storeu_pd(v1.as_mut_ptr().add(i + 4), _mm256_mul_pd(_mm256_loadu_pd(v2.as_ptr().add(i + 4)), scalar));
-            _mm256_storeu_pd(v1.as_mut_ptr().add(i + 8), _mm256_mul_pd(_mm256_loadu_pd(v2.as_ptr().add(i + 8)), scalar));
-            _mm256_storeu_pd(v1.as_mut_ptr().add(i + 12), _mm256_mul_pd(_mm256_loadu_pd(v2.as_ptr().add(i + 12)), scalar));
+            _mm256_storeu_pd(
+                v1.as_mut_ptr().add(i),
+                _mm256_mul_pd(_mm256_loadu_pd(v2.as_ptr().add(i)), scalar),
+            );
+            _mm256_storeu_pd(
+                v1.as_mut_ptr().add(i + 4),
+                _mm256_mul_pd(_mm256_loadu_pd(v2.as_ptr().add(i + 4)), scalar),
+            );
+            _mm256_storeu_pd(
+                v1.as_mut_ptr().add(i + 8),
+                _mm256_mul_pd(_mm256_loadu_pd(v2.as_ptr().add(i + 8)), scalar),
+            );
+            _mm256_storeu_pd(
+                v1.as_mut_ptr().add(i + 12),
+                _mm256_mul_pd(_mm256_loadu_pd(v2.as_ptr().add(i + 12)), scalar),
+            );
         }
         i += 16;
     }
     while i + 4 <= d {
         unsafe {
-            _mm256_storeu_pd(v1.as_mut_ptr().add(i), _mm256_mul_pd(_mm256_loadu_pd(v2.as_ptr().add(i)), scalar));
+            _mm256_storeu_pd(
+                v1.as_mut_ptr().add(i),
+                _mm256_mul_pd(_mm256_loadu_pd(v2.as_ptr().add(i)), scalar),
+            );
         }
         i += 4;
     }
@@ -419,20 +467,35 @@ pub(super) fn add_assign_f32(v1: &mut [f32], v2: &[f32], d: usize) {
     while i + 32 <= d {
         unsafe {
             let p0 = v1.as_mut_ptr().add(i);
-            _mm256_storeu_ps(p0, _mm256_add_ps(_mm256_loadu_ps(p0), _mm256_loadu_ps(v2.as_ptr().add(i))));
+            _mm256_storeu_ps(
+                p0,
+                _mm256_add_ps(_mm256_loadu_ps(p0), _mm256_loadu_ps(v2.as_ptr().add(i))),
+            );
             let p1 = v1.as_mut_ptr().add(i + 8);
-            _mm256_storeu_ps(p1, _mm256_add_ps(_mm256_loadu_ps(p1), _mm256_loadu_ps(v2.as_ptr().add(i + 8))));
+            _mm256_storeu_ps(
+                p1,
+                _mm256_add_ps(_mm256_loadu_ps(p1), _mm256_loadu_ps(v2.as_ptr().add(i + 8))),
+            );
             let p2 = v1.as_mut_ptr().add(i + 16);
-            _mm256_storeu_ps(p2, _mm256_add_ps(_mm256_loadu_ps(p2), _mm256_loadu_ps(v2.as_ptr().add(i + 16))));
+            _mm256_storeu_ps(
+                p2,
+                _mm256_add_ps(_mm256_loadu_ps(p2), _mm256_loadu_ps(v2.as_ptr().add(i + 16))),
+            );
             let p3 = v1.as_mut_ptr().add(i + 24);
-            _mm256_storeu_ps(p3, _mm256_add_ps(_mm256_loadu_ps(p3), _mm256_loadu_ps(v2.as_ptr().add(i + 24))));
+            _mm256_storeu_ps(
+                p3,
+                _mm256_add_ps(_mm256_loadu_ps(p3), _mm256_loadu_ps(v2.as_ptr().add(i + 24))),
+            );
         }
         i += 32;
     }
     while i + 8 <= d {
         unsafe {
             let ptr1 = v1.as_mut_ptr().add(i);
-            _mm256_storeu_ps(ptr1, _mm256_add_ps(_mm256_loadu_ps(ptr1), _mm256_loadu_ps(v2.as_ptr().add(i))));
+            _mm256_storeu_ps(
+                ptr1,
+                _mm256_add_ps(_mm256_loadu_ps(ptr1), _mm256_loadu_ps(v2.as_ptr().add(i))),
+            );
         }
         i += 8;
     }
@@ -448,20 +511,35 @@ pub(super) fn add_assign_f64(v1: &mut [f64], v2: &[f64], d: usize) {
     while i + 16 <= d {
         unsafe {
             let p0 = v1.as_mut_ptr().add(i);
-            _mm256_storeu_pd(p0, _mm256_add_pd(_mm256_loadu_pd(p0), _mm256_loadu_pd(v2.as_ptr().add(i))));
+            _mm256_storeu_pd(
+                p0,
+                _mm256_add_pd(_mm256_loadu_pd(p0), _mm256_loadu_pd(v2.as_ptr().add(i))),
+            );
             let p1 = v1.as_mut_ptr().add(i + 4);
-            _mm256_storeu_pd(p1, _mm256_add_pd(_mm256_loadu_pd(p1), _mm256_loadu_pd(v2.as_ptr().add(i + 4))));
+            _mm256_storeu_pd(
+                p1,
+                _mm256_add_pd(_mm256_loadu_pd(p1), _mm256_loadu_pd(v2.as_ptr().add(i + 4))),
+            );
             let p2 = v1.as_mut_ptr().add(i + 8);
-            _mm256_storeu_pd(p2, _mm256_add_pd(_mm256_loadu_pd(p2), _mm256_loadu_pd(v2.as_ptr().add(i + 8))));
+            _mm256_storeu_pd(
+                p2,
+                _mm256_add_pd(_mm256_loadu_pd(p2), _mm256_loadu_pd(v2.as_ptr().add(i + 8))),
+            );
             let p3 = v1.as_mut_ptr().add(i + 12);
-            _mm256_storeu_pd(p3, _mm256_add_pd(_mm256_loadu_pd(p3), _mm256_loadu_pd(v2.as_ptr().add(i + 12))));
+            _mm256_storeu_pd(
+                p3,
+                _mm256_add_pd(_mm256_loadu_pd(p3), _mm256_loadu_pd(v2.as_ptr().add(i + 12))),
+            );
         }
         i += 16;
     }
     while i + 4 <= d {
         unsafe {
             let ptr1 = v1.as_mut_ptr().add(i);
-            _mm256_storeu_pd(ptr1, _mm256_add_pd(_mm256_loadu_pd(ptr1), _mm256_loadu_pd(v2.as_ptr().add(i))));
+            _mm256_storeu_pd(
+                ptr1,
+                _mm256_add_pd(_mm256_loadu_pd(ptr1), _mm256_loadu_pd(v2.as_ptr().add(i))),
+            );
         }
         i += 4;
     }
@@ -479,20 +557,35 @@ pub(super) fn sub_assign_f32(v1: &mut [f32], v2: &[f32], d: usize) {
     while i + 32 <= d {
         unsafe {
             let p0 = v1.as_mut_ptr().add(i);
-            _mm256_storeu_ps(p0, _mm256_sub_ps(_mm256_loadu_ps(p0), _mm256_loadu_ps(v2.as_ptr().add(i))));
+            _mm256_storeu_ps(
+                p0,
+                _mm256_sub_ps(_mm256_loadu_ps(p0), _mm256_loadu_ps(v2.as_ptr().add(i))),
+            );
             let p1 = v1.as_mut_ptr().add(i + 8);
-            _mm256_storeu_ps(p1, _mm256_sub_ps(_mm256_loadu_ps(p1), _mm256_loadu_ps(v2.as_ptr().add(i + 8))));
+            _mm256_storeu_ps(
+                p1,
+                _mm256_sub_ps(_mm256_loadu_ps(p1), _mm256_loadu_ps(v2.as_ptr().add(i + 8))),
+            );
             let p2 = v1.as_mut_ptr().add(i + 16);
-            _mm256_storeu_ps(p2, _mm256_sub_ps(_mm256_loadu_ps(p2), _mm256_loadu_ps(v2.as_ptr().add(i + 16))));
+            _mm256_storeu_ps(
+                p2,
+                _mm256_sub_ps(_mm256_loadu_ps(p2), _mm256_loadu_ps(v2.as_ptr().add(i + 16))),
+            );
             let p3 = v1.as_mut_ptr().add(i + 24);
-            _mm256_storeu_ps(p3, _mm256_sub_ps(_mm256_loadu_ps(p3), _mm256_loadu_ps(v2.as_ptr().add(i + 24))));
+            _mm256_storeu_ps(
+                p3,
+                _mm256_sub_ps(_mm256_loadu_ps(p3), _mm256_loadu_ps(v2.as_ptr().add(i + 24))),
+            );
         }
         i += 32;
     }
     while i + 8 <= d {
         unsafe {
             let ptr1 = v1.as_mut_ptr().add(i);
-            _mm256_storeu_ps(ptr1, _mm256_sub_ps(_mm256_loadu_ps(ptr1), _mm256_loadu_ps(v2.as_ptr().add(i))));
+            _mm256_storeu_ps(
+                ptr1,
+                _mm256_sub_ps(_mm256_loadu_ps(ptr1), _mm256_loadu_ps(v2.as_ptr().add(i))),
+            );
         }
         i += 8;
     }
@@ -508,20 +601,35 @@ pub(super) fn sub_assign_f64(v1: &mut [f64], v2: &[f64], d: usize) {
     while i + 16 <= d {
         unsafe {
             let p0 = v1.as_mut_ptr().add(i);
-            _mm256_storeu_pd(p0, _mm256_sub_pd(_mm256_loadu_pd(p0), _mm256_loadu_pd(v2.as_ptr().add(i))));
+            _mm256_storeu_pd(
+                p0,
+                _mm256_sub_pd(_mm256_loadu_pd(p0), _mm256_loadu_pd(v2.as_ptr().add(i))),
+            );
             let p1 = v1.as_mut_ptr().add(i + 4);
-            _mm256_storeu_pd(p1, _mm256_sub_pd(_mm256_loadu_pd(p1), _mm256_loadu_pd(v2.as_ptr().add(i + 4))));
+            _mm256_storeu_pd(
+                p1,
+                _mm256_sub_pd(_mm256_loadu_pd(p1), _mm256_loadu_pd(v2.as_ptr().add(i + 4))),
+            );
             let p2 = v1.as_mut_ptr().add(i + 8);
-            _mm256_storeu_pd(p2, _mm256_sub_pd(_mm256_loadu_pd(p2), _mm256_loadu_pd(v2.as_ptr().add(i + 8))));
+            _mm256_storeu_pd(
+                p2,
+                _mm256_sub_pd(_mm256_loadu_pd(p2), _mm256_loadu_pd(v2.as_ptr().add(i + 8))),
+            );
             let p3 = v1.as_mut_ptr().add(i + 12);
-            _mm256_storeu_pd(p3, _mm256_sub_pd(_mm256_loadu_pd(p3), _mm256_loadu_pd(v2.as_ptr().add(i + 12))));
+            _mm256_storeu_pd(
+                p3,
+                _mm256_sub_pd(_mm256_loadu_pd(p3), _mm256_loadu_pd(v2.as_ptr().add(i + 12))),
+            );
         }
         i += 16;
     }
     while i + 4 <= d {
         unsafe {
             let ptr1 = v1.as_mut_ptr().add(i);
-            _mm256_storeu_pd(ptr1, _mm256_sub_pd(_mm256_loadu_pd(ptr1), _mm256_loadu_pd(v2.as_ptr().add(i))));
+            _mm256_storeu_pd(
+                ptr1,
+                _mm256_sub_pd(_mm256_loadu_pd(ptr1), _mm256_loadu_pd(v2.as_ptr().add(i))),
+            );
         }
         i += 4;
     }
@@ -541,13 +649,49 @@ pub(super) fn fmamul_f32(v1: &mut [f32], a: f32, v2: &[f32], b: f32, d: usize) {
     while i + 32 <= d {
         unsafe {
             let p0 = v1.as_mut_ptr().add(i);
-            _mm256_storeu_ps(p0, _mm256_mul_ps(_mm256_fmadd_ps(_mm256_loadu_ps(p0), va, _mm256_loadu_ps(v2.as_ptr().add(i))), vb));
+            _mm256_storeu_ps(
+                p0,
+                _mm256_mul_ps(
+                    _mm256_fmadd_ps(_mm256_loadu_ps(p0), va, _mm256_loadu_ps(v2.as_ptr().add(i))),
+                    vb,
+                ),
+            );
             let p1 = v1.as_mut_ptr().add(i + 8);
-            _mm256_storeu_ps(p1, _mm256_mul_ps(_mm256_fmadd_ps(_mm256_loadu_ps(p1), va, _mm256_loadu_ps(v2.as_ptr().add(i + 8))), vb));
+            _mm256_storeu_ps(
+                p1,
+                _mm256_mul_ps(
+                    _mm256_fmadd_ps(
+                        _mm256_loadu_ps(p1),
+                        va,
+                        _mm256_loadu_ps(v2.as_ptr().add(i + 8)),
+                    ),
+                    vb,
+                ),
+            );
             let p2 = v1.as_mut_ptr().add(i + 16);
-            _mm256_storeu_ps(p2, _mm256_mul_ps(_mm256_fmadd_ps(_mm256_loadu_ps(p2), va, _mm256_loadu_ps(v2.as_ptr().add(i + 16))), vb));
+            _mm256_storeu_ps(
+                p2,
+                _mm256_mul_ps(
+                    _mm256_fmadd_ps(
+                        _mm256_loadu_ps(p2),
+                        va,
+                        _mm256_loadu_ps(v2.as_ptr().add(i + 16)),
+                    ),
+                    vb,
+                ),
+            );
             let p3 = v1.as_mut_ptr().add(i + 24);
-            _mm256_storeu_ps(p3, _mm256_mul_ps(_mm256_fmadd_ps(_mm256_loadu_ps(p3), va, _mm256_loadu_ps(v2.as_ptr().add(i + 24))), vb));
+            _mm256_storeu_ps(
+                p3,
+                _mm256_mul_ps(
+                    _mm256_fmadd_ps(
+                        _mm256_loadu_ps(p3),
+                        va,
+                        _mm256_loadu_ps(v2.as_ptr().add(i + 24)),
+                    ),
+                    vb,
+                ),
+            );
         }
         i += 32;
     }
@@ -575,13 +719,49 @@ pub(super) fn fmamul_f64(v1: &mut [f64], a: f64, v2: &[f64], b: f64, d: usize) {
     while i + 16 <= d {
         unsafe {
             let p0 = v1.as_mut_ptr().add(i);
-            _mm256_storeu_pd(p0, _mm256_mul_pd(_mm256_fmadd_pd(_mm256_loadu_pd(p0), va, _mm256_loadu_pd(v2.as_ptr().add(i))), vb));
+            _mm256_storeu_pd(
+                p0,
+                _mm256_mul_pd(
+                    _mm256_fmadd_pd(_mm256_loadu_pd(p0), va, _mm256_loadu_pd(v2.as_ptr().add(i))),
+                    vb,
+                ),
+            );
             let p1 = v1.as_mut_ptr().add(i + 4);
-            _mm256_storeu_pd(p1, _mm256_mul_pd(_mm256_fmadd_pd(_mm256_loadu_pd(p1), va, _mm256_loadu_pd(v2.as_ptr().add(i + 4))), vb));
+            _mm256_storeu_pd(
+                p1,
+                _mm256_mul_pd(
+                    _mm256_fmadd_pd(
+                        _mm256_loadu_pd(p1),
+                        va,
+                        _mm256_loadu_pd(v2.as_ptr().add(i + 4)),
+                    ),
+                    vb,
+                ),
+            );
             let p2 = v1.as_mut_ptr().add(i + 8);
-            _mm256_storeu_pd(p2, _mm256_mul_pd(_mm256_fmadd_pd(_mm256_loadu_pd(p2), va, _mm256_loadu_pd(v2.as_ptr().add(i + 8))), vb));
+            _mm256_storeu_pd(
+                p2,
+                _mm256_mul_pd(
+                    _mm256_fmadd_pd(
+                        _mm256_loadu_pd(p2),
+                        va,
+                        _mm256_loadu_pd(v2.as_ptr().add(i + 8)),
+                    ),
+                    vb,
+                ),
+            );
             let p3 = v1.as_mut_ptr().add(i + 12);
-            _mm256_storeu_pd(p3, _mm256_mul_pd(_mm256_fmadd_pd(_mm256_loadu_pd(p3), va, _mm256_loadu_pd(v2.as_ptr().add(i + 12))), vb));
+            _mm256_storeu_pd(
+                p3,
+                _mm256_mul_pd(
+                    _mm256_fmadd_pd(
+                        _mm256_loadu_pd(p3),
+                        va,
+                        _mm256_loadu_pd(v2.as_ptr().add(i + 12)),
+                    ),
+                    vb,
+                ),
+            );
         }
         i += 16;
     }
@@ -635,9 +815,7 @@ pub(super) fn dot_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
         }
         i += 32;
     }
-    let mut acc = unsafe {
-        _mm256_add_ps(_mm256_add_ps(acc0, acc1), _mm256_add_ps(acc2, acc3))
-    };
+    let mut acc = unsafe { _mm256_add_ps(_mm256_add_ps(acc0, acc1), _mm256_add_ps(acc2, acc3)) };
     while i + 8 <= d {
         unsafe {
             acc = _mm256_fmadd_ps(
@@ -688,9 +866,7 @@ pub(super) fn dot_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
         }
         i += 16;
     }
-    let mut acc = unsafe {
-        _mm256_add_pd(_mm256_add_pd(acc0, acc1), _mm256_add_pd(acc2, acc3))
-    };
+    let mut acc = unsafe { _mm256_add_pd(_mm256_add_pd(acc0, acc1), _mm256_add_pd(acc2, acc3)) };
     while i + 4 <= d {
         unsafe {
             acc = _mm256_fmadd_pd(
@@ -958,20 +1134,35 @@ pub(super) fn axpy_f32(v1: &mut [f32], a: f32, v2: &[f32], d: usize) {
     while i + 32 <= d {
         unsafe {
             let p0 = v1.as_mut_ptr().add(i);
-            _mm256_storeu_ps(p0, _mm256_fmadd_ps(_mm256_loadu_ps(v2.as_ptr().add(i)), va, _mm256_loadu_ps(p0)));
+            _mm256_storeu_ps(
+                p0,
+                _mm256_fmadd_ps(_mm256_loadu_ps(v2.as_ptr().add(i)), va, _mm256_loadu_ps(p0)),
+            );
             let p1 = v1.as_mut_ptr().add(i + 8);
-            _mm256_storeu_ps(p1, _mm256_fmadd_ps(_mm256_loadu_ps(v2.as_ptr().add(i + 8)), va, _mm256_loadu_ps(p1)));
+            _mm256_storeu_ps(
+                p1,
+                _mm256_fmadd_ps(_mm256_loadu_ps(v2.as_ptr().add(i + 8)), va, _mm256_loadu_ps(p1)),
+            );
             let p2 = v1.as_mut_ptr().add(i + 16);
-            _mm256_storeu_ps(p2, _mm256_fmadd_ps(_mm256_loadu_ps(v2.as_ptr().add(i + 16)), va, _mm256_loadu_ps(p2)));
+            _mm256_storeu_ps(
+                p2,
+                _mm256_fmadd_ps(_mm256_loadu_ps(v2.as_ptr().add(i + 16)), va, _mm256_loadu_ps(p2)),
+            );
             let p3 = v1.as_mut_ptr().add(i + 24);
-            _mm256_storeu_ps(p3, _mm256_fmadd_ps(_mm256_loadu_ps(v2.as_ptr().add(i + 24)), va, _mm256_loadu_ps(p3)));
+            _mm256_storeu_ps(
+                p3,
+                _mm256_fmadd_ps(_mm256_loadu_ps(v2.as_ptr().add(i + 24)), va, _mm256_loadu_ps(p3)),
+            );
         }
         i += 32;
     }
     while i + 8 <= d {
         unsafe {
             let ptr1 = v1.as_mut_ptr().add(i);
-            _mm256_storeu_ps(ptr1, _mm256_fmadd_ps(_mm256_loadu_ps(v2.as_ptr().add(i)), va, _mm256_loadu_ps(ptr1)));
+            _mm256_storeu_ps(
+                ptr1,
+                _mm256_fmadd_ps(_mm256_loadu_ps(v2.as_ptr().add(i)), va, _mm256_loadu_ps(ptr1)),
+            );
         }
         i += 8;
     }
@@ -990,20 +1181,35 @@ pub(super) fn axpy_f64(v1: &mut [f64], a: f64, v2: &[f64], d: usize) {
     while i + 16 <= d {
         unsafe {
             let p0 = v1.as_mut_ptr().add(i);
-            _mm256_storeu_pd(p0, _mm256_fmadd_pd(_mm256_loadu_pd(v2.as_ptr().add(i)), va, _mm256_loadu_pd(p0)));
+            _mm256_storeu_pd(
+                p0,
+                _mm256_fmadd_pd(_mm256_loadu_pd(v2.as_ptr().add(i)), va, _mm256_loadu_pd(p0)),
+            );
             let p1 = v1.as_mut_ptr().add(i + 4);
-            _mm256_storeu_pd(p1, _mm256_fmadd_pd(_mm256_loadu_pd(v2.as_ptr().add(i + 4)), va, _mm256_loadu_pd(p1)));
+            _mm256_storeu_pd(
+                p1,
+                _mm256_fmadd_pd(_mm256_loadu_pd(v2.as_ptr().add(i + 4)), va, _mm256_loadu_pd(p1)),
+            );
             let p2 = v1.as_mut_ptr().add(i + 8);
-            _mm256_storeu_pd(p2, _mm256_fmadd_pd(_mm256_loadu_pd(v2.as_ptr().add(i + 8)), va, _mm256_loadu_pd(p2)));
+            _mm256_storeu_pd(
+                p2,
+                _mm256_fmadd_pd(_mm256_loadu_pd(v2.as_ptr().add(i + 8)), va, _mm256_loadu_pd(p2)),
+            );
             let p3 = v1.as_mut_ptr().add(i + 12);
-            _mm256_storeu_pd(p3, _mm256_fmadd_pd(_mm256_loadu_pd(v2.as_ptr().add(i + 12)), va, _mm256_loadu_pd(p3)));
+            _mm256_storeu_pd(
+                p3,
+                _mm256_fmadd_pd(_mm256_loadu_pd(v2.as_ptr().add(i + 12)), va, _mm256_loadu_pd(p3)),
+            );
         }
         i += 16;
     }
     while i + 4 <= d {
         unsafe {
             let ptr1 = v1.as_mut_ptr().add(i);
-            _mm256_storeu_pd(ptr1, _mm256_fmadd_pd(_mm256_loadu_pd(v2.as_ptr().add(i)), va, _mm256_loadu_pd(ptr1)));
+            _mm256_storeu_pd(
+                ptr1,
+                _mm256_fmadd_pd(_mm256_loadu_pd(v2.as_ptr().add(i)), va, _mm256_loadu_pd(ptr1)),
+            );
         }
         i += 4;
     }

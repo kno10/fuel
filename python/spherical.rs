@@ -90,8 +90,18 @@ variant_call_sparse!(spherical_simp_elkan_sparse_f32, spherical_simp_elkan, f32,
 variant_call_sparse!(spherical_simp_elkan_sparse_f64, spherical_simp_elkan, f64, result_to_py_f64);
 variant_call_sparse!(spherical_hamerly_sparse_f32, spherical_hamerly, f32, result_to_py_f32);
 variant_call_sparse!(spherical_hamerly_sparse_f64, spherical_hamerly, f64, result_to_py_f64);
-variant_call_sparse!(spherical_simp_hamerly_sparse_f32, spherical_simp_hamerly, f32, result_to_py_f32);
-variant_call_sparse!(spherical_simp_hamerly_sparse_f64, spherical_simp_hamerly, f64, result_to_py_f64);
+variant_call_sparse!(
+    spherical_simp_hamerly_sparse_f32,
+    spherical_simp_hamerly,
+    f32,
+    result_to_py_f32
+);
+variant_call_sparse!(
+    spherical_simp_hamerly_sparse_f64,
+    spherical_simp_hamerly,
+    f64,
+    result_to_py_f64
+);
 variant_call_sparse!(spherical_shamerly_sparse_f32, spherical_shamerly, f32, result_to_py_f32);
 variant_call_sparse!(spherical_shamerly_sparse_f64, spherical_shamerly, f64, result_to_py_f64);
 variant_call_sparse!(spherical_selkan_sparse_f32, spherical_selkan, f32, result_to_py_f32);

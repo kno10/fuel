@@ -127,6 +127,10 @@ macro_rules! define_diagonal_em {
                     cluster::em::TextbookDiagonalGaussianModelFactory::new(init)
                         .build_initial_models(dataset, k)
                 }),
+                "two_pass" => run_variant!(|init, dataset| {
+                    cluster::em::TwoPassDiagonalGaussianModelFactory::new(init)
+                        .build_initial_models(dataset, k)
+                }),
                 _ => run_variant!(|init, dataset| {
                     cluster::em::DiagonalGaussianModelFactory::new(init)
                         .build_initial_models(dataset, k)
@@ -198,6 +202,10 @@ macro_rules! define_spherical_em {
             match variant {
                 "textbook" => run_variant!(|init, dataset| {
                     cluster::em::TextbookSphericalGaussianModelFactory::new(init)
+                        .build_initial_models(dataset, k)
+                }),
+                "two_pass" => run_variant!(|init, dataset| {
+                    cluster::em::TwoPassSphericalGaussianModelFactory::new(init)
                         .build_initial_models(dataset, k)
                 }),
                 _ => run_variant!(|init, dataset| {

@@ -5,7 +5,8 @@ except:
 from . import cluster
 from . import evaluation
 from . import outlier
+from . import search
 
 get_rayon_parallellism = _fuel.get_rayon_parallellism
 
-__all__ = ["get_rayon_parallellism", "cluster", "evaluation", "outlier"]
+__all__ = ["get_rayon_parallellism", "cluster", "evaluation", "outlier", "search"]

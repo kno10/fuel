@@ -1,6 +1,5 @@
 use numpy::{PyArray1, PyReadonlyArray2};
 use pyo3::IntoPyObjectExt;
-
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 
@@ -13,7 +12,12 @@ use crate::{Float, NdArrayDatasetWithDistance};
 fn build_dataset<'a, N>(
     array: &'a ndarray::ArrayView2<'a, N>, distance: Option<&str>,
 ) -> PyResult<
-    NdArrayDatasetWithDistance<'a, N, ndarray::ArrayView2<'a, N>, Box<dyn DistanceFunction<[N], N> + Sync>>,
+    NdArrayDatasetWithDistance<
+        'a,
+        N,
+        ndarray::ArrayView2<'a, N>,
+        Box<dyn DistanceFunction<[N], N> + Sync>,
+    >,
 >
 where
     N: Float,
@@ -44,8 +48,8 @@ macro_rules! dbscan_fn {
         #[pyfunction]
         #[pyo3(signature = (data, eps, min_points, distance=None, seed=None))]
         fn $name<'py>(
-            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, eps: f64,
-            min_points: usize, distance: Option<&str>, seed: Option<u64>,
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, eps: f64, min_points: usize,
+            distance: Option<&str>, seed: Option<u64>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_dataset(&array, distance)?;
@@ -62,8 +66,8 @@ macro_rules! parallel_dbscan_fn {
         #[pyfunction]
         #[pyo3(signature = (data, eps, min_points, distance=None, seed=None))]
         fn $name<'py>(
-            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, eps: f64,
-            min_points: usize, distance: Option<&str>, seed: Option<u64>,
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, eps: f64, min_points: usize,
+            distance: Option<&str>, seed: Option<u64>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_dataset(&array, distance)?;

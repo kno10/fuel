@@ -8,8 +8,8 @@ _EM_MODELS = {
 }
 
 _EM_MODEL_VARIANTS = {
-    'diagonal':     frozenset({'default', 'textbook'}),
-    'spherical':    frozenset({'default', 'textbook'}),
+    'diagonal':     frozenset({'default', 'textbook', 'two_pass'}),
+    'spherical':    frozenset({'default', 'textbook', 'two_pass'}),
     'multivariate': frozenset({'default', 'textbook', 'two_pass'}),
 }
 

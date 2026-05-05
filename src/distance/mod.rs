@@ -91,6 +91,15 @@ where
     fn is_squared_distance(&self) -> bool { (**self).is_squared_distance() }
 }
 
+impl<T: ?Sized, D: ?Sized, F: Float> DistanceFunction<T, F> for &D
+where
+    D: DistanceFunction<T, F>,
+{
+    fn distance(&self, a: &T, b: &T) -> F { (**self).distance(a, b) }
+    fn is_metric(&self) -> bool { (**self).is_metric() }
+    fn is_squared_distance(&self) -> bool { (**self).is_squared_distance() }
+}
+
 pub use binary::{
     Dice, Hamming, Jaccard, Kulsinski, Matching, RogerStanimoto, RussellRao, SokalMichener,
     SokalSneath, dice_distance, hamming_distance, jaccard_distance, kulsinski_distance,

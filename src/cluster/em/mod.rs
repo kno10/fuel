@@ -13,8 +13,14 @@ pub use models::textbook_multivariate::{
 pub use models::textbook_spherical::{
     TextbookSphericalGaussianModel, TextbookSphericalGaussianModelFactory,
 };
+pub use models::two_pass_diagonal::{
+    TwoPassDiagonalGaussianModel, TwoPassDiagonalGaussianModelFactory,
+};
 pub use models::two_pass_multivariate::{
     TwoPassMultivariateGaussianModel, TwoPassMultivariateGaussianModelFactory,
+};
+pub use models::two_pass_spherical::{
+    TwoPassSphericalGaussianModel, TwoPassSphericalGaussianModelFactory,
 };
 pub use models::von_mises_fisher::{VonMisesFisherModel, VonMisesFisherModelFactory};
 pub use optimizer::{EmConfig, EmModel, EmResult, expectation_maximization, log_sum_exp};
