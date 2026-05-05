@@ -16,23 +16,26 @@ All functions are in the `fuel` package under sub-modules:
 Most functions accept an optional `distance` keyword argument.
 Accepted names (case-insensitive):
 
-| Name | Aliases |
-|------|---------|
-| `euclidean` | `l2` |
-| `sqeuclidean` | `squared_euclidean` |
-| `manhattan` | `l1`, `cityblock` |
-| `chebyshev` | `linf`, `chessboard` |
-| `cosine` | |
-| `arccosine` | `angular` |
-| `canberra` | |
-| `braycurtis` | `bray_curtis` |
-| `hellinger` | |
-| `clark` | |
-| `chi` | |
-| `chi_squared` | `chisquared`, `chi2` |
-| `jensen_shannon` | `jensenshannon`, `js` |
-| `jeffrey` | `jeffreys` |
-| `histogram_intersection` | `intersection` |
+| Name | Aliases | Formula |
+|------|---------|---------|
+| `euclidean` | `l2` | $\sqrt{\sum_{i=1}^d (x_i-y_i)^2}$ |
+| `sqeuclidean` | `squared_euclidean` | $\sum_{i=1}^d (x_i-y_i)^2$ |
+| `manhattan` | `l1`, `cityblock` | $\sum_{i=1}^d \lvert x_i-y_i\rvert$ |
+| `chebyshev` | `linf`, `chessboard` | $\max_{1\le i\le d} \lvert x_i-y_i\rvert$ |
+| `cosine` | | $1-\frac{x\cdot y}{\|x\|\,\|y\|}$ |
+| `arccosine` | `angular` | $\arccos\left(\frac{x\cdot y}{\|x\|\,\|y\|}\right)$ |
+| `canberra` | | $\sum_{i=1}^d \frac{\lvert x_i-y_i\rvert}{\lvert x_i\rvert+\lvert y_i\rvert}$ |
+| `braycurtis` | `bray_curtis` | $\frac{\sum_{i=1}^d \lvert x_i-y_i\rvert}{\sum_{i=1}^d \lvert x_i+y_i\rvert}$ |
+| `hellinger` | | $\frac{1}{\sqrt{2}}\sqrt{\sum_{i=1}^d (\sqrt{x_i}-\sqrt{y_i})^2}$ |
+| `clark` | | $\sqrt{\sum_{i=1}^d \left(\frac{x_i-y_i}{x_i+y_i}\right)^2}$ |
+| `chi` | | $\sqrt{\sum_{i=1}^d \frac{(x_i-y_i)^2}{x_i+y_i}}$ |
+| `chi_squared` | `chisquared`, `chi2` | $\sum_{i=1}^d \frac{(x_i-y_i)^2}{x_i+y_i}$ |
+| `jensen_shannon` | `jensenshannon`, `js` | $\sqrt{\frac12\mathrm{KL}(x\|m)+\frac12\mathrm{KL}(y\|m)},\;m=\frac{x+y}{2}$ |
+| `jeffrey` | `jeffreys` | $\sum_{i=1}^d (x_i-y_i)(\ln x_i - \ln y_i)$ |
+| `histogram_intersection` | `intersection` | $1-\sum_{i=1}^d \min(x_i,y_i)$ |
+
+
+Additional distance functions are already available in the Rust API!
 
 The default is `euclidean` unless stated otherwise.
 
@@ -44,15 +47,21 @@ Inputs are accepted as any numeric NumPy array.
 Non-float arrays are automatically cast to `float64`.
 `float32` arrays are processed with single-precision arithmetic throughout.
 
+Other numeric types are currently not supported by the Python wrapper -- use the Rust API if you need extended support.
+
 ---
 
-## fuel.search
+## Search API
+
+The search API lives in `fuel.search`.
 
 ```python
 import fuel.search as search
 ```
 
-### `search.knn_search`
+### k-Nearest-Neighbors search
+
+Finding the nearest neighbors of a point can be performed as follows:
 
 ```python
 indices, distances = search.knn_search(
@@ -74,7 +83,7 @@ Find the `k` nearest neighbors for every point in `query` against `data`.
 | `k` | int | Number of neighbors per query point. |
 | `exclude_self` | bool or None | Exclude the query point itself (distance 0). Default `None` selects ``True`` only when ``query`` refers to the same underlying array as ``data``. If ``False``, query points may be included in the results. If ``query`` is a separate array, ``exclude_self`` defaults to ``False`` and explicit ``True`` is not supported. |
 | `distance` | str | Distance function. Default `'euclidean'`. Supported names: `euclidean`/`l2`, `sqeuclidean`/`squared_euclidean`, `manhattan`/`l1`/`cityblock`, `chebyshev`/`linf`/`chessboard`, `cosine`, `arccosine`/`angular`, `canberra`, `braycurtis`/`bray_curtis`, `hellinger`, `clark`, `chi`, `chi_squared`/`chisquared`/`chi2`, `jensen_shannon`/`jensenshannon`/`js`, `jeffrey`/`jeffreys`, `histogram_intersection`/`intersection`. When `tree='kd'` only `euclidean`, `sqeuclidean`, and `manhattan` are supported. |
-| `tree` | `{'auto', 'vp', 'kd', 'cover'}` | Index structure. `'auto'` chooses `'kd'` for low-dimensional, coordinate-based distances and otherwise `'vp'`. `'vp'` supports all distances; `'kd'` can be faster for low-dimensional Euclidean-like data; `'cover'` uses a cover tree and supports all distances. `'vp'` and `'cover'` are exact only for metric distances. |
+| `tree` | `{'auto', 'vp', 'kd', 'cover'}` | Index structure. `'auto'` chooses `'kd'` for low-dimensional, coordinate-based distances and otherwise `'vp'`. `'vp'` and `'cover'` support all distances, but are exact only for metric distances |
 | `seed` | int or None | RNG seed for tree construction (`'vp'` and `'cover'` only). |
 
 **Returns** `(indices, distances)`:
@@ -83,7 +92,9 @@ Find the `k` nearest neighbors for every point in `query` against `data`.
 
 ---
 
-### `search.range_search`
+### Radius search
+
+Radius or range search (sometimes also called window search, but not to be confused with a hyperbox search) can be performed as follows:
 
 ```python
 indices, distances = search.range_search(
@@ -112,23 +123,27 @@ Find all neighbors within `radius` of each point in `query` against `data`.
 - `indices` - list of length `m` containing 1-D ndarrays with neighbor indices for each query.
 - `distances` - list of length `m` containing 1-D ndarrays with neighbor distances sorted by distance.
 
-### `search.build_tree`
+### Search index
+
+Build a persistent search index once and use it for repeated queries:
 
 ```python
-tree = search.build_tree(data, *, distance='euclidean', tree='auto', seed=None)
+index = search.SearchIndex(data, distance='euclidean', tree='auto', seed=None)
 ```
 
-Builds a search index for repeated queries.
+Note: modifying the data array after building the index is not supported,
+because the data is not copied. This can yield incorrect results.
 
 **Parameters**
 
 - `data` : ndarray `(n, d)`
 - `distance` : str, optional
-- `tree` : `{'auto', 'vp', 'kd', 'cover'}`
+- `tree` : `{'auto', 'vp', 'kd', 'cover', 'linear'}`
   - `'auto'` chooses `'kd'` for Euclidean-like distances on low-dimensional inputs, otherwise `'vp'`.
   - `'vp'` builds a persistent VP-tree index.
   - `'cover'` builds a persistent cover-tree index.
   - `'kd'` uses the existing KD-tree-based search code path for repeated `knn` queries.
+  - `'linear'` builds a brute-force linear-scan searcher.
 - `seed` : int or None, optional
   - RNG seed for VP-tree or cover-tree construction.
 
@@ -138,8 +153,8 @@ Builds a search index for repeated queries.
 
 The returned object supports:
 
-- `tree.knn(k, exclude_self=False)`
-- `tree.radius_search(radius, exclude_self=False)`
+- `index.knn(k, exclude_self=False)`
+- `index.radius_search(radius, exclude_self=False)`
 
 For `tree='kd'`, only `knn` is supported; `radius_search` raises an error.
 
@@ -147,18 +162,20 @@ Both VP-tree and cover-tree are exact only for metric distances.
 
 ---
 
-## fuel.cluster
+## Clustering
 
 ```python
 import fuel.cluster as cluster
 ```
 
-### `cluster.kmeans`
+### K-Means Clustering
+
+K-means clustering minimizes the sum of squared errors (squared Euclidean distance).
 
 ```python
 centers, assignments, iterations, inertia, inertia_bound = cluster.kmeans(
     data, *, k,
-    variant='simp_hamerly',
+    variant='simplified_elkan',
     max_iter=300,
     tol=0,
     seed=None,
@@ -166,7 +183,7 @@ centers, assignments, iterations, inertia, inertia_bound = cluster.kmeans(
 )
 ```
 
-K-means clustering (Euclidean). Input must be a dense ndarray.
+The input must be a dense ndarray.
 
 **Variants:** `lloyd`, `lloyd_blas`, `lloyd_naive`, `elkan`, `simp_elkan`
 (`simplified_elkan`), `hamerly`, `simp_hamerly` (`simplified_hamerly`),
@@ -177,7 +194,10 @@ K-means clustering (Euclidean). Input must be a dense ndarray.
 
 ---
 
-### `cluster.kmedians`
+### K-Medians clustering
+
+K-medians clustering uses the median on each axis instead of the mean,
+which minimizes Manhattan distances.
 
 ```python
 centers, assignments, iterations, inertia, inertia_bound = cluster.kmedians(
@@ -189,7 +209,9 @@ K-medians clustering (Manhattan distance).
 
 ---
 
-### `cluster.kgeometric`
+### K-Geometric Medians clustering
+
+This uses the geometric median to optimize Euclidean distances.
 
 ```python
 centers, assignments, iterations, inertia, inertia_bound = cluster.kgeometric(
@@ -202,7 +224,9 @@ K-geometric-means. `steps` controls the number of geometric update sub-steps.
 
 ---
 
-### `cluster.kgmedians`
+#### GMedians clustering
+
+This is an alternative approach also using geometric medians.
 
 ```python
 centers, assignments, iterations, inertia, inertia_bound = cluster.kgmedians(
@@ -214,7 +238,7 @@ Generalised k-medians with parameters `gamma` and `alpha`.
 
 ---
 
-### `cluster.kharmonic`
+### K-Harmonic means clustering
 
 ```python
 centers, assignments, iterations, inertia, inertia_bound = cluster.kharmonic(
@@ -226,7 +250,9 @@ K-harmonic means with harmonic power `p`.
 
 ---
 
-### `cluster.tkmeans`
+### Trimmed k-means Clustering
+
+Also known as k-means\-\-.
 
 ```python
 centers, assignments, iterations, inertia, inertia_bound = cluster.tkmeans(
@@ -238,7 +264,7 @@ Trimmed k-means. `alpha` is the trimming proportion in `[0, 1)`.
 
 ---
 
-### `cluster.fuzzycmeans`
+### Fuzzy c-means clustering
 
 ```python
 centers, membership, assignments, iterations, loss = cluster.fuzzycmeans(
@@ -251,12 +277,15 @@ Returns membership matrix of shape `(n, k)` in addition to hard assignments.
 
 ---
 
-### `cluster.spherical_kmeans`
+### Spherical k-Means clustering
+
+Spherical k-means minimizes the angle between the data points and the cluster
+direction.
 
 ```python
 centers, assignments, iterations, inertia, inertia_bound = cluster.spherical_kmeans(
     data, *, k,
-    variant='lloyd',
+    variant='simp_elkan',
     max_iter=300,
     tol=0,
     seed=None,
@@ -266,12 +295,15 @@ centers, assignments, iterations, inertia, inertia_bound = cluster.spherical_kme
 
 Spherical k-means (cosine distance). Accepts dense ndarray or CSR sparse matrix.
 
-**Variants:** `lloyd`, `elkan`, `simp_elkan`, `hamerly`, `simp_hamerly`,
-`shamerly`, `selkan`.
+**Variants:** `lloyd`, `elkan`, `simp_elkan`, `hamerly`, `simp_hamerly`.
 
 ---
 
-### `cluster.em`
+### Gaussian Mixture Modeling (EM Clustering)
+
+Each cluster is modeled using a multivariate Gaussian distributions.
+Three different cluster models are supported (spherical, axis-aligned aka. diagonal covariance matrix, and a fully multivariate model that allows rotated Gaussians). Three variants with differnt numerical behavior are supported, but its usually fine to stick to the default approach.
+Prior can be used to use a maximum-a-posteriori approach, where the prior is based on the overall data distribution.
 
 ```python
 weights, means, variances, assignments, responsibilities, n_iter, log_likelihood = cluster.em(
@@ -304,7 +336,9 @@ otherwise it is `None`.
 
 ---
 
-### `cluster.von_mises_fisher`
+### Clustering with von-Mises-Fisher distributions
+
+This is an expectation-maximization approach for points on the sphere, e.g., on text data. In contrast to spherical k-means, it is a soft clustering approach, and clusters can have different diameters.
 
 ```python
 weights, means, kappas, assignments, responsibilities, n_iter, log_likelihood = cluster.von_mises_fisher(
@@ -327,12 +361,15 @@ Von Mises-Fisher mixture model EM. Accepts a CSR sparse matrix.
 
 ---
 
-### `cluster.hierarchical`
+### Hierarchical clustering
+
+Fuel supports a wide range of hierarchical clustering approaches.
+Not every linkage is supported by every optimization strategy, this is inherent to the optimizations used for some algorithms.
 
 ```python
 result = cluster.hierarchical(
     data,
-    variant='agnes',
+    variant='auto',
     linkage='ward',
     *,
     distance=None,
@@ -376,14 +413,14 @@ Hierarchical agglomerative clustering. Returns a `MergeHistory` object.
 **`MergeHistory` methods:**
 
 ```python
-labels = result.cut_by_number_of_clusters(k)       # int64 array
-labels = result.cut_by_height(height)               # int64 array
-Z      = result.to_scipy_linkage()                  # (n-1, 4) float array
+labels = result.cut_by_number_of_clusters(k) # int64 array
+labels = result.cut_by_height(height)        # int64 array
+Z      = result.to_scipy_linkage()           # (n-1, 4) float array
 ```
 
 ---
 
-### `cluster.hdbscan`
+### HDBSCAN clustering
 
 ```python
 result = cluster.hdbscan(
@@ -423,30 +460,34 @@ info       = result.extract_hdbscan(min_cluster_size, hierarchical) # dict
 
 ---
 
-### `cluster.dbscan`
+### DBSCAN
+
+Density-based clustering with noise.
 
 ```python
-labels = cluster.dbscan(data, eps, min_points, *, distance=None, seed=None)
+labels = cluster.dbscan(
+    data,
+    eps,
+    min_points,
+    *,
+    distance="euclidean",
+    variant="dbscan",
+    seed=None,
+)
 ```
 
 DBSCAN. Returns `int64` labels; `-1` indicates noise.
 
----
-
-### `cluster.parallel_dbscan`
-
-```python
-labels = cluster.parallel_dbscan(data, eps, min_points, *, distance=None, seed=None)
-```
-
-Parallel DBSCAN. Equivalent result to `dbscan`, faster on multi-core hardware.
+Use `variant='parallel'` to select the parallel DBSCAN implementation.
 
 ---
 
-### `cluster.optics`
+### OPTICS Clustering
+
+A successor to DBSCAN and precursor to HDBSCAN. Typically, HDBSCAN* is to be preferred.
 
 ```python
-result = cluster.optics(data, eps, min_points, *, distance=None, seed=None)
+result = cluster.optics(data, max_eps, min_points, *, distance="euclidean", seed=None)
 ```
 
 OPTICS ordering and reachability. Returns an `OpticsResult` object.
@@ -464,7 +505,7 @@ labels        = result.extract_xi(xi, min_points)  # Xi-based extraction, int64 
 
 ---
 
-## fuel.outlier
+## Outlier Detection
 
 ```python
 import fuel.outlier as outlier
@@ -498,33 +539,38 @@ but the return format matches the standard tuple.
 
 | Function | Parameters | Notes |
 |----------|-----------|-------|
-| `approximate_local_correlation_integral(data, nmin, alpha, g, *, seed, distance)` | | ALOCI |
-| `local_correlation_integral(data, rmax, nmin, alpha, *, seed, distance)` | | LOCI |
-| `correlation_outlier_probabilities(data, k, expect, dist, *, seed, distance)` | `dist`: `'chi2'` or `'gamma'` | COP |
-| `local_intrinsic_dimensionality(data, k, *, estimator, seed, distance)` | | LID-based |
-| `intrinsic_dimensionality_outlier_score(data, k_c, k_r, *, estimator, seed, distance)` | | IDOS |
-| `subspace_outlier_degree(data, k, alpha, *, seed, distance)` | | SOD |
+| `approximate_local_correlation_integral(data, nmin, alpha, g, *, seed, distance)` | `nmin`: minimum neighborhood size, `alpha`: smoothing parameter, `g`: kernel exponent | ALOCI |
+| `local_correlation_integral(data, rmax, nmin, alpha, *, seed, distance)` | `rmax`: radius threshold, `nmin`: minimum neighborhood size, `alpha`: smoothing parameter | LOCI |
+| `correlation_outlier_probabilities(data, k, expect, dist, *, seed, distance)` | `k`: neighbors, `expect`: expected neighbor count, `dist`: `'chi2'` or `'gamma'` | COP |
+| `local_intrinsic_dimensionality(data, k, *, estimator, seed, distance)` | `k`: neighbors, `estimator`: LID estimator name | LID-based |
+| `intrinsic_dimensionality_outlier_score(data, k_c, k_r, *, estimator, seed, distance)` | `k_c`: reference neighbors, `k_r`: reachability neighbors, `estimator`: LID estimator | IDOS |
+| `subspace_outlier_degree(data, k, alpha, *, seed, distance)` | `k`: neighbors, `alpha`: subspace balance parameter | SOD |
 
 ### Distance / density based
 
-| Function | Parameters |
-|----------|-----------|
+The function signatures below show the available parameters. Common arguments are:
+- `k`: number of nearest neighbors used for the score.
+- `distance`: metric name, default `euclidean`.
+- `seed`: RNG seed for repeatable results.
+
+| Function | Notes |
+|----------|-------|
 | `k_nearest_neighbors_outlier(data, k, *, seed, distance)` | kNN distance outlier |
 | `k_nearest_neighbors_distance_deviation(data, k, *, seed, distance)` | kNNDD |
 | `k_nearest_neighbors_sos(data, k, *, seed, distance)` | kNN-SOS |
 | `weighted_knn(data, k, *, seed, distance)` | Weighted kNN |
 | `local_outlier_factor(data, k, *, seed, distance)` | LOF |
 | `simplified_lof(data, k, *, seed, distance)` | Simplified LOF |
-| `flexible_lof(data, krefer, kreach, *, seed, distance)` | Flexible LOF |
+| `flexible_lof(data, krefer, kreach, *, seed, distance)` | Flexible LOF, `krefer` reference set size, `kreach` reachability count |
 | `local_density_outlier_factor(data, k, *, seed, distance)` | LDOF |
-| `local_outlier_probabilities(data, k, m, *, seed, distance)` | LoOP |
-| `dynamic_window_outlier_factor(data, k, delta, *, seed, distance)` | DWOF |
-| `local_density_factor(data, k, h, c, kernel, *, seed, distance)` | LDF |
-| `simple_kernel_density_lof(data, k, h, kernel, *, seed, distance)` | KDEOS |
-| `stochastic_outlier_selection(data, perplexity, *, seed, distance)` | SOS |
+| `local_outlier_probabilities(data, k, m, *, seed, distance)` | LoOP, `m` smoothing parameter |
+| `dynamic_window_outlier_factor(data, k, delta, *, seed, distance)` | DWOF, `delta` window size |
+| `local_density_factor(data, k, h, c, kernel, *, seed, distance)` | LDF, `h` bandwidth, `c` kernel parameter |
+| `simple_kernel_density_lof(data, k, h, kernel, *, seed, distance)` | KDEOS, `h` bandwidth, `kernel` name |
+| `stochastic_outlier_selection(data, perplexity, *, seed, distance)` | SOS, `perplexity` effective neighbor count |
 | `outlier_detection_independence_neighbor(data, k, *, seed, distance)` | ODIN |
 | `local_isolation_coefficient(data, k, *, seed, distance)` | LIC |
-| `influence_outlier(data, k, m, *, seed, distance)` | |
+| `influence_outlier(data, k, m, *, seed, distance)` | `m` influence exponent |
 | `variance_of_volume(data, k, *, seed, distance)` | VOV |
 | `connectivity_outlier_factor(data, k, *, seed, distance)` | COF |
 
@@ -569,7 +615,7 @@ Used by `local_density_factor` and `simple_kernel_density_lof`:
 
 ---
 
-## fuel.evaluation
+## Evaluation methods
 
 ```python
 import fuel.evaluation as evaluation

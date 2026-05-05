@@ -11,7 +11,7 @@ from ._kmeans import (
 from ._em import em, von_mises_fisher
 from ._hierarchical import hierarchical
 from ._hdbscan import hdbscan
-from ._dbscan import dbscan, parallel_dbscan, optics
+from ._dbscan import dbscan, optics
 
 __all__ = [
     'kmeans',
@@ -27,6 +27,5 @@ __all__ = [
     'hierarchical',
     'hdbscan',
     'dbscan',
-    'parallel_dbscan',
     'optics',
 ]

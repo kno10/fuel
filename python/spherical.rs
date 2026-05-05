@@ -77,11 +77,6 @@ variant_call!(spherical_hamerly_f32, spherical_hamerly, f32, result_to_py_f32);
 variant_call!(spherical_hamerly_f64, spherical_hamerly, f64, result_to_py_f64);
 variant_call!(spherical_simp_hamerly_f32, spherical_simp_hamerly, f32, result_to_py_f32);
 variant_call!(spherical_simp_hamerly_f64, spherical_simp_hamerly, f64, result_to_py_f64);
-variant_call!(spherical_shamerly_f32, spherical_shamerly, f32, result_to_py_f32);
-variant_call!(spherical_shamerly_f64, spherical_shamerly, f64, result_to_py_f64);
-variant_call!(spherical_selkan_f32, spherical_selkan, f32, result_to_py_f32);
-variant_call!(spherical_selkan_f64, spherical_selkan, f64, result_to_py_f64);
-
 variant_call_sparse!(spherical_lloyd_sparse_f32, spherical_lloyd, f32, result_to_py_f32);
 variant_call_sparse!(spherical_lloyd_sparse_f64, spherical_lloyd, f64, result_to_py_f64);
 variant_call_sparse!(spherical_elkan_sparse_f32, spherical_elkan, f32, result_to_py_f32);
@@ -102,10 +97,6 @@ variant_call_sparse!(
     f64,
     result_to_py_f64
 );
-variant_call_sparse!(spherical_shamerly_sparse_f32, spherical_shamerly, f32, result_to_py_f32);
-variant_call_sparse!(spherical_shamerly_sparse_f64, spherical_shamerly, f64, result_to_py_f64);
-variant_call_sparse!(spherical_selkan_sparse_f32, spherical_selkan, f32, result_to_py_f32);
-variant_call_sparse!(spherical_selkan_sparse_f64, spherical_selkan, f64, result_to_py_f64);
 
 pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(spherical_lloyd_f32))?;
@@ -118,10 +109,6 @@ pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(spherical_hamerly_f64))?;
     m.add_wrapped(wrap_pyfunction!(spherical_simp_hamerly_f32))?;
     m.add_wrapped(wrap_pyfunction!(spherical_simp_hamerly_f64))?;
-    m.add_wrapped(wrap_pyfunction!(spherical_shamerly_f32))?;
-    m.add_wrapped(wrap_pyfunction!(spherical_shamerly_f64))?;
-    m.add_wrapped(wrap_pyfunction!(spherical_selkan_f32))?;
-    m.add_wrapped(wrap_pyfunction!(spherical_selkan_f64))?;
     m.add_wrapped(wrap_pyfunction!(spherical_lloyd_sparse_f32))?;
     m.add_wrapped(wrap_pyfunction!(spherical_lloyd_sparse_f64))?;
     m.add_wrapped(wrap_pyfunction!(spherical_elkan_sparse_f32))?;
@@ -132,9 +119,5 @@ pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(spherical_hamerly_sparse_f64))?;
     m.add_wrapped(wrap_pyfunction!(spherical_simp_hamerly_sparse_f32))?;
     m.add_wrapped(wrap_pyfunction!(spherical_simp_hamerly_sparse_f64))?;
-    m.add_wrapped(wrap_pyfunction!(spherical_shamerly_sparse_f32))?;
-    m.add_wrapped(wrap_pyfunction!(spherical_shamerly_sparse_f64))?;
-    m.add_wrapped(wrap_pyfunction!(spherical_selkan_sparse_f32))?;
-    m.add_wrapped(wrap_pyfunction!(spherical_selkan_sparse_f64))?;
     Ok(())
 }

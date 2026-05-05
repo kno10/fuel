@@ -79,7 +79,7 @@ fn update_bounds<N: Float>(bounds: &mut [(N, N)], assign: &[usize], msim: &[N]) 
 }
 
 #[inline(always)]
-pub fn spherical_shamerly<N, I, A>(
+pub fn spherical_simp_hamerly<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
 ) -> KMeansResult<N>
 where
@@ -167,17 +167,6 @@ where
         }
     }
     KMeansResult::without_inertia(cent.into_ndarray(), assign, iter)
-}
-
-pub fn spherical_simp_hamerly<N, I, A>(
-    data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
-) -> KMeansResult<N>
-where
-    N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display + 'static,
-    I: Initialization<N>,
-    A: Dataset<N>,
-{
-    spherical_shamerly::<N, I, A>(data, k, init, maxiter, tol)
 }
 
 #[cfg(test)]

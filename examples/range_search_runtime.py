@@ -1,24 +1,26 @@
 import argparse
 import time
 import numpy as np
-from sklearn.neighbors import BallTree, KDTree
-from fuel import search
+from sklearn.neighbors import NearestNeighbors
+from fuel import get_rayon_parallellism, search
 
-def run_fuel_tree(data, queries, tree_name, radius):
+def run_fuel_search(data, queries, tree_name, radius):
     start_build = time.perf_counter()
-    index = search.build_tree(data, distance='euclidean', tree=tree_name, seed=42)
+    index = search.SearchIndex(data, distance='euclidean', tree=tree_name, seed=42)
     build_time = time.perf_counter() - start_build
     start_query = time.perf_counter()
     _, distances = index.radius_search(queries, radius, exclude_self=False)
     query_time = time.perf_counter() - start_query
     return build_time, query_time, distances
 
-def run_sklearn_tree(tree_cls, data, queries, radius, **kwargs):
+
+def run_sklearn_tree(algorithm, data, queries, radius, **kwargs):
     start_build = time.perf_counter()
-    tree = tree_cls(data, metric='euclidean', **kwargs)
+    tree = NearestNeighbors(radius=radius, algorithm=algorithm, metric='euclidean', **kwargs)
+    tree.fit(data)
     build_time = time.perf_counter() - start_build
     start_query = time.perf_counter()
-    _, distances = tree.query_radius(queries, r=radius, return_distance=True)
+    distances, _ = tree.radius_neighbors(queries, radius=radius, return_distance=True)
     query_time = time.perf_counter() - start_query
     return build_time, query_time, distances
 
@@ -67,7 +69,7 @@ def main():
     print(f"Using Euclidean radius search with radius={args.radius}")
 
     for tree_name in ['vp', 'kd', 'cover']:
-        build_time, query_time, distances = run_fuel_tree(data, query_data, tree_name, args.radius)
+        build_time, query_time, distances = run_fuel_search(data, query_data, tree_name, args.radius)
         avg_count, avg_dist = summarize_range_results(distances)
         total_time = build_time + query_time
         print(
@@ -75,12 +77,21 @@ def main():
             f"total: {total_time:.4f}s | avg count: {avg_count:.4f} | avg dist: {avg_dist:.8f}"
         )
 
+    build_time, query_time, distances = run_fuel_search(data, query_data, 'linear', args.radius)
+    avg_count, avg_dist = summarize_range_results(distances)
+    total_time = build_time + query_time
+    print(
+        f"fuel-linear   | build: {build_time:.4f}s | query: {query_time:.4f}s | "
+        f"total: {total_time:.4f}s | avg count: {avg_count:.4f} | avg dist: {avg_dist:.8f}"
+    )
+
     sklearn_configs = [
-        ('sklearn-kd', KDTree, {}),
-        ('sklearn-ball', BallTree, {}),
+        ('sklearn-brute', 'brute'),
+        ('sklearn-kd', 'kd_tree'),
+        ('sklearn-ball', 'ball_tree'),
     ]
-    for label, tree_cls, kwargs in sklearn_configs:
-        build_time, query_time, distances = run_sklearn_tree(tree_cls, data, query_data, args.radius, **kwargs)
+    for label, algorithm in sklearn_configs:
+        build_time, query_time, distances = run_sklearn_tree(algorithm, data, query_data, args.radius)
         avg_count, avg_dist = summarize_range_results(distances)
         total_time = build_time + query_time
         print(

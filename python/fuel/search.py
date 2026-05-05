@@ -1,5 +1,5 @@
 from . import _fuel as _fuel
-from ._dispatch import _ensure_float, _f32
+from ._dispatch import _call, _ensure_float, _f32
 import numpy as _np
 
 
@@ -31,12 +31,13 @@ def knn_search(data, query, k, *, exclude_self=None, distance='euclidean', tree=
         ``jeffrey`` / ``jeffreys``, ``histogram_intersection`` /
         ``intersection``. For ``tree='kd'`` only ``'euclidean'``,
         ``'sqeuclidean'``, and ``'manhattan'`` are supported.
-    tree : {'auto', 'vp', 'kd', 'cover'}, optional
+    tree : {'auto', 'vp', 'kd', 'cover', 'linear'}, optional
         Index structure to use. ``'auto'`` chooses ``'kd'`` for low-
         dimensional Euclidean-like distances and otherwise chooses ``'vp'``.
         ``'vp'`` supports all distance functions. ``'kd'`` only supports
         coordinate-based distances but can be faster for low-dimensional
         Euclidean data. ``'cover'`` uses a cover tree and supports all
+        distances. ``'linear'`` uses exact brute-force linear scan search.
         distances. ``'vp'`` and ``'cover'`` are exact only for metric
         distances.
     seed : int or None, optional
@@ -64,28 +65,6 @@ _KD_DISTANCE_NAMES = {
 }
 
 
-def build_tree(data, *, distance='euclidean', tree='auto', seed=None):
-    """Build a search index for repeated queries.
-
-    Parameters
-    ----------
-    data : array-like of shape (n, d)
-        Input data set. Converted to float32 or float64 as needed.
-    distance : str, optional
-        Distance function name. Default ``'euclidean'``.
-    tree : {'auto', 'vp', 'kd', 'cover'}, optional
-        Which index to build. ``'auto'`` chooses ``'kd'`` for low-
-        dimensional Euclidean-like distances and otherwise chooses ``'vp'``.
-    seed : int or None, optional
-        RNG seed for VP-tree or cover-tree construction.
-
-    Returns
-    -------
-    SearchIndex
-    """
-    return SearchIndex(data, distance=distance, tree=tree, seed=seed)
-
-
 def _choose_search_tree(data, distance):
     if (
         distance.lower() in _KD_DISTANCE_NAMES
@@ -104,47 +83,71 @@ def _same_source(data, query):
 
 
 class SearchIndex:
-    """Pure Python search index wrapper for repeated queries."""
+    """Persistent search index wrapper for repeated queries.
+
+    Use :class:`SearchIndex` directly instead of building a separate helper
+    wrapper. For repeated queries, construct the index once and call
+    ``knn`` or ``radius_search`` multiple times.
+    """
 
     def __init__(self, data, *, distance='euclidean', tree=None, seed=None):
-        self.data = _ensure_float(data)
+        data = _ensure_float(data)
+        self.data = data
         self.distance = distance
         self.seed = seed
+        self.dtype = data.dtype
+        self.shape = data.shape
         self.tree = tree
+        self._source_shape = data.shape
+        self._source_strides = data.strides
+        self._source_ptr = data.__array_interface__['data'][0]
+
         if self.tree is None or self.tree == 'auto':
-            self.tree = _choose_search_tree(self.data, distance)
+            self.tree = _choose_search_tree(data, distance)
         if self.tree == 'covertree': self.tree = 'cover'
-        if self.tree not in {'vp', 'kd', 'cover'}:
-            raise ValueError(f"unknown tree '{self.tree}', valid values are 'auto', 'vp', 'kd', 'cover', or None")
+        if self.tree not in {'vp', 'kd', 'cover', 'linear'}:
+            raise ValueError(f"unknown tree '{self.tree}', valid values are 'auto', 'vp', 'kd', 'cover', 'linear', or None")
 
         self.index = None
         if self.tree == 'vp':
-            if _f32(self.data):
-                self.index = _fuel.build_vp_tree_f32(self.data, self.distance, self.seed)
+            if _f32(data):
+                self.index = _fuel.build_vp_tree_f32(data, distance, seed)
             else:
-                self.index = _fuel.build_vp_tree_f64(self.data, self.distance, self.seed)
+                self.index = _fuel.build_vp_tree_f64(data, distance, seed)
         elif self.tree == 'cover':
-            if _f32(self.data):
-                self.index = _fuel.build_cover_tree_f32(self.data, self.distance, self.seed)
+            if _f32(data):
+                self.index = _fuel.build_cover_tree_f32(data, distance, seed)
             else:
-                self.index = _fuel.build_cover_tree_f64(self.data, self.distance, self.seed)
+                self.index = _fuel.build_cover_tree_f64(data, distance, seed)
         elif self.tree == 'kd':
-            if _f32(self.data):
-                self.index = _fuel.build_kd_tree_f32(self.data, self.distance)
+            if _f32(data):
+                self.index = _fuel.build_kd_tree_f32(data, distance)
             else:
-                self.index = _fuel.build_kd_tree_f64(self.data, self.distance)
+                self.index = _fuel.build_kd_tree_f64(data, distance)
+        elif self.tree == 'linear':
+            if _f32(data):
+                self.index = _fuel.build_linear_scan_f32(data, distance)
+            else:
+                self.index = _fuel.build_linear_scan_f64(data, distance)
+
+    def _same_source(self, query):
+        return (
+            query.shape == self._source_shape
+            and query.strides == self._source_strides
+            and query.__array_interface__['data'][0] == self._source_ptr
+        )
 
     def knn(self, query, k, *, exclude_self=None):
         query = _ensure_float(query)
-        if query.dtype != self.data.dtype:
-            query = query.astype(self.data.dtype)
-        if query.ndim != 2 or query.shape[1] != self.data.shape[1]:
+        if query.dtype != self.dtype:
+            query = query.astype(self.dtype)
+        if query.ndim != 2 or query.shape[1] != self.shape[1]:
             raise ValueError(
-                f"query shape {query.shape} is not compatible with index data shape {self.data.shape}"
+                f"query shape {query.shape} is not compatible with index data shape {self.shape}"
             )
         if exclude_self is None:
-            exclude_self = _same_source(self.data, query)
-        elif exclude_self and not _same_source(self.data, query):
+            exclude_self = self._same_source(query)
+        elif exclude_self and not self._same_source(query):
             raise ValueError(
                 "exclude_self=True is only supported when query refers to the same underlying array as data"
             )
@@ -152,15 +155,15 @@ class SearchIndex:
 
     def radius_search(self, query, radius, *, exclude_self=None):
         query = _ensure_float(query)
-        if query.dtype != self.data.dtype:
-            query = query.astype(self.data.dtype)
-        if query.ndim != 2 or query.shape[1] != self.data.shape[1]:
+        if query.dtype != self.dtype:
+            query = query.astype(self.dtype)
+        if query.ndim != 2 or query.shape[1] != self.shape[1]:
             raise ValueError(
-                f"query shape {query.shape} is not compatible with index data shape {self.data.shape}"
+                f"query shape {query.shape} is not compatible with index data shape {self.shape}"
             )
         if exclude_self is None:
-            exclude_self = _same_source(self.data, query)
-        elif exclude_self and not _same_source(self.data, query):
+            exclude_self = self._same_source(query)
+        elif exclude_self and not self._same_source(query):
             raise ValueError(
                 "exclude_self=True is only supported when query refers to the same underlying array as data"
             )
@@ -168,14 +171,8 @@ class SearchIndex:
 
     def __repr__(self):
         return (
-            f"<SearchIndex tree={self.tree!r} distance={self.distance!r} "
-            f"dtype={self.data.dtype} shape={self.data.shape}>"
+            f"<SearchIndex tree={self.tree!r} dtype={self.dtype!r} shape={self.shape!r}>"
         )
-
-
-def build_search_index(data, *, distance='euclidean', tree=None, seed=None):
-    """Alias for :func:`build_tree` with an explicit tree choice."""
-    return build_tree(data, distance=distance, tree=tree, seed=seed)
 
 
 def range_search(data, query, radius, *, exclude_self=None, distance='euclidean', seed=None, tree='vp'):
@@ -197,10 +194,12 @@ def range_search(data, query, radius, *, exclude_self=None, distance='euclidean'
         Distance function name. Default ``'euclidean'``.
     seed : int or None, optional
         Random seed for VP-tree or cover-tree construction.
-    tree : {'auto', 'vp', 'kd', 'cover'}, optional
+    tree : {'auto', 'vp', 'kd', 'cover', 'linear'}, optional
         Index structure to use. ``'auto'`` chooses ``'vp'`` for the
         default radius search path. ``'kd'`` supports coordinate-based
         radius search for suitable distances. ``'vp'`` and ``'cover'``
+        are exact only for metric distances. ``'linear'`` uses exact
+        brute-force linear scan search.
         are exact only for metric distances.
 
     Returns

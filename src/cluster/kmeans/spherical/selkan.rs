@@ -58,7 +58,7 @@ fn update_bounds<N: Float>(bounds: &mut [N], assign: &[usize], msim: &[N], k: us
 }
 
 #[inline(always)]
-pub fn spherical_selkan<N, I, A>(
+pub fn spherical_simp_elkan<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
 ) -> KMeansResult<N>
 where
@@ -143,17 +143,6 @@ where
         }
     }
     KMeansResult::without_inertia(cent.into_ndarray(), assign, iter)
-}
-
-pub fn spherical_simp_elkan<N, I, A>(
-    data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
-) -> KMeansResult<N>
-where
-    N: Float,
-    I: Initialization<N>,
-    A: Dataset<N>,
-{
-    spherical_selkan::<N, I, A>(data, k, init, maxiter, tol)
 }
 
 #[cfg(test)]

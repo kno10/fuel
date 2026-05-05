@@ -83,7 +83,7 @@ def _check_linkage(variant, linkage):
         )
 
 
-def hierarchical(data, variant='agnes', linkage='ward', *, distance=None,
+def hierarchical(data, variant='auto', linkage='ward', *, distance=None,
                  sample_size=None, slack=None, seed=None):
     """
     Hierarchical / agglomerative clustering.
@@ -114,6 +114,7 @@ def hierarchical(data, variant='agnes', linkage='ward', *, distance=None,
         - 'buffered_search_single_link', 'lazy_buffered_search_single_link'
             Search-based single-link with slack buffer; require sample_size
             and slack.
+        - 'auto' chooses 'slink', 'muellner', 'set_muellner' depending on the linkage.
     linkage : str
         Linkage criterion. Ignored for fixed-linkage variants (slink, clink,
         search-based).
@@ -134,6 +135,13 @@ def hierarchical(data, variant='agnes', linkage='ward', *, distance=None,
     and to_scipy_linkage() methods.
     """
     data = _ensure_float(data)
+    if variant.lower() == 'auto':
+        if linkage.lower() == 'single':
+            v = 'slink'
+        elif linkage.lower() in _STANDARD_LINKAGES:
+            v = 'muellner'
+        else:
+            v = 'set_muellner'
     v = variant.lower()
     _check_linkage(v, linkage)
 
