@@ -150,7 +150,7 @@ fn parse_delimiter(value: &str) -> Result<Option<u8>, String> {
 fn parse_format(value: &str) -> Result<Option<FileFormat>, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "csv" => Ok(Some(FileFormat::Csv)),
-        "arff" => Ok(Some(FileFormat::Arff)),
+        "npy" => Ok(Some(FileFormat::Npy)),
         "auto" => Ok(None),
         other => Err(format!("Unsupported format: {}", other)),
     }
@@ -242,7 +242,7 @@ fn print_usage(program_name: &str) {
     eprintln!("  -o, --output <path>       Output file path (default: stdout)");
     eprintln!("  -k, --ks <list>           k values (e.g. 1,2,5 or 1..10)");
     eprintln!("      --delimiter <val>     Delimiter: comma, tab, semicolon, whitespace, auto");
-    eprintln!("      --format <val>        Input format: csv, arff, auto");
+    eprintln!("      --format <val>        Input format: csv, npy, auto");
     eprintln!("      --header              Treat the first non-comment line as a header");
     eprintln!("      --no-header           Do not treat the first line as a header");
     eprintln!("      --disable <patterns>  Disable methods by substring or comma-separated list");

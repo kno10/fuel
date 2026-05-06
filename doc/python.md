@@ -527,6 +527,15 @@ All outlier functions return a tuple `(scores, metadata)` where `scores` is a
 The two baseline methods (`zero`, `random`) follow the same calling convention
 but the return format matches the standard tuple.
 
+The Rust backend of fuel contains a binary that can compute a parameter
+sweep over k for all kNN-based outlier detection methods *much* faster than
+iterating over this from Python: it precomputes the kNN for the maximum k
+just *once*, then runs the outlier detectors using this information.
+It can be built using the command
+```sh
+cargo build --release --bin compute_knn_outlier_scores --features parallel,io
+```
+
 ### Angle-based
 
 | Function | Parameters | Notes |
