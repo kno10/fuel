@@ -1,17 +1,15 @@
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
-
 use crate::api::data::DistanceData;
 use crate::api::float::Float;
+use crate::api::parallel::ParMap;
 use crate::api::query::IndexQuery;
 use crate::api::search::{DistPair, KnnSearch, RangeSearch};
 
 /// A wrapper that precomputes a kNN table for parameter sweeps.
 ///
-/// The proxy searcher computes kNN results up to `max_k + extra` for every
-/// data point in parallel. For requests with `k <= max_k`, it serves the
-/// result directly from the precomputed table and preserves ties at the
-/// requested k-th distance.
+/// The proxy searcher computes kNN results up to `max_k` for every data
+/// point in parallel. For requests with `k <= max_k`, it serves the result
+/// directly from the precomputed table and preserves ties at the requested
+/// k-th distance.
 ///
 /// Larger k requests are forwarded to the original searcher.
 pub struct ProxyKnnSearcher<'a, F, D, S>
@@ -23,8 +21,7 @@ where
 {
     source: &'a S,
     precomputed: Vec<Vec<DistPair<F>>>,
-    max_precomputed_k: usize,
-    threshold_k: usize,
+    max_k: usize,
     _marker: std::marker::PhantomData<&'a D>,
 }
 
@@ -40,52 +37,29 @@ where
     /// - `source` is the original searcher used for delegated large-k queries.
     /// - `data` is the dataset whose indexed points will be precomputed.
     /// - `max_k` is the maximum k value expected in parameter sweeps.
-    /// - `extra` is an additional margin added to `max_k` for internal
-    ///   methods and tie handling.
-    pub fn new(source: &'a S, data: &'a D, max_k: usize, extra: usize) -> Self {
+    pub fn new(source: &'a S, data: &'a D, max_k: usize) -> Self {
         let n = data.len();
-        let max_precomputed_k = max_k.saturating_add(extra).min(n);
-        let precomputed = if n == 0 || max_precomputed_k == 0 {
+        let max_k = max_k.min(n);
+        let precomputed = if n == 0 || max_k == 0 {
             Vec::new()
         } else {
-            #[cfg(feature = "parallel")]
-            {
-                (0..n)
-                    .into_par_iter()
-                    .map(|index| {
-                        let mut query = data.query();
-                        query.set_index(index);
-                        source.search_knn(&query, max_precomputed_k)
-                    })
-                    .collect()
-            }
-
-            #[cfg(not(feature = "parallel"))]
-            {
-                (0..n)
-                    .map(|index| {
-                        let mut query = data.query();
-                        query.set_index(index);
-                        source.search_knn(&query, max_precomputed_k)
-                    })
-                    .collect()
-            }
+            (0..n).par_map(|index| {
+                let mut query = data.query();
+                query.set_index(index);
+                source.search_knn(&query, max_k)
+            })
         };
 
         Self {
             source,
             precomputed,
-            max_precomputed_k,
-            threshold_k: max_k,
+            max_k,
             _marker: std::marker::PhantomData,
         }
     }
 
     /// Returns the maximum k precomputed by this proxy.
-    pub fn max_precomputed_k(&self) -> usize { self.max_precomputed_k }
-
-    /// Returns the sweep threshold.
-    pub fn threshold_k(&self) -> usize { self.threshold_k }
+    pub fn max_k(&self) -> usize { self.max_k }
 
     fn subset_with_ties(&self, k: usize, results: &[DistPair<F>]) -> Vec<DistPair<F>> {
         if k == 0 || results.is_empty() {
@@ -109,7 +83,7 @@ where
             return Vec::new();
         }
 
-        if k <= self.threshold_k && !self.precomputed.is_empty() {
+        if k <= self.max_k && !self.precomputed.is_empty() {
             let index = query.query_index();
             if let Some(results) = self.precomputed.get(index) {
                 return self.subset_with_ties(k, results);

@@ -539,7 +539,7 @@ fn main() {
     let tree = fuel::search::vptree::VPTree::new(&data, 2, &mut rng);
     let ks = build_sorted_ks(config.ks.clone());
     let max_k = ks.iter().copied().max().unwrap_or(0).min(data.len().saturating_sub(1));
-    let proxy = ProxyKnnSearcher::new(&tree, &data, max_k, 2);
+    let proxy = ProxyKnnSearcher::new(&tree, &data, max_k + 2);
     let index_time = index_start.elapsed();
     eprintln!("Data indexing time: {:.3}s", index_time.as_secs_f64());
 
