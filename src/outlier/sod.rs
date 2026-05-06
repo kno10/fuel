@@ -1,5 +1,5 @@
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch, VectorData};
+use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 
 /// Subspace Outlier Degree approximation.
 ///
@@ -38,7 +38,7 @@ where
     let dim = data.dims();
 
     let scores: Vec<F> = (0..size)
-        .map(|idx| {
+        .par_map(|idx| {
             let query_neighbors = &euclidean_neighborhoods[idx];
 
             let mut similarities = Vec::with_capacity(size - 1);
@@ -116,8 +116,7 @@ where
             let sod = if sqr_dist > 0.0 { sqr_dist.sqrt() / (selected.len() as f64) } else { 0.0 };
 
             F::from_f64(sod).unwrap_or(F::zero())
-        })
-        .collect();
+        });
 
     make_outlier_result(scores, "SOD", false, F::zero(), F::zero(), F::infinity())
 }

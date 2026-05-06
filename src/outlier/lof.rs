@@ -1,7 +1,7 @@
 use super::common::{OutlierResult, for_each_knn, make_outlier_result};
 #[cfg(test)]
 use crate::distance::Euclidean;
-use crate::{DistanceData, Float, KnnSearch};
+use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 /// Compute Local Outlier Factor (LOF) scores.
 ///
@@ -43,29 +43,24 @@ where
         neighborhoods_and_k_distances.iter().map(|(n, _)| n.clone()).collect();
     let k_distances: Vec<F> = neighborhoods_and_k_distances.iter().map(|(_, d)| *d).collect();
 
-    let mut local_reachability_density = vec![F::zero(); size];
-
-    for idx in 0..size {
+    let local_reachability_density: Vec<F> = (0..size).par_map(|idx| {
         let neighbors = &neighborhoods[idx];
         if neighbors.is_empty() {
-            local_reachability_density[idx] = F::infinity();
-            continue;
+            return F::infinity();
         }
-
         let reachability_sum = neighbors
             .iter()
             .map(|(neighbor_idx, distance)| k_distances[*neighbor_idx].max(*distance))
             .sum::<F>();
-
-        local_reachability_density[idx] = if reachability_sum > F::zero() {
+        if reachability_sum > F::zero() {
             F::from_usize(neighbors.len()).unwrap_or(F::zero()) / reachability_sum
         } else {
             F::infinity()
-        };
-    }
+        }
+    });
 
     let scores: Vec<F> = (0..size)
-        .map(|idx| {
+        .par_map(|idx| {
             let neighbors = &neighborhoods[idx];
 
             if neighbors.is_empty() || local_reachability_density[idx].is_infinite() {
@@ -79,8 +74,7 @@ where
                     / (local_reachability_density[idx]
                         * F::from_usize(neighbors.len()).unwrap_or(F::zero()))
             }
-        })
-        .collect();
+        });
 
     make_outlier_result(scores, "LOF", false, F::zero(), F::zero(), F::infinity())
 }

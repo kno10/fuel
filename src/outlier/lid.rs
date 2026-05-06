@@ -1,6 +1,6 @@
 use crate::intrinsicdimensionality::KNNIDEstimator;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch};
+use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 pub fn local_intrinsic_dimensionality<'a, S, D, F, E>(
     tree: &S, data: &'a D, k: usize,
@@ -16,12 +16,10 @@ where
         return make_outlier_result(Vec::new(), "LID", false, F::zero(), F::zero(), F::infinity());
     }
 
-    let mut scores = Vec::with_capacity(size);
-    for i in 0..size {
+    let scores: Vec<F> = (0..size).par_map(|i| {
         let estimate = E::estimate_from_knn(tree, data, i, k + 1);
-        let score = if estimate.is_finite() && estimate > 0.0 { estimate } else { 0.0 };
-        scores.push(F::from_f64(score).unwrap_or(F::zero()));
-    }
+        if estimate.is_finite() && estimate > 0.0 { F::from_f64(estimate).unwrap_or(F::zero()) } else { F::zero() }
+    });
 
     make_outlier_result(scores, "LID", false, F::zero(), F::zero(), F::infinity())
 }

@@ -1,5 +1,5 @@
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch};
+use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 pub fn k_nearest_neighbors_distance_deviation<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize,
@@ -18,7 +18,7 @@ where
         neighborhoods.iter().map(|n| n.last().map(|(_, d)| *d).unwrap_or(F::zero())).collect();
 
     let scores: Vec<F> = (0..size)
-        .map(|i| {
+        .par_map(|i| {
             let d = knn_distances[i].to_f64().unwrap_or(0.0);
             let neighbor_idx = neighborhoods[i].last().map(|(idx, _)| *idx);
             let nd = neighbor_idx.map(|j| knn_distances[j].to_f64().unwrap_or(0.0)).unwrap_or(0.0);
@@ -32,8 +32,7 @@ where
             };
 
             F::from_f64(sc).unwrap_or(F::zero())
-        })
-        .collect();
+        });
 
     make_outlier_result(scores, "kNNDensityDiff", false, F::zero(), F::zero(), F::infinity())
 }

@@ -1,5 +1,5 @@
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch};
+use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 pub fn local_density_outlier_factor<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize,
@@ -29,7 +29,7 @@ where
     let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh);
 
     let scores: Vec<F> = (0..size)
-        .map(|i| {
+        .par_map(|i| {
             let neigh = &neighborhoods[i];
             if neigh.is_empty() {
                 return F::one();
@@ -57,8 +57,7 @@ where
             let score = if lf.is_nan() || lf.is_infinite() { 1.0 } else { lf };
 
             F::from_f64(score).unwrap_or(F::zero())
-        })
-        .collect();
+        });
 
     make_outlier_result(scores, "LDOF", false, F::zero(), F::zero(), F::infinity())
 }

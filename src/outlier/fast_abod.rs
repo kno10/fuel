@@ -1,6 +1,6 @@
 use super::abod::abod_kernel_score_for_neighbor_set;
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch, VectorData};
+use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 
 /// Fast-ABOD (approximate ABOD) using `k` nearest Euclidean neighbors and a kernel similarity function.
 pub fn fast_angle_based_outlier_detection<'a, S, D, F, K>(
@@ -40,11 +40,10 @@ where
         for_each_knn(tree, data, k_effective, false, |_idx, neighbors| neighbors);
 
     let scores: Vec<F> = (0..size)
-        .map(|i| {
+        .par_map(|i| {
             let neighbor_ids: Vec<usize> = neighborhoods[i].iter().map(|(idx, _)| *idx).collect();
             abod_kernel_score_for_neighbor_set(data, i, &neighbor_ids, &kernel)
-        })
-        .collect();
+        });
 
     make_outlier_result(scores, "FastABOD", false, F::zero(), F::zero(), F::infinity())
 }

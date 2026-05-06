@@ -1,5 +1,5 @@
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch};
+use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 pub fn flexible_lof<'a, S, D, F>(
     tree: &S, data: &'a D, krefer: usize, kreach: usize,
@@ -51,30 +51,24 @@ where
         })
         .collect();
 
-    let mut lrd = vec![F::zero(); size];
-
-    for i in 0..size {
+    let lrd: Vec<F> = (0..size).par_map(|i| {
         let neigh = &neighborhoods[i];
         if neigh.is_empty() {
-            lrd[i] = F::infinity();
-            continue;
+            return F::infinity();
         }
-
         let mut sum = F::zero();
         let mut count = F::zero();
-
         for (neighbor_idx, distance) in neigh.iter().take(kreach_effective) {
             let neighbor_kreach = neighbor_kreach_distance[*neighbor_idx];
             let reach_dist = if neighbor_kreach > *distance { neighbor_kreach } else { *distance };
             sum += reach_dist;
             count += F::one();
         }
-
-        lrd[i] = if sum > F::zero() { count / sum } else { F::infinity() };
-    }
+        if sum > F::zero() { count / sum } else { F::infinity() }
+    });
 
     let scores: Vec<F> = (0..size)
-        .map(|i| {
+        .par_map(|i| {
             let neigh = &neighborhoods[i];
 
             if neigh.is_empty() || lrd[i].is_infinite() {
@@ -95,8 +89,7 @@ where
             } else {
                 sum_neighbor_lrd / (lrd[i] * count)
             }
-        })
-        .collect();
+        });
 
     make_outlier_result(scores, "FlexibleLOF", false, F::zero(), F::zero(), F::infinity())
 }

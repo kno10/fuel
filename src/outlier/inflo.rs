@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch};
+use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 /// Influence Outlierness Factor.
 pub fn influence_outlier<'a, S, D, F>(tree: &S, data: &'a D, k: usize, m: f64) -> OutlierResult<F>
@@ -47,7 +47,7 @@ where
     }
 
     let scores: Vec<F> = (0..size)
-        .map(|i| {
+        .par_map(|i| {
             if pruned[i] {
                 F::one()
             } else {
@@ -83,8 +83,7 @@ where
                 };
                 F::from_f64(inflo).unwrap_or(F::zero())
             }
-        })
-        .collect();
+        });
 
     make_outlier_result(scores, "INFLO", false, F::zero(), F::zero(), F::infinity())
 }

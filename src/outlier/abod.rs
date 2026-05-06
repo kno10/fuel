@@ -1,5 +1,5 @@
 use crate::outlier::common::{OutlierResult, make_outlier_result};
-use crate::{DistanceData, Float, VectorData};
+use crate::{DistanceData, Float, ParMap, VectorData};
 
 /// Exact ABOD (angle-based outlier factor) using a kernel similarity function.
 pub fn angle_based_outlier_detection<D, F, K>(data: &D, kernel: K) -> OutlierResult<F>
@@ -13,11 +13,10 @@ where
         return make_outlier_result(Vec::new(), "ABOD", false, F::zero(), F::zero(), F::infinity());
     }
 
-    let mut scores = Vec::with_capacity(size);
-    for i in 0..size {
+    let scores: Vec<F> = (0..size).par_map(|i| {
         let neighbors: Vec<usize> = (0..size).filter(|&j| j != i).collect();
-        scores.push(abod_kernel_score_for_neighbor_set(data, i, &neighbors, &kernel));
-    }
+        abod_kernel_score_for_neighbor_set(data, i, &neighbors, &kernel)
+    });
 
     make_outlier_result(scores, "ABOD", false, F::zero(), F::zero(), F::infinity())
 }

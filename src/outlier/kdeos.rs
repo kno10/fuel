@@ -4,7 +4,7 @@ use rs_stats::distributions::Normal;
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
 // Use for_each_knn(tree,data,k,true,...) when we need the self point included in neighbors.
 use crate::outlier::kernel::KernelDensityFunction;
-use crate::{DistanceData, Float, KnnSearch, VectorData};
+use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 
 const KDEOS_CUTOFF: f64 = 1e-20;
 
@@ -94,22 +94,22 @@ where
 
     let normal = Normal::new(0.0, 1.0).unwrap();
     let scores: Vec<F> = (0..size)
-        .map(|i| {
+        .par_map(|i| {
             let neigh = &neighborhoods[i];
-            let score = if neigh.is_empty() {
+            let score: f64 = if neigh.is_empty() {
                 1.0
             } else {
-                let mut score_sum = 0.0;
+                let mut score_sum = 0.0_f64;
                 // Include self and neighbors as in ELKI KDEOS score calculation:
                 // query has been kept in neigh in position 0 from kNN(k_effective+1).
                 for (k, _) in densities.iter().take(knum).enumerate() {
-                    let mut mean = 0.0;
+                    let mut mean = 0.0_f64;
                     for (neighbor_id, _) in neigh.iter() {
                         mean += densities[*neighbor_id][k];
                     }
                     mean /= neigh.len() as f64;
 
-                    let mut variance = 0.0;
+                    let mut variance = 0.0_f64;
                     for (neighbor_id, _) in neigh.iter() {
                         let dval = densities[*neighbor_id][k];
                         variance += (dval - mean).powi(2);
@@ -118,10 +118,10 @@ where
                     let stddev = if neigh.len() > 1 {
                         (variance / ((neigh.len() - 1) as f64)).sqrt()
                     } else {
-                        0.0
+                        0.0_f64
                     };
 
-                    if stddev > 0.0 {
+                    if stddev > 0.0_f64 {
                         score_sum += (mean - densities[i][k]) / stddev;
                     }
                 }
@@ -131,8 +131,7 @@ where
                 normal.cdf(score_sum).unwrap_or(0.0)
             };
             F::from_f64(score).unwrap_or(F::zero())
-        })
-        .collect();
+        });
 
     make_outlier_result(scores, "KDEOS", false, F::zero(), F::zero(), F::infinity())
 }

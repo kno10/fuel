@@ -1,6 +1,6 @@
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
 use crate::outlier::kernel::KernelDensityFunction;
-use crate::{DistanceData, Float, KnnSearch, VectorData};
+use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 
 pub fn simple_kernel_density_lof<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize, _h: f64, kernel: KernelDensityFunction,
@@ -42,15 +42,11 @@ where
         .map(|neigh| neigh.last().map_or(0.0, |(_, d)| d.to_f64().unwrap_or(0.0)))
         .collect();
 
-    let mut density = vec![0.0; size];
-
-    for i in 0..size {
+    let density: Vec<f64> = (0..size).par_map(|i| {
         let neigh = &neighborhoods[i];
         if neigh.is_empty() {
-            density[i] = 0.0;
-            continue;
+            return 0.0;
         }
-
         let mut sum = 0.0;
         for (neighbor_idx, d) in neigh.iter() {
             let max_dist = kdistances[*neighbor_idx];
@@ -62,12 +58,11 @@ where
             let v = dist / max_dist;
             sum += kernel.density(v) / max_dist.powf(dim);
         }
-
-        density[i] = if !neigh.is_empty() { sum / (neigh.len() as f64) } else { 0.0 };
-    }
+        sum / (neigh.len() as f64)
+    });
 
     let scores: Vec<F> = (0..size)
-        .map(|i| {
+        .par_map(|i| {
             let own = density[i];
             let neigh = &neighborhoods[i];
             let sum_neighbors: f64 = neigh.iter().map(|(idx, _)| density[*idx]).sum();
@@ -83,8 +78,7 @@ where
             };
 
             F::from_f64(score).unwrap_or(F::zero())
-        })
-        .collect();
+        });
 
     make_outlier_result(
         scores,

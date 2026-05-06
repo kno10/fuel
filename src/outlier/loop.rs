@@ -3,7 +3,7 @@ use rs_stats::prob::erf;
 #[cfg(test)]
 use crate::distance::Euclidean;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch};
+use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 /// Compute Local Outlier Probabilities (LoOP) scores.
 ///
@@ -42,9 +42,9 @@ where
             neighbors
         });
 
-    let pdists: Vec<F> = neighborhoods
-        .iter()
-        .map(|neighbors| {
+    let pdists: Vec<F> = (0..size)
+        .par_map(|i| {
+            let neighbors = &neighborhoods[i];
             if neighbors.is_empty() {
                 F::zero()
             } else {
@@ -52,13 +52,11 @@ where
                     / F::from_usize(neighbors.len()).unwrap_or(F::zero()))
                 .sqrt()
             }
-        })
-        .collect();
+        });
 
-    let plofs: Vec<f64> = neighborhoods
-        .iter()
-        .enumerate()
-        .map(|(idx, neighbors)| {
+    let plofs: Vec<f64> = (0..size)
+        .par_map(|idx| {
+            let neighbors = &neighborhoods[idx];
             if neighbors.is_empty() {
                 return 0.0;
             }
@@ -71,8 +69,7 @@ where
             } else {
                 0.0
             }
-        })
-        .collect();
+        });
 
     let mut nplof = n_lambda
         * (plofs.iter().map(|value| value * value).sum::<f64>() / plofs.len() as f64).sqrt();
@@ -83,13 +80,10 @@ where
 
     let sqrt_2 = 2.0_f64.sqrt();
 
-    let scores: Vec<F> = plofs
-        .iter()
-        .map(|plof| {
-            let z = (plof / (nplof * sqrt_2)).max(0.0);
-            F::from_f64(erf(z).unwrap_or(0.0).max(0.0)).unwrap_or(F::zero())
-        })
-        .collect();
+    let scores: Vec<F> = (0..size).par_map(|i| {
+        let z = (plofs[i] / (nplof * sqrt_2)).max(0.0);
+        F::from_f64(erf(z).unwrap_or(0.0).max(0.0)).unwrap_or(F::zero())
+    });
 
     make_outlier_result(scores, "LoOP", false, F::zero(), F::zero(), F::infinity())
 }

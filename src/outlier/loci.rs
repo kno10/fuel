@@ -1,5 +1,5 @@
 use crate::outlier::common::{OutlierResult, for_each_range, make_outlier_result};
-use crate::{DistanceData, Float, RangeSearch, VectorData};
+use crate::{DistanceData, Float, ParMap, RangeSearch, VectorData};
 
 /// LOCI: Fast Outlier Detection Using the Local Correlation Integral.
 fn build_critical_distances<F: Float>(
@@ -86,9 +86,8 @@ where
         cdist_vec.push(build_critical_distances(&n, rmax_f, alpha_f));
     }
 
-    let mut max_score = vec![0.0f64; size];
-
-    for (i, current) in sorted_neighs.iter().enumerate().take(size) {
+    let max_score: Vec<f64> = (0..size).par_map(|i| {
+        let current = &sorted_neighs[i];
         let cdist = &cdist_vec[i];
 
         let (maxdist, maxneig) = cdist.last().map(|(d, k)| (*d, *k)).unwrap_or((0.0, 0));
@@ -99,7 +98,7 @@ where
             .take_while(|(_, dist)| *dist <= maxdist)
             .collect();
 
-        let max_mdef = if maxneig < nmin {
+        if maxneig < nmin {
             f64::INFINITY
         } else {
             let mut best_mdef = 0.0;
@@ -128,7 +127,8 @@ where
                     continue;
                 }
 
-                let nhat = neighbor_n_alphas.iter().sum::<f64>() / (neighbor_n_alphas.len() as f64);
+                let nhat =
+                    neighbor_n_alphas.iter().sum::<f64>() / (neighbor_n_alphas.len() as f64);
                 let var = neighbor_n_alphas
                     .iter()
                     .map(|v| {
@@ -148,10 +148,8 @@ where
             }
 
             best_mdef
-        };
-
-        max_score[i] = max_mdef;
-    }
+        }
+    });
 
     let result_f: Vec<F> = max_score
         .iter()

@@ -3,7 +3,7 @@ use rand::{RngExt, SeedableRng};
 
 use crate::api::VectorData; // needed for MatrixDataAccess.point/dims in this file
 use crate::outlier::common::{OutlierResult, make_outlier_result};
-use crate::{DistanceData, Float};
+use crate::{DistanceData, Float, ParMap};
 
 /// A very simple outlier score used for trivial baseline detectors.
 ///
@@ -18,25 +18,11 @@ use crate::{DistanceData, Float};
 ///
 /// Panics if the data set is empty (division by zero when computing the mean).
 pub fn distance_from_origin<D: VectorData<F> + Sync, F: Float>(data: D) -> OutlierResult<F> {
-    let scores: Vec<F> = if cfg!(feature = "parallel") {
-        use rayon::prelude::*;
-        (0..data.len())
-            .into_par_iter()
-            .map(|idx| {
-                let coords = data.point(idx);
-                let sq = coords.iter().map(|&x| x * x).sum::<F>();
-                sq.sqrt()
-            })
-            .collect()
-    } else {
-        data.iter()
-            .map(|idx| {
-                let coords = data.point(idx);
-                let sq = coords.iter().map(|&x| x * x).sum::<F>();
-                sq.sqrt()
-            })
-            .collect()
-    };
+    let scores: Vec<F> = (0..data.len()).par_map(|idx| {
+        let coords = data.point(idx);
+        let sq = coords.iter().map(|&x| x * x).sum::<F>();
+        sq.sqrt()
+    });
 
     make_outlier_result(scores, "Distance from origin", false, F::zero(), F::zero(), F::infinity())
 }
@@ -72,9 +58,8 @@ pub fn distance_from_center<D: VectorData<F> + Sync, F: Float>(data: D) -> Outli
         *x /= F::from_usize(size).unwrap_or(F::one());
     }
 
-    let scores: Vec<F> = data
-        .iter()
-        .map(|idx| {
+    let scores: Vec<F> = (0..size)
+        .par_map(|idx| {
             let coords = data.point(idx);
             let sq: F = coords
                 .iter()
@@ -85,8 +70,7 @@ pub fn distance_from_center<D: VectorData<F> + Sync, F: Float>(data: D) -> Outli
                 })
                 .sum();
             sq.sqrt()
-        })
-        .collect();
+        });
 
     make_outlier_result(scores, "Distance from center", false, F::zero(), F::zero(), F::infinity())
 }

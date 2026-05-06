@@ -1,5 +1,5 @@
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch};
+use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 /// Local Isolation Coefficient (LIC).
 ///
@@ -32,16 +32,15 @@ where
     let neighborhoods: Vec<Vec<(usize, F)>> =
         for_each_knn(tree, data, k_effective, false, |_idx, neighbors| neighbors);
 
-    let scores: Vec<F> = neighborhoods
-        .iter()
-        .map(|neigh| {
+    let scores: Vec<F> = (0..size)
+        .par_map(|i| {
+            let neigh = &neighborhoods[i];
             let knn_distance = neigh.last().map(|(_, d)| *d).unwrap_or(F::zero());
             let sum: F = neigh.iter().map(|(_, d)| *d).sum();
             let n = F::from_usize(neigh.len()).unwrap_or(F::zero());
             let mean = if n > F::zero() { sum / n } else { F::zero() };
             knn_distance + mean
-        })
-        .collect();
+        });
 
     make_outlier_result(scores, "LIC", false, F::zero(), F::zero(), F::infinity())
 }

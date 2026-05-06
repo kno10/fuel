@@ -1,5 +1,5 @@
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch};
+use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 /// Compute Connectivity-based Outlier Factor (COF) scores.
 ///
@@ -29,22 +29,19 @@ where
 
     let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh);
 
-    let mut acd = vec![F::zero(); size];
-
-    for i in 0..size {
+    let acd: Vec<F> = (0..size).par_map(|i| {
         let neighbors = &neighborhoods[i];
         let r = neighbors.len();
         if r == 0 {
-            acd[i] = F::zero();
-            continue;
+            return F::zero();
         }
 
-        let k_plus = k_effective + 1; // includes query point
+        let k_plus = k_effective + 1;
         let mut candidate_indices: Vec<usize> = Vec::with_capacity(k_plus);
         let mut min_dists: Vec<Option<F>> = Vec::with_capacity(k_plus);
 
         candidate_indices.push(i);
-        min_dists.push(None); // self is not considered
+        min_dists.push(None);
 
         for (neighbor_idx, _) in neighbors {
             candidate_indices.push(*neighbor_idx);
@@ -85,31 +82,24 @@ where
             * F::from_f64(0.5).unwrap_or(F::zero())
             * F::from_usize(k_plus - 1).unwrap_or(F::zero());
 
-        acd[i] = if denom > F::zero() { chain_sum / denom } else { F::zero() };
-    }
+        if denom > F::zero() { chain_sum / denom } else { F::zero() }
+    });
 
-    let mut scores = vec![F::zero(); size];
-    let k_plus = k_effective + 1;
-    let k_plus_val = F::from_usize(k_plus).unwrap_or(F::zero());
-
-    for i in 0..size {
+    let k_plus_val = F::from_usize(k_effective + 1).unwrap_or(F::zero());
+    let scores: Vec<F> = (0..size).par_map(|i| {
         let neighbors = &neighborhoods[i];
         if neighbors.is_empty() {
-            scores[i] = F::one();
-            continue;
+            return F::one();
         }
         let sum_neighbors: F = neighbors.iter().map(|(neighbor_idx, _)| acd[*neighbor_idx]).sum();
-
-        let score = if sum_neighbors > F::zero() {
+        if sum_neighbors > F::zero() {
             acd[i] * k_plus_val / sum_neighbors
         } else if acd[i] > F::zero() {
             F::infinity()
         } else {
             F::one()
-        };
-
-        scores[i] = score;
-    }
+        }
+    });
 
     make_outlier_result(scores, "COF", false, F::one(), F::zero(), F::infinity())
 }

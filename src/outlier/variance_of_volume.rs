@@ -1,7 +1,7 @@
 use rs_stats::utils::special_functions::gamma_fn;
 
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch, VectorData};
+use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 
 pub fn variance_of_volume<'a, S, D, F>(tree: &S, data: &'a D, k: usize) -> OutlierResult<F>
 where
@@ -37,15 +37,12 @@ where
     let dim = data.dims() as f64;
     let scale_const = std::f64::consts::PI.sqrt() * gamma_fn(1.0 + dim * 0.5).powf(-1.0 / dim);
 
-    let mut volumes = vec![0.0; size];
-
-    for i in 0..size {
+    let volumes: Vec<f64> = (0..size).par_map(|i| {
         let neigh = &neighborhoods[i];
         let dist_k =
             if neigh.is_empty() { 0.0 } else { neigh.last().unwrap().1.to_f64().unwrap_or(0.0) };
-        let vol = if dist_k > 0.0 { (dist_k * scale_const).powf(dim) } else { 0.0 };
-        volumes[i] = vol;
-    }
+        if dist_k > 0.0 { (dist_k * scale_const).powf(dim) } else { 0.0 }
+    });
 
     let sum_vol: f64 = volumes.iter().sum();
     let scaling = if sum_vol > 0.0 { (size as f64) / sum_vol } else { 1.0 };
@@ -53,7 +50,7 @@ where
     let scaled_volumes: Vec<f64> = volumes.iter().map(|v| v * scaling).collect();
 
     let scores: Vec<F> = (0..size)
-        .map(|i| {
+        .par_map(|i| {
             let neigh = &neighborhoods[i];
             let total_neighbors = neigh.len() + 1;
 
@@ -77,8 +74,7 @@ where
             let score = if vov.is_nan() || vov.is_infinite() { 1.0 } else { vov };
 
             F::from_f64(score).unwrap_or(F::zero())
-        })
-        .collect();
+        });
 
     make_outlier_result(scores, "VarianceOfVolume", false, F::zero(), F::zero(), F::infinity())
 }

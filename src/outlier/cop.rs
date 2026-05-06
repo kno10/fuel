@@ -4,7 +4,7 @@ use rs_stats::Distribution;
 use rs_stats::distributions::gamma_distribution::Gamma;
 
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch, VectorData};
+use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 
 /// Probability distribution used for COP.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,7 +42,7 @@ where
     let dim = data.dims();
 
     let scores: Vec<F> = (0..size)
-        .map(|idx| {
+        .par_map(|idx| {
             let neigh = &neighborhoods[idx];
             if neigh.is_empty() {
                 return F::zero();
@@ -184,8 +184,7 @@ where
                 );
             }
             F::from_f64(prob).unwrap_or(F::zero())
-        })
-        .collect();
+        });
 
     if cfg!(debug_assertions) {
         let sample: Vec<f64> = scores.iter().take(10).map(|x| x.to_f64().unwrap_or(0.0)).collect();

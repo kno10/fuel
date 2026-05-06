@@ -1,6 +1,6 @@
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
 use crate::outlier::kernel::KernelDensityFunction;
-use crate::{DistanceData, Float, KnnSearch, VectorData};
+use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 
 pub fn local_density_factor<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize, h: f64, c: f64, kernel: KernelDensityFunction,
@@ -42,26 +42,20 @@ where
         })
         .collect();
 
-    let mut lde = vec![0.0; size];
-
-    for i in 0..size {
+    let lde: Vec<f64> = (0..size).par_map(|i| {
         let neigh = &neighborhoods[i];
         if neigh.is_empty() {
-            lde[i] = 0.0;
-            continue;
+            return 0.0;
         }
-
         let mut sum = 0.0;
-
+        let mut is_inf = false;
         for (neighbor_idx, d) in neigh.iter() {
             let nkdist = kdistances[*neighbor_idx];
             let dij = d.to_f64().unwrap_or(0.0);
-
             if nkdist.is_nan() || nkdist <= 0.0 || nkdist.is_infinite() {
-                lde[i] = f64::INFINITY;
+                is_inf = true;
                 break;
             }
-
             let r = nkdist.max(dij);
             let factors = h * nkdist;
             let v = r / factors;
@@ -69,14 +63,11 @@ where
             let term = density_val / factors.powf(dim);
             sum += term;
         }
-
-        if !lde[i].is_infinite() {
-            lde[i] = if !neigh.is_empty() { sum / (neigh.len() as f64) } else { 0.0 };
-        }
-    }
+        if is_inf { f64::INFINITY } else { sum / (neigh.len() as f64) }
+    });
 
     let scores: Vec<F> = (0..size)
-        .map(|i| {
+        .par_map(|i| {
             let own = lde[i];
             let neigh = &neighborhoods[i];
             let sum_neighbors: f64 = neigh.iter().map(|(idx, _)| lde[*idx]).sum();
@@ -95,8 +86,7 @@ where
             };
 
             F::from_f64(score).unwrap_or(F::zero())
-        })
-        .collect();
+        });
 
     make_outlier_result(scores, "LDF", false, F::zero(), F::zero(), F::infinity())
 }
