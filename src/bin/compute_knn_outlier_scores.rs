@@ -3,6 +3,9 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use std::{env, fs};
 
+use flate2::write::GzEncoder;
+use flate2::Compression;
+
 mod io;
 
 use fuel::intrinsicdimensionality::{ABID, AggregatedHillID};
@@ -78,7 +81,7 @@ where
     write!(writer, "{}-{}", prefix, k)?;
     for score in result.scores.iter() {
         let value = scaling.map_or(*score, |scale| scale(*score));
-        write!(writer, " {:e}", value)?;
+        write!(writer, " {}", format_value(value))?;
     }
     writeln!(writer)?;
     Ok(())
@@ -226,7 +229,12 @@ fn open_writer(output: Option<PathBuf>) -> Result<Box<dyn Write>, String> {
     if let Some(path) = output {
         let file = fs::File::create(&path)
             .map_err(|e| format!("Failed to open output file {}: {}", path.display(), e))?;
-        Ok(Box::new(BufWriter::new(file)))
+        if path.extension().and_then(|ext| ext.to_str()).map_or(false, |ext| ext.eq_ignore_ascii_case("gz")) {
+            let encoder = GzEncoder::new(BufWriter::new(file), Compression::default());
+            Ok(Box::new(encoder))
+        } else {
+            Ok(Box::new(BufWriter::new(file)))
+        }
     } else {
         Ok(Box::new(BufWriter::new(std::io::stdout())))
     }
@@ -474,11 +482,19 @@ where
         write!(writer, "{}", result.label)?;
         for score in result.result.scores.iter() {
             let value = scaling.map_or(*score, |scale| scale(*score));
-            write!(writer, " {:e}", value)?;
+            write!(writer, " {}", format_value(value))?;
         }
         writeln!(writer)?;
     }
     Ok(())
+}
+
+fn format_value(value: f64) -> String {
+    let mut s = format!("{:?}", value);
+    if s.ends_with(".0") {
+        s.truncate(s.len() - 2);
+    }
+    s
 }
 
 fn main() {
