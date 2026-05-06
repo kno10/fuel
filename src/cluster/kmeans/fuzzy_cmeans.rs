@@ -16,7 +16,7 @@ pub fn fuzzy_lloyd<N, I, A>(
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync,
 {
     assert!(m > N::one(), "fuzziness exponent must be > 1");
     let (n, d) = (data.nrows(), data.ncols());
@@ -32,7 +32,6 @@ where
         init,
         &mut cent,
         &mut sums,
-        &mut scratch,
     );
 
     // initialize membership matrix U (row-major n*k)

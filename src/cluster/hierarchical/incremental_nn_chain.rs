@@ -135,7 +135,7 @@ where
         let cutoff_factor = linkage.cutoff_factor(size_a);
 
         searcher.reset_with_limits(cutoff_factor * min_link, F::zero());
-        query.set_coordinates(a_center);
+        query = query.with_coordinates(a_center);
 
         let mut c_root = b_root;
         let mut c_cid = b_cid;

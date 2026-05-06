@@ -10,6 +10,7 @@ use crate::{
 /// Helper that returns the starting offset in the flattened triangle for
 /// row `n` (i.e. the number of elements in all rows before row `n`).
 #[inline(always)]
+#[must_use]
 pub const fn triangle_size(n: usize) -> usize { (n - (n & 1)) / 2 * (n - 1 + (n & 1)) }
 
 /// Compute the condensed lower-triangular pairwise matrix for a point set.

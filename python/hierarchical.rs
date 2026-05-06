@@ -10,7 +10,7 @@ use pyo3::types::PyModule;
 
 use super::make_rng;
 use crate::cluster::hierarchical;
-use crate::distance::DistanceFunction;
+use crate::distance::{DistanceFunction, Euclidean};
 use crate::search::vptree::VPTree;
 use crate::{Float, NdArrayDatasetWithDistance, cluster};
 
@@ -158,7 +158,7 @@ macro_rules! geometric_linkage_wrapper {
             linkage: &str,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
-            let dataset = NdArrayDatasetWithDistance::new(&array);
+            let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
             let linkage = linkage.to_ascii_lowercase();
             let history = match linkage.as_str() {
                 "average" | "group_average" => $algo(&dataset, hierarchical::GroupAverageLinkage),
@@ -369,7 +369,7 @@ fn incremental_nn_chain_f32<'py>(
     seed: Option<u64>,
 ) -> PyResult<Py<PyAny>> {
     let array = data.as_array();
-    let dataset = NdArrayDatasetWithDistance::new(&array);
+    let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
     let tree = build_vptree(&dataset, sample_size, seed);
     let linkage = linkage.to_ascii_lowercase();
     let history = match linkage.as_str() {
@@ -412,7 +412,7 @@ fn incremental_nn_chain_f64<'py>(
     seed: Option<u64>,
 ) -> PyResult<Py<PyAny>> {
     let array = data.as_array();
-    let dataset = NdArrayDatasetWithDistance::new(&array);
+    let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
     let tree = build_vptree(&dataset, sample_size, seed);
     let linkage = linkage.to_ascii_lowercase();
     let history = match linkage.as_str() {

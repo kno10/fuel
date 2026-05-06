@@ -110,7 +110,6 @@ where
                 *v1.get_unchecked_mut(i) = fma * b;
             }
         }
-        return;
     }
 
     #[cfg(not(any(target_feature = "fma", target_feature = "neon", target_feature = "vfp4")))]
@@ -211,9 +210,9 @@ where
     N: Float,
 {
     assert_eq!(out.len(), n);
-    for j in 0..n {
+    for (j, out_val) in out.iter_mut().enumerate().take(n) {
         let row = points.row(j);
-        out[j] = if let Some(s) = row.as_slice() {
+        *out_val = if let Some(s) = row.as_slice() {
             sqdist(center, s, d)
         } else {
             sqdist_view(ArrayView1::from(center), row, d)

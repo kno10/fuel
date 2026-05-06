@@ -177,10 +177,14 @@ where
     DF: DistanceFunction<[C], F> + PartialDistance<C, F>,
     F: Float,
 {
-    fn set_coordinates(&mut self, coords: &[C]) {
+    fn with_coordinates(mut self, coords: &[C]) -> Self
+    where
+        Self: Sized,
+    {
         if self.data.len() > 0 {
             debug_assert_eq!(coords.len(), self.data.dims());
         }
         self.coords = Some(Cow::Owned(coords.to_vec()));
+        self
     }
 }

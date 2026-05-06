@@ -111,9 +111,9 @@ where
         let old_cent = if tol > N::zero() { Some(cent.clone()) } else { None };
         let old_norm = if tol > N::zero() { cent.frobenius_norm() } else { N::zero() };
 
-        for j in 0..k {
-            if counts[j] > 0 {
-                let denom = N::from(counts[j]).unwrap();
+        for (j, &count_j) in counts.iter().enumerate().take(k) {
+            if count_j > 0 {
+                let denom = N::from(count_j).unwrap();
                 let center_row = cent.center_mut(j);
                 let sum_row = sums.row(j);
                 for l in 0..d {

@@ -63,6 +63,14 @@ where
     ncols: usize,
 }
 
+// SAFETY: IndexBuffer only reads from raw pointers into pinned, read-only Python arrays.
+// Multiple concurrent &self reads are safe (no mutation, memory is stable for the lifetime).
+unsafe impl Sync for IndexBuffer<'_> {}
+
+// SAFETY: CsrDataset only reads from raw pointers into pinned, read-only Python arrays.
+// load_into and point() do only concurrent reads; no PyO3 API is called from parallel threads.
+unsafe impl<N: Sync + numpy::Element> Sync for CsrDataset<'_, N> {}
+
 impl<N: Element> CsrDataset<'_, N> {
     #[inline(always)]
     fn row_bounds(&self, i: usize) -> (usize, usize) {

@@ -40,7 +40,6 @@ where
         &mut cent,
         &mut sums,
         &mut cdist,
-        &mut scratch,
     );
     let mut iter = 1; // Initial iteration above!
     while iter < maxiter {

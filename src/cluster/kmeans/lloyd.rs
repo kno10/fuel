@@ -3,7 +3,7 @@ use std::ops::*;
 
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::{Float, VectorData as Dataset, math};
+use crate::{Float, ParChunksMut, VectorData as Dataset, math};
 
 /// Perform the Lloyd cluster assignment
 // Inline always to allow CPU optimization!
@@ -11,11 +11,11 @@ use crate::{Float, VectorData as Dataset, math};
 #[inline(always)]
 pub(crate) fn lloyd_initial_assignment<N, A, I>(
     data: &A, rows: Option<ndarray::ArrayView2<'_, N>>, k: usize, init: &mut I,
-    cent: &mut Centers<N>, sums: &mut Centers<N>, scratch: &mut [N],
+    cent: &mut Centers<N>, sums: &mut Centers<N>,
 ) -> (Vec<usize>, Vec<usize>, N)
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync,
     I: Initialization<N>,
 {
     let (n, d) = (data.nrows(), data.ncols());
@@ -38,12 +38,27 @@ where
                 },
             ),
         );
-        for i in 0..n {
-            let a = assign[i];
-            csize[a] += 1;
-            data.load_into(i, scratch, d);
-            math::add_assign(sums.center_mut(a), scratch, d);
-            lastsum += best[i];
+        let deltas: Vec<(Vec<usize>, Vec<N>, N)> =
+            assign.as_mut_slice().par_chunks_map_mut(|i0, assign_chunk| {
+                let mut delta_csize = vec![0usize; k];
+                let mut delta_sums = vec![N::zero(); k * d];
+                let mut local_sum = N::zero();
+                let mut point = vec![N::zero(); d];
+                for (ci, &a) in assign_chunk.iter().enumerate() {
+                    let i = i0 + ci;
+                    delta_csize[a] += 1;
+                    data.load_into(i, &mut point, d);
+                    math::add_assign(&mut delta_sums[a * d..a * d + d], &point, d);
+                    local_sum += best[i];
+                }
+                (delta_csize, delta_sums, local_sum)
+            });
+        for (dc, ds, ls) in deltas {
+            for j in 0..k {
+                csize[j] += dc[j];
+                math::add_assign(sums.center_mut(j), &ds[j * d..j * d + d], d);
+            }
+            lastsum += ls;
         }
     } else {
         init.init::<A>(data, cent, k);
@@ -56,24 +71,41 @@ where
         };
         let centers = cent.as_ndarray();
         let mut matrix = vec![N::zero(); k.checked_mul(n).expect("point count overflow")];
-        // Use n×k layout (row = point, col = center) so the argmin scan over
+        // Use n*k layout (row = point, col = center) so the argmin scan over
         // centers is contiguous in memory.
         N::vec_pairwise_sqdist(rows, centers, d, &mut matrix, n, k);
-        for i in 0..n {
-            let base = i * k;
-            let mut a = 0;
-            let mut s = matrix[base];
-            for j in 1..k {
-                let tmp = matrix[base + j];
-                if tmp < s {
-                    a = j;
-                    s = tmp;
+        let deltas: Vec<(Vec<usize>, Vec<N>, N)> =
+            assign.as_mut_slice().par_chunks_map_mut(|i0, assign_chunk| {
+                let mut delta_csize = vec![0usize; k];
+                let mut delta_sums = vec![N::zero(); k * d];
+                let mut local_sum = N::zero();
+                for (ci, aa) in assign_chunk.iter_mut().enumerate() {
+                    let i = i0 + ci;
+                    let row = &matrix[i * k..i * k + k];
+                    let mut a = 0;
+                    let mut s = row[0];
+                    for (j, &tmp) in row.iter().enumerate().skip(1) {
+                        if tmp < s {
+                            (a, s) = (j, tmp);
+                        }
+                    }
+                    *aa = a;
+                    delta_csize[a] += 1;
+                    math::add_assign(
+                        &mut delta_sums[a * d..a * d + d],
+                        rows.row(i).to_slice().unwrap(),
+                        d,
+                    );
+                    local_sum += s;
                 }
+                (delta_csize, delta_sums, local_sum)
+            });
+        for (dc, ds, ls) in deltas {
+            for j in 0..k {
+                csize[j] += dc[j];
+                math::add_assign(sums.center_mut(j), &ds[j * d..j * d + d], d);
             }
-            csize[a] += 1;
-            assign[i] = a;
-            math::add_assign(sums.center_mut(a), rows.row(i).to_slice().unwrap(), d);
-            lastsum += s;
+            lastsum += ls;
         }
     }
     (assign, csize, lastsum)
@@ -89,35 +121,13 @@ where
     I: Initialization<N>,
     A: Dataset<N> + Sync,
 {
-    let (n, d) = (data.nrows(), data.ncols());
+    let d = data.ncols();
     let mut scratch = vec![N::zero(); d];
     let mut cent = Centers::<N>::new(k, d);
     let mut sums = Centers::<N>::new(k, d);
-    let mut rows = None;
-    let use_serial_assignment = {
-        #[cfg(feature = "parallel")]
-        {
-            n < crate::math::PARALLEL_ROW_THRESHOLD
-        }
-        #[cfg(not(feature = "parallel"))]
-        {
-            true
-        }
-    };
-    if !init.uses_distances() && use_serial_assignment {
-        rows = Some(data.to_ndarray());
-    }
-    let init_rows = rows.as_ref().map(|rows| rows.view());
     let (mut assign, mut csize, mut lastsum) = lloyd_initial_assignment::<N, A, I>(
-        data,
-        init_rows,
-        k,
-        init,
-        &mut cent,
-        &mut sums,
-        &mut scratch,
+        data, None, k, init, &mut cent, &mut sums,
     );
-    let mut matrix = Vec::new();
     let mut iter = 1; // Initial iteration above!
     while iter < maxiter {
         iter += 1;
@@ -139,95 +149,48 @@ where
                 break;
             }
         }
-        let changed = 'iter: {
-            #[cfg(feature = "parallel")]
-            if n >= crate::math::PARALLEL_ROW_THRESHOLD {
-                use rayon::prelude::*;
-                let chunk_size = n.div_ceil(rayon::current_num_threads());
-                let deltas: Vec<(usize, N, Vec<N>, Vec<i64>)> = assign
-                    .par_chunks_mut(chunk_size)
-                    .enumerate()
-                    .map(|(ti, assign_chunk)| {
-                        let i0 = ti * chunk_size;
-                        let chunk_n = assign_chunk.len();
-                        let mut point = vec![N::zero(); d];
-                        let mut delta_sums = vec![N::zero(); k * d];
-                        let mut delta_csize = vec![0i64; k];
-                        let mut local_changed = 0usize;
-                        let mut local_sum = N::zero();
-                        for ci in 0..chunk_n {
-                            let i = i0 + ci;
-                            let aa = assign_chunk[ci];
-                            data.load_into(i, &mut point, d);
-                            let mut a = 0;
-                            let mut s = math::sqdist(cent.center(0), &point, d);
-                            for j in 1..k {
-                                let tmp = math::sqdist(cent.center(j), &point, d);
-                                if tmp < s {
-                                    (a, s) = (j, tmp);
-                                }
-                            }
-                            local_sum += s;
-                            if a != aa {
-                                assign_chunk[ci] = a;
-                                delta_csize[aa] -= 1;
-                                delta_csize[a] += 1;
-                                math::sub_assign(&mut delta_sums[aa * d..aa * d + d], &point, d);
-                                math::add_assign(&mut delta_sums[a * d..a * d + d], &point, d);
-                                local_changed += 1;
-                            }
+        let deltas: Vec<(usize, N, Vec<N>, Vec<i64>)> =
+            assign.as_mut_slice().par_chunks_map_mut(|i0, assign_chunk| {
+                let mut point = vec![N::zero(); d];
+                let mut delta_sums = vec![N::zero(); k * d];
+                let mut delta_csize = vec![0i64; k];
+                let mut local_changed = 0usize;
+                let mut local_sum = N::zero();
+                for (ci, aa) in assign_chunk.iter_mut().enumerate() {
+                    let i = i0 + ci;
+                    let aa_old = *aa;
+                    data.load_into(i, &mut point, d);
+                    let mut a = 0;
+                    let mut s = math::sqdist(cent.center(0), &point, d);
+                    for j in 1..k {
+                        let tmp = math::sqdist(cent.center(j), &point, d);
+                        if tmp < s {
+                            (a, s) = (j, tmp);
                         }
-                        (local_changed, local_sum, delta_sums, delta_csize)
-                    })
-                    .collect();
-                let mut total = 0usize;
-                let mut total_sum = N::zero();
-                for (c, s, ds, dc) in deltas {
-                    total += c;
-                    total_sum += s;
-                    for j in 0..k {
-                        math::add_assign(sums.center_mut(j), &ds[j * d..j * d + d], d);
-                        csize[j] = (csize[j] as i64 + dc[j]) as usize;
+                    }
+                    local_sum += s;
+                    if a != aa_old {
+                        *aa = a;
+                        delta_csize[aa_old] -= 1;
+                        delta_csize[a] += 1;
+                        math::sub_assign(&mut delta_sums[aa_old * d..aa_old * d + d], &point, d);
+                        math::add_assign(&mut delta_sums[a * d..a * d + d], &point, d);
+                        local_changed += 1;
                     }
                 }
-                lastsum = total_sum;
-                break 'iter total;
+                (local_changed, local_sum, delta_sums, delta_csize)
+            });
+        let mut changed = 0usize;
+        let mut total_sum = N::zero();
+        for (c, s, ds, dc) in deltas {
+            changed += c;
+            total_sum += s;
+            for j in 0..k {
+                math::add_assign(sums.center_mut(j), &ds[j * d..j * d + d], d);
+                csize[j] = (csize[j] as i64 + dc[j]) as usize;
             }
-            // serial path: pairwise distance matrix, reused across iterations
-            let rows = rows.get_or_insert_with(|| data.to_ndarray());
-            if matrix.is_empty() {
-                matrix.resize(k.checked_mul(n).expect("point count overflow"), N::zero());
-            }
-            let (mut c, mut sum) = (0, N::zero());
-            let centers = cent.as_ndarray();
-            // n×k layout: out[i*k+j] = dist(point_i, center_j) — contiguous argmin scan.
-            N::vec_pairwise_sqdist(rows.view(), centers, d, &mut matrix, n, k);
-            for i in 0..n {
-                let aa = assign[i];
-                let base = i * k;
-                let mut a = aa;
-                let mut s = matrix[base + aa];
-                for j in 0..k {
-                    let tmp = matrix[base + j];
-                    if tmp < s {
-                        a = j;
-                        s = tmp;
-                    }
-                }
-                if a != aa {
-                    assign[i] = a;
-                    csize[aa] -= 1;
-                    csize[a] += 1;
-                    let row = rows.row(i).to_slice().unwrap();
-                    math::sub_assign(sums.center_mut(aa), row, d);
-                    math::add_assign(sums.center_mut(a), row, d);
-                    c += 1;
-                }
-                sum += s;
-            }
-            lastsum = sum;
-            c
-        };
+        }
+        lastsum = total_sum;
         if changed == 0 {
             break;
         }

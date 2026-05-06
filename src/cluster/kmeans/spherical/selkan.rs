@@ -1,7 +1,7 @@
 use super::common::*;
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::{Centers, KMeansResult};
-use crate::{Float, VectorData as Dataset, math};
+use crate::{Float, VectorData as Dataset, math, par_zip_chunks_map_mut};
 
 #[inline(always)]
 fn sph_selkan_initial_assignment<N, A, I>(
@@ -9,7 +9,7 @@ fn sph_selkan_initial_assignment<N, A, I>(
 ) -> (Vec<usize>, Vec<usize>, Vec<N>)
 where
     N: Float,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync,
     I: Initialization<N>,
 {
     let (n, d) = (data.nrows(), data.ncols());
@@ -23,24 +23,40 @@ where
             math::mul_assign(cent.center_mut(j), nrm.recip(), d);
         }
     }
-    let mut scratch = vec![N::zero(); d];
-    for i in 0..n {
-        data.load_into(i, &mut scratch, d);
-        let bounds_i = &mut bounds[i * k..i * k + k];
-        let mut a = 0;
-        let mut best = clamp_one(math::dot(&scratch, cent.center(0), d));
-        bounds_i[0] = best;
-        for (j, bound_j) in bounds_i.iter_mut().enumerate().take(k).skip(1) {
-            let sim = clamp_one(math::dot(&scratch, cent.center(j), d));
-            *bound_j = sim;
-            if sim > best {
-                a = j;
-                best = sim;
+    let deltas: Vec<(Vec<usize>, Vec<N>)> =
+        par_zip_chunks_map_mut(&mut assign, &mut bounds, k, |i0, assign_chunk, bounds_chunk| {
+            let mut delta_csize = vec![0usize; k];
+            let mut delta_sums = vec![N::zero(); k * d];
+            let mut point = vec![N::zero(); d];
+            for (ci, (aa, bounds_i)) in assign_chunk
+                .iter_mut()
+                .zip(bounds_chunk.chunks_exact_mut(k))
+                .enumerate()
+            {
+                let i = i0 + ci;
+                data.load_into(i, &mut point, d);
+                let mut a = 0;
+                let mut best = clamp_one(math::dot(&point, cent.center(0), d));
+                bounds_i[0] = best;
+                for (j, bound_j) in bounds_i.iter_mut().enumerate().take(k).skip(1) {
+                    let sim = clamp_one(math::dot(&point, cent.center(j), d));
+                    *bound_j = sim;
+                    if sim > best {
+                        a = j;
+                        best = sim;
+                    }
+                }
+                *aa = a;
+                delta_csize[a] += 1;
+                math::add_assign(&mut delta_sums[a * d..a * d + d], &point, d);
             }
+            (delta_csize, delta_sums)
+        });
+    for (dc, ds) in deltas {
+        for j in 0..k {
+            csize[j] += dc[j];
+            math::add_assign(sums.center_mut(j), &ds[j * d..j * d + d], d);
         }
-        assign[i] = a;
-        csize[a] += 1;
-        math::add_assign(sums.center_mut(a), &scratch, d);
     }
     (assign, csize, bounds)
 }
@@ -64,9 +80,9 @@ pub fn spherical_simp_elkan<N, I, A>(
 where
     N: Float,
     I: Initialization<N>,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync,
 {
-    let (n, d) = (data.nrows(), data.ncols());
+    let d = data.ncols();
     let mut scratch = vec![N::zero(); d];
     let mut cent = Centers::<N>::new(k, d);
     let mut sums = Centers::<N>::new(k, d);
@@ -93,41 +109,60 @@ where
             }
         }
         update_bounds(&mut bounds, &assign, &msim, k);
-        let mut changed = 0;
-        for i in 0..n {
-            data.load_into(i, &mut scratch, d);
-            let orig = assign[i];
-            let bounds_i = &mut bounds[i * k..i * k + k];
-            let mut ls = bounds_i[orig];
-            let mut recompute_ls = true;
-            let mut cur = orig;
-            for j in 0..k {
-                if j == orig || ls >= bounds_i[j] {
-                    continue;
-                }
-                if recompute_ls {
-                    ls = clamp_one(math::dot(&scratch, cent.center(cur), d));
+        let deltas: Vec<(usize, Vec<N>, Vec<i64>)> =
+            par_zip_chunks_map_mut(&mut assign, &mut bounds, k, |i0, assign_chunk, bounds_chunk| {
+                let mut point = vec![N::zero(); d];
+                let mut delta_sums = vec![N::zero(); k * d];
+                let mut delta_csize = vec![0i64; k];
+                let mut local_changed = 0usize;
+                for (ci, (aa, bounds_i)) in assign_chunk
+                    .iter_mut()
+                    .zip(bounds_chunk.chunks_exact_mut(k))
+                    .enumerate()
+                {
+                    let i = i0 + ci;
+                    let orig = *aa;
+                    let mut ls = bounds_i[orig];
+                    let mut recompute_ls = true;
+                    let mut cur = orig;
+                    for j in 0..k {
+                        if j == orig || ls >= bounds_i[j] {
+                            continue;
+                        }
+                        if recompute_ls {
+                            data.load_into(i, &mut point, d);
+                            ls = clamp_one(math::dot(&point, cent.center(cur), d));
+                            bounds_i[cur] = ls;
+                            recompute_ls = false;
+                            if ls >= bounds_i[j] {
+                                continue;
+                            }
+                        }
+                        let sim = clamp_one(math::dot(&point, cent.center(j), d));
+                        bounds_i[j] = sim;
+                        if sim > ls {
+                            cur = j;
+                            ls = sim;
+                        }
+                    }
                     bounds_i[cur] = ls;
-                    recompute_ls = false;
-                    if ls >= bounds_i[j] {
-                        continue;
+                    if cur != orig {
+                        *aa = cur;
+                        delta_csize[orig] -= 1;
+                        delta_csize[cur] += 1;
+                        math::sub_assign(&mut delta_sums[orig * d..orig * d + d], &point, d);
+                        math::add_assign(&mut delta_sums[cur * d..cur * d + d], &point, d);
+                        local_changed += 1;
                     }
                 }
-                let sim = clamp_one(math::dot(&scratch, cent.center(j), d));
-                bounds_i[j] = sim;
-                if sim > ls {
-                    cur = j;
-                    ls = sim;
-                }
-            }
-            bounds_i[cur] = ls;
-            if cur != orig {
-                assign[i] = cur;
-                csize[orig] -= 1;
-                csize[cur] += 1;
-                math::sub_assign(sums.center_mut(orig), &scratch, d);
-                math::add_assign(sums.center_mut(cur), &scratch, d);
-                changed += 1;
+                (local_changed, delta_sums, delta_csize)
+            });
+        let mut changed = 0;
+        for (c, ds, dc) in deltas {
+            changed += c;
+            for j in 0..k {
+                math::add_assign(sums.center_mut(j), &ds[j * d..j * d + d], d);
+                csize[j] = (csize[j] as i64 + dc[j]) as usize;
             }
         }
         if changed == 0 {

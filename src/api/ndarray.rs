@@ -1,6 +1,6 @@
 use ndarray::{ArrayBase, Data as NdData, Ix2, RawData};
 
-use crate::distance::{DistanceFunction, Euclidean, PartialDistance};
+use crate::distance::{DistanceFunction, PartialDistance};
 use crate::{
     CoordinateQuery, CoordinateSearch, Data, DistanceData, DistanceSearch, Float, IndexQuery,
     VectorData as Dataset,
@@ -72,13 +72,6 @@ impl<'a, N, A, DF, F> NdArrayDatasetWithDistance<'a, N, A, DF, F> {
             _distance_type: std::marker::PhantomData,
         }
     }
-}
-
-impl<'a, N, A> NdArrayDatasetWithDistance<'a, N, A, Euclidean, N>
-where
-    N: Float,
-{
-    pub fn new(data: &'a A) -> Self { Self::with_distance(data, Euclidean) }
 }
 
 impl<N, D, DF, F> Data for NdArrayDatasetWithDistance<'_, N, ArrayBase<D, Ix2>, DF, F>
@@ -211,11 +204,15 @@ where
     DF: DistanceFunction<[N], F> + PartialDistance<N, F>,
     F: Float,
 {
-    fn set_coordinates(&mut self, coords: &[N]) {
+    fn with_coordinates(mut self, coords: &[N]) -> Self
+    where
+        Self: Sized,
+    {
         if self.data.len() > 0 {
             debug_assert_eq!(coords.len(), self.data.dims());
         }
         self.coords = Some(coords.to_vec());
+        self
     }
 }
 

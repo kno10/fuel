@@ -339,6 +339,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn priority_search_all_lower_bound_converts_range_bounds() {
         let points = sample_points();
         let data: TableWithDistance<'_, f64, Vec<f64>, Euclidean, f64> =

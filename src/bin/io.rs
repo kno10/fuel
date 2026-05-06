@@ -1,6 +1,5 @@
 use std::path::Path;
 
-use arff;
 use csv::{ReaderBuilder, Trim};
 use qsv_sniffer::Sniffer;
 use qsv_sniffer::metadata::Header;

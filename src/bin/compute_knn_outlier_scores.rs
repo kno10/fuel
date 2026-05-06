@@ -107,10 +107,8 @@ where
 
         eprintln!("{} k={} runtime={:.3}s", prefix, k, elapsed.as_secs_f64());
 
-        if let Some(limit) = options.time_limit {
-            if elapsed > limit {
-                break;
-            }
+        if let Some(limit) = options.time_limit && elapsed > limit {
+            break;
         }
     }
 
@@ -236,10 +234,8 @@ fn open_writer(output: Option<PathBuf>) -> Result<Box<dyn Write>, String> {
 
 fn print_usage(program_name: &str) {
     eprintln!("Usage: {} [OPTIONS] <input> [output]", program_name);
-    eprintln!(
-        "
-Read a CSV or whitespace-delimited dataset and compute kNN-based outlier scores."
-    );
+    eprintln!();
+    eprintln!("Read a CSV or whitespace-delimited dataset and compute kNN-based outlier scores.");
     eprintln!("Options:");
     eprintln!("  -h, --help                Show this help message");
     eprintln!("  -i, --input <path>        Input file path (or supply as positional argument)");
@@ -249,9 +245,9 @@ Read a CSV or whitespace-delimited dataset and compute kNN-based outlier scores.
     eprintln!("      --format <val>        Input format: csv, arff, auto");
     eprintln!("      --header              Treat the first non-comment line as a header");
     eprintln!("      --no-header           Do not treat the first line as a header");
-    eprintln!("      --disable <patterns>   Disable methods by substring or comma-separated list");
-    eprintln!("      --ksquare-max <n>      Maximum k for quadratic-cost methods (default 1000)");
-    eprintln!("      --time-limit <secs>    Per-method time limit in seconds");
+    eprintln!("      --disable <patterns>  Disable methods by substring or comma-separated list");
+    eprintln!("      --ksquare-max <n>     Maximum k for quadratic-cost methods (default 1000)");
+    eprintln!("      --time-limit <secs>   Per-method time limit in seconds");
 }
 
 fn parse_args() -> Result<Config, String> {
@@ -309,7 +305,7 @@ fn parse_args() -> Result<Config, String> {
                 let value = args.next().ok_or_else(|| "Missing value for --disable".to_string())?;
                 config.disable.extend(
                     value
-                        .split(|c| c == ',' || c == ';')
+                        .split(|c| [',', ';'].contains(&c))
                         .map(|s| s.trim().to_string())
                         .filter(|s| !s.is_empty()),
                 );
@@ -337,17 +333,15 @@ fn parse_args() -> Result<Config, String> {
     }
 
     if config.input.as_os_str().is_empty() {
-        if let Some(path) = positional.get(0) {
+        if let Some(path) = positional.first() {
             config.input = path.clone();
         } else {
             return Err("Missing input file path".to_string());
         }
     }
 
-    if config.output.is_none() {
-        if let Some(path) = positional.get(1) {
-            config.output = Some(path.clone());
-        }
+    if config.output.is_none() && let Some(path) = positional.get(1) {
+        config.output = Some(path.clone());
     }
 
     if config.ks.is_empty() {

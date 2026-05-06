@@ -278,7 +278,7 @@ mod tests {
         for (geo_merge, ref_merge) in geometric_history.iter().zip(reference_history.iter()) {
             assert_eq!(geo_merge.idx1, ref_merge.idx1);
             assert_eq!(geo_merge.idx2, ref_merge.idx2);
-            let diff = (geo_merge.distance as f64) - (ref_merge.distance as f64);
+            let diff = geo_merge.distance - ref_merge.distance;
             assert!(diff.abs() < 1e-12);
             assert_eq!(geo_merge.size, ref_merge.size);
         }

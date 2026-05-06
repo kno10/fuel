@@ -165,7 +165,7 @@ where
     result
 }
 
-/// kNN search over any DistanceData via linear scan, using KNNHeap.
+/// kNN search over any DistanceData via linear scan.
 pub fn linear_scan_knn<F, D, Q>(data: &D, query: &Q, k: usize) -> Vec<DistPair<F>>
 where
     F: Float,

@@ -67,18 +67,30 @@ pub trait Float:
     + std::marker::Send
     + std::marker::Sync
 {
+    #[inline(always)]
+    #[must_use]
     fn cast<T: num_traits::NumCast>(x: T) -> Self { num_traits::NumCast::from(x).unwrap() }
 
     /// Common constants used throughout the code base.
+    #[inline(always)]
+    #[must_use]
     fn two() -> Self { Self::from_f64(2.0).unwrap() }
 
+    #[inline(always)]
+    #[must_use]
     fn four() -> Self { Self::from_f64(4.0).unwrap() }
 
+    #[inline(always)]
+    #[must_use]
     fn half() -> Self { Self::from_f64(0.5).unwrap() }
 
+    #[inline(always)]
+    #[must_use]
     fn quarter() -> Self { Self::from_f64(0.25).unwrap() }
 
     /// Convert this value to another float type.
+    #[inline(always)]
+    #[must_use]
     fn to_float<T: Float>(self) -> T {
         num_traits::cast(self).unwrap_or_else(|| T::from_f64(self.to_f64().unwrap()).unwrap())
     }

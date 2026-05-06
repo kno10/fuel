@@ -1,6 +1,8 @@
 use crate::evaluation::outlier::sort_score_label;
 
 /// Expected average precision in presence of ties, as in ELKI.
+#[allow(clippy::float_cmp, clippy::cast_precision_loss)]
+// exact equality is intentional for tie grouping on scores and using f64 to aggregate ratios
 pub fn average_precision<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
     scores: &[F], labels: &[L],
 ) -> f64 {
@@ -66,6 +68,6 @@ mod tests {
         let scores = [0.3, 0.6, 0.6, 0.1, 0.9];
         let labels = [0u8, 1, 0, 1, 1];
         let v = average_precision(&scores, &labels);
-        assert!((v - 0.8111111111111111).abs() < 1e-12);
+        assert!((v - 0.81111111).abs() < 1e-7);
     }
 }

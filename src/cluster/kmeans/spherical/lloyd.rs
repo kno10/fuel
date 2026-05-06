@@ -2,7 +2,7 @@ use ndarray::Array2;
 
 use crate::cluster::kmeans::Centers;
 use crate::cluster::kmeans::init::*;
-use crate::{Float, VectorData as Dataset, math};
+use crate::{Float, ParChunksMut, VectorData as Dataset, math};
 
 /// Standard spherical k-means algorithm (Lloyd, Forgy with cosine similarity)
 #[inline(always)]
@@ -12,7 +12,7 @@ pub fn spherical_lloyd<N, I, A>(
 where
     N: Float,
     I: Initialization<N>,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync,
 {
     let (n, d) = (data.nrows(), data.ncols());
     let mut cent = Centers::<N>::new(k, d);
@@ -27,20 +27,35 @@ where
     let mut assign = vec![0_usize; n];
     let mut csize = vec![0_usize; k];
     let mut lastsum = N::zero();
-    let mut scratch = vec![N::zero(); d];
-    for (i, assign_i) in assign.iter_mut().enumerate().take(n) {
-        data.load_into(i, &mut scratch, d);
-        let (mut a, mut s) = (0, math::dot(&scratch, cent.center(0), d));
-        for j in 1..k {
-            let tmp = math::dot(&scratch, cent.center(j), d);
-            if tmp > s {
-                (a, s) = (j, tmp);
+    let deltas: Vec<(Vec<usize>, Vec<N>, N)> =
+        assign.as_mut_slice().par_chunks_map_mut(|i0, assign_chunk| {
+            let mut delta_csize = vec![0usize; k];
+            let mut delta_sums = vec![N::zero(); k * d];
+            let mut local_sum = N::zero();
+            let mut point = vec![N::zero(); d];
+            for (ci, aa) in assign_chunk.iter_mut().enumerate() {
+                let i = i0 + ci;
+                data.load_into(i, &mut point, d);
+                let (mut a, mut s) = (0, math::dot(&point, cent.center(0), d));
+                for j in 1..k {
+                    let tmp = math::dot(&point, cent.center(j), d);
+                    if tmp > s {
+                        (a, s) = (j, tmp);
+                    }
+                }
+                *aa = a;
+                delta_csize[a] += 1;
+                math::add_assign(&mut delta_sums[a * d..a * d + d], &point, d);
+                local_sum += s;
             }
+            (delta_csize, delta_sums, local_sum)
+        });
+    for (dc, ds, ls) in deltas {
+        for j in 0..k {
+            csize[j] += dc[j];
+            math::add_assign(sums.center_mut(j), &ds[j * d..j * d + d], d);
         }
-        csize[a] += 1;
-        *assign_i = a;
-        math::add_assign(sums.center_mut(a), &scratch, d);
-        lastsum += s;
+        lastsum += ls;
     }
     let mut iter = 1;
     while iter < maxiter {
@@ -66,26 +81,45 @@ where
                 break;
             }
         }
-        let (mut changed, mut sum) = (0, N::zero());
-        for (i, assign_i) in assign.iter_mut().enumerate().take(n) {
-            data.load_into(i, &mut scratch, d);
-            let aa = *assign_i;
-            let (mut a, mut s) = (0, math::dot(&scratch, cent.center(0), d));
-            for j in 1..k {
-                let tmp = math::dot(&scratch, cent.center(j), d);
-                if tmp > s || (j == aa && tmp == s) {
-                    (a, s) = (j, tmp);
+        let deltas: Vec<(usize, N, Vec<N>, Vec<i64>)> =
+            assign.as_mut_slice().par_chunks_map_mut(|i0, assign_chunk| {
+                let mut point = vec![N::zero(); d];
+                let mut delta_sums = vec![N::zero(); k * d];
+                let mut delta_csize = vec![0i64; k];
+                let mut local_changed = 0usize;
+                let mut local_sum = N::zero();
+                for (ci, aa) in assign_chunk.iter_mut().enumerate() {
+                    let i = i0 + ci;
+                    let aa_old = *aa;
+                    data.load_into(i, &mut point, d);
+                    let (mut a, mut s) = (0, math::dot(&point, cent.center(0), d));
+                    for j in 1..k {
+                        let tmp = math::dot(&point, cent.center(j), d);
+                        if tmp > s || (j == aa_old && tmp == s) {
+                            (a, s) = (j, tmp);
+                        }
+                    }
+                    local_sum += s;
+                    if a != aa_old {
+                        *aa = a;
+                        delta_csize[aa_old] -= 1;
+                        delta_csize[a] += 1;
+                        math::sub_assign(&mut delta_sums[aa_old * d..aa_old * d + d], &point, d);
+                        math::add_assign(&mut delta_sums[a * d..a * d + d], &point, d);
+                        local_changed += 1;
+                    }
                 }
-            }
-            if a != aa {
-                *assign_i = a;
-                csize[aa] -= 1;
-                csize[a] += 1;
-                math::sub_assign(sums.center_mut(aa), &scratch, d);
-                math::add_assign(sums.center_mut(a), &scratch, d);
-                changed += 1;
-            }
+                (local_changed, local_sum, delta_sums, delta_csize)
+            });
+        let mut changed = 0;
+        let mut sum = N::zero();
+        for (c, s, ds, dc) in deltas {
+            changed += c;
             sum += s;
+            for j in 0..k {
+                math::add_assign(sums.center_mut(j), &ds[j * d..j * d + d], d);
+                csize[j] = (csize[j] as i64 + dc[j]) as usize;
+            }
         }
         lastsum = sum;
         if changed == 0 {

@@ -7,7 +7,7 @@ use std::time::Instant;
 use common::{CountingDistance, read_numeric_data};
 use fuel::cluster::hdbscan::extraction::{ExtractedHierarchy, extract_simplified_hierarchy};
 use fuel::cluster::hierarchical::{
-    CentroidLinkage, CompleteLinkage, FlexibleBetaLinkage, GroupAverageLinkage, MedianLinkage,
+    CentroidLinkage, CompleteLinkage, GroupAverageLinkage, MedianLinkage,
     MergeHistory, MinimumSumSquaresLinkage, MinimumVarianceIncreaseLinkage, MinimumVarianceLinkage,
     SingleLinkage, WardLinkage, WeightedAverageLinkage, agnes,
 };

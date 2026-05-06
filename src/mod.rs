@@ -1,4 +1,11 @@
-#![allow(clippy::too_many_arguments, clippy::type_complexity)]
+#![allow(
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::unreadable_literal,
+    clippy::similar_names,
+    clippy::many_single_char_names,
+    clippy::cast_possible_truncation
+)]
 
 pub mod api;
 pub mod cluster;

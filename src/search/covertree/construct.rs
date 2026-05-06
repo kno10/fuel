@@ -303,9 +303,7 @@ mod tests {
             let expansion = expansion_heuristic_from_id(*dim);
             assert!(
                 expansion > 1.0 && expansion <= 2.0,
-                "expansion {} for dim {} not in (1,2]",
-                expansion,
-                dim
+                "expansion {expansion} for dim {dim} not in (1,2]",
             );
         }
     }

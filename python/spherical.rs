@@ -10,8 +10,8 @@ macro_rules! variant_call {
     ($name:ident, $variant:ident, $dtype:ty, $result_fn:ident) => {
         #[pyfunction]
         #[pyo3(signature = (data, params))]
-        fn $name<'py>(
-            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, params: &KMeansParams,
+        fn $name(
+            py: Python<'_>, data: PyReadonlyArray2<'_, $dtype>, params: &KMeansParams,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = NdArrayDataset::new(&array);
@@ -41,8 +41,8 @@ macro_rules! variant_call_sparse {
     ($name:ident, $variant:ident, $dtype:ty, $result_fn:ident) => {
         #[pyfunction]
         #[pyo3(signature = (data, params))]
-        fn $name<'py>(
-            py: Python<'py>, data: Py<PyAny>, params: &KMeansParams,
+        fn $name(
+            py: Python<'_>, data: Py<PyAny>, params: &KMeansParams,
         ) -> PyResult<Py<PyAny>> {
             let dataset = parse_csr_dataset::<$dtype>(py, data)?;
             let k = params.k;
@@ -98,7 +98,7 @@ variant_call_sparse!(
     result_to_py_f64
 );
 
-pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
+pub fn register(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(spherical_lloyd_f32))?;
     m.add_wrapped(wrap_pyfunction!(spherical_lloyd_f64))?;
     m.add_wrapped(wrap_pyfunction!(spherical_elkan_f32))?;

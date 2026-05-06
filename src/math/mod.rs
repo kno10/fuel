@@ -41,9 +41,8 @@ impl<T> RawSendPtr<T> {
     /// # Safety
     /// Caller must ensure the resulting reference does not alias with any other reference.
     #[inline(always)]
-    unsafe fn offset_slice(&self, offset: usize, len: usize) -> &mut [T] {
-        // Safety: caller guarantees no aliasing.
-        unsafe { std::slice::from_raw_parts_mut(self.0.add(offset), len) }
+    unsafe fn offset_ptr(self, offset: usize) -> *mut T {
+        unsafe { self.0.add(offset) }
     }
 }
 #[cfg(feature = "parallel")]
@@ -76,7 +75,7 @@ impl VecOps for f32 {
             if nrows >= nthreads {
                 // Center-split: each thread handles a chunk of centers (rows of points1).
                 // Preserves pack-A-once + sweep-B within each thread.
-                let row_chunk = (nrows + nthreads - 1) / nthreads;
+                let row_chunk = nrows.div_ceil(nthreads);
                 out.par_chunks_mut(row_chunk * ncols).enumerate().for_each(|(ci, out_block)| {
                     let row_start = ci * row_chunk;
                     let block_rows = out_block.len() / ncols;
@@ -99,7 +98,7 @@ impl VecOps for f32 {
                 // N-split: each thread handles a chunk of points (columns).
                 // Computes all k distances for its point slice into a local buffer,
                 // then scatter-copies into the center-major output layout.
-                let col_chunk = (ncols + nthreads - 1) / nthreads;
+                let col_chunk = ncols.div_ceil(nthreads);
                 let out_ptr = RawSendPtr(out.as_mut_ptr());
                 (0..nthreads).into_par_iter().for_each(move |ci| {
                     let i0 = ci * col_chunk;
@@ -127,7 +126,9 @@ impl VecOps for f32 {
                     for j in 0..nrows {
                         let src = &tmp[j * chunk_n..(j + 1) * chunk_n];
                         // Safety: thread ci owns [i0..i0+chunk_n] for each row j; ranges non-overlapping.
-                        let dst = unsafe { out_ptr.offset_slice(j * ncols + i0, chunk_n) };
+                        let dst = unsafe {
+                            std::slice::from_raw_parts_mut(out_ptr.offset_ptr(j * ncols + i0), chunk_n)
+                        };
                         dst.copy_from_slice(src);
                     }
                 });
@@ -152,7 +153,7 @@ impl VecOps for f32 {
         if n >= PARALLEL_ROW_THRESHOLD {
             use rayon::prelude::*;
             let nthreads = rayon::current_num_threads().max(1);
-            let chunk = (n + nthreads - 1) / nthreads;
+            let chunk = n.div_ceil(nthreads);
             out.par_chunks_mut(chunk).enumerate().for_each(|(ci, chunk_out)| {
                 let jj = ci * chunk;
                 let chunk_n = chunk_out.len();
@@ -324,7 +325,7 @@ impl VecOps for f64 {
             use rayon::prelude::*;
             let nthreads = rayon::current_num_threads().max(1);
             if nrows >= nthreads {
-                let row_chunk = (nrows + nthreads - 1) / nthreads;
+                let row_chunk = nrows.div_ceil(nthreads);
                 out.par_chunks_mut(row_chunk * ncols).enumerate().for_each(|(ci, out_block)| {
                     let row_start = ci * row_chunk;
                     let block_rows = out_block.len() / ncols;
@@ -344,7 +345,7 @@ impl VecOps for f64 {
                     scalar::pairwise_sqdist_between(p1, points2, d, out_block, block_rows, ncols);
                 });
             } else {
-                let col_chunk = (ncols + nthreads - 1) / nthreads;
+                let col_chunk = ncols.div_ceil(nthreads);
                 let out_ptr = RawSendPtr(out.as_mut_ptr());
                 (0..nthreads).into_par_iter().for_each(move |ci| {
                     let i0 = ci * col_chunk;
@@ -370,7 +371,9 @@ impl VecOps for f64 {
                     }
                     for j in 0..nrows {
                         let src = &tmp[j * chunk_n..(j + 1) * chunk_n];
-                        let dst = unsafe { out_ptr.offset_slice(j * ncols + i0, chunk_n) };
+                        let dst = unsafe {
+                            std::slice::from_raw_parts_mut(out_ptr.offset_ptr(j * ncols + i0), chunk_n)
+                        };
                         dst.copy_from_slice(src);
                     }
                 });
@@ -395,7 +398,7 @@ impl VecOps for f64 {
         if n >= PARALLEL_ROW_THRESHOLD {
             use rayon::prelude::*;
             let nthreads = rayon::current_num_threads().max(1);
-            let chunk = (n + nthreads - 1) / nthreads;
+            let chunk = n.div_ceil(nthreads);
             out.par_chunks_mut(chunk).enumerate().for_each(|(ci, chunk_out)| {
                 let jj = ci * chunk;
                 let chunk_n = chunk_out.len();

@@ -3,7 +3,6 @@ use pyo3::prelude::*;
 use pyo3::types::PyModule;
 use rand::SeedableRng;
 use rand_pcg::Pcg32;
-use rayon;
 
 use crate::Float;
 use crate::distance::{

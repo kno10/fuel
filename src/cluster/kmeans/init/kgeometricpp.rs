@@ -99,12 +99,10 @@ where
             }
             cent.center_mut(i + 1)[..d].copy_from_slice(rows.row(c).to_slice().unwrap());
         }
-        if callback.is_some() {
+        if let Some(cb) = callback.as_mut() {
             N::vec_row_sqdist(cent.center(k - 1), rows.view(), d, &mut tmp_dists, n);
-            for j in 0..n {
-                if let Some(cb) = callback.as_mut() {
-                    cb(k - 1, j, tmp_dists[j]);
-                }
+            for (j, &dist) in tmp_dists.iter().enumerate().take(n) {
+                cb(k - 1, j, dist);
             }
         }
     }

@@ -13,7 +13,7 @@ pub fn macqueen<N, I, A>(
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync,
 {
     let d = data.ncols();
     let mut scratch = vec![N::zero(); d];
@@ -28,7 +28,6 @@ where
             init,
             &mut cent,
             &mut sums,
-            &mut scratch,
         );
 
     let mut iter = 1; // initial assignment counts as first iteration

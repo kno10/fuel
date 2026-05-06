@@ -16,7 +16,8 @@ use crate::{CandidateHeap, DistPair, DistanceData, Float};
 /// This mirrors the inline helper formerly defined inside `agnes.rs`; we
 /// pull it out here so that the core algorithm stays focused on the
 /// clustering logic.
-#[inline]
+#[inline(always)]
+#[must_use]
 pub(crate) const fn triangle_index(i: usize, j: usize) -> usize {
     debug_assert!(i != j, "no diagonal entries in condensed matrix");
     let (a, b) = if i >= j { (i, j) } else { (j, i) };
@@ -243,13 +244,12 @@ where
         if ra == rb {
             return (false, ra);
         }
-        let ra_idx: usize = num_traits::cast(ra).unwrap();
-        let rb_idx: usize = num_traits::cast(rb).unwrap();
+        let mut ra_idx: usize = num_traits::cast(ra).unwrap();
+        let mut rb_idx: usize = num_traits::cast(rb).unwrap();
         if self.size[ra_idx] < self.size[rb_idx] {
             std::mem::swap(&mut ra, &mut rb);
+            std::mem::swap(&mut ra_idx, &mut rb_idx);
         }
-        let rb_idx: usize = num_traits::cast(rb).unwrap();
-        let ra_idx: usize = num_traits::cast(ra).unwrap();
         self.parent[rb_idx] = ra;
         self.size[ra_idx] += self.size[rb_idx];
         (true, ra)

@@ -71,10 +71,8 @@ pub trait VectorData<C>: Data {
     where
         C: Copy + Default,
     {
-        if let Some(v) = self.as_ndarray() {
-            if v.is_standard_layout() {
-                return v.into();
-            }
+        if let Some(v) = self.as_ndarray() && v.is_standard_layout() {
+            return v.into();
         }
         let (n, d) = (self.nrows(), self.dims());
         let mut buf = vec![C::default(); n * d];

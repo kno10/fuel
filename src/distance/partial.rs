@@ -26,7 +26,7 @@ pub trait PartialDistance<N: Float, F: Float> {
     ) -> F;
 }
 
-impl<'a, N, F, D> PartialDistance<N, F> for &'a D
+impl<N, F, D> PartialDistance<N, F> for &D
 where
     N: Float,
     F: Float,

@@ -11,8 +11,8 @@ use std::cell::RefCell;
 use ndarray::ArrayView2;
 
 thread_local! {
-    static ROW_PANEL_F32: RefCell<Vec<f32>> = RefCell::new(Vec::new());
-    static ROW_PANEL_F64: RefCell<Vec<f64>> = RefCell::new(Vec::new());
+    static ROW_PANEL_F32: RefCell<Vec<f32>> = const { RefCell::new(Vec::new()) };
+    static ROW_PANEL_F64: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
 }
 
 // Tile sizes for the pairwise-sqdist micro-kernels.
@@ -155,7 +155,7 @@ pub(super) fn sqdist_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
 /// Uses 4 independent accumulators for d>=16 to hide the 4-cycle FMA latency,
 /// then a register-only horizontal reduction.
 #[inline(always)]
-pub(super) fn sqdist_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
+pub fn sqdist_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
     let mut i = 0;
     let mut acc0 = unsafe { _mm256_setzero_pd() };
     let mut acc1 = unsafe { _mm256_setzero_pd() };
@@ -835,7 +835,7 @@ pub(super) fn dot_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
 }
 
 #[inline(always)]
-pub(super) fn dot_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
+pub fn dot_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
     let mut i = 0;
     let mut acc0 = unsafe { _mm256_setzero_pd() };
     let mut acc1 = unsafe { _mm256_setzero_pd() };
@@ -884,6 +884,7 @@ pub(super) fn dot_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
     }
     sum
 }
+
 
 // ----- pairwise-sqdist micro-kernels -----------------------------------------
 //
@@ -1039,8 +1040,8 @@ pub(super) fn pairwise_sqdist_between_f32(
 ) {
     assert_eq!(out.len(), nrows * ncols);
 
-    let n_a_blocks = (nrows + MR_SDIST_F32 - 1) / MR_SDIST_F32;
-    let n_b_blocks = (ncols + NR_F32 - 1) / NR_F32;
+    let n_a_blocks = nrows.div_ceil(MR_SDIST_F32);
+    let n_b_blocks = ncols.div_ceil(NR_F32);
 
     // Pre-pack A once: a_full[ii_block * MR * d + k * MR + i_local] = points1[ii+i_local][k]
     let mut a_full = vec![0f32; n_a_blocks * MR_SDIST_F32 * d];
@@ -1087,8 +1088,8 @@ pub(super) fn pairwise_sqdist_between_f64(
 ) {
     assert_eq!(out.len(), nrows * ncols);
 
-    let n_a_blocks = (nrows + MR_SDIST_F64 - 1) / MR_SDIST_F64;
-    let n_b_blocks = (ncols + NR_F64 - 1) / NR_F64;
+    let n_a_blocks = nrows.div_ceil(MR_SDIST_F64);
+    let n_b_blocks = ncols.div_ceil(NR_F64);
 
     let mut a_full = vec![0f64; n_a_blocks * MR_SDIST_F64 * d];
     for ii_block in 0..n_a_blocks {
@@ -1175,7 +1176,7 @@ pub(super) fn axpy_f32(v1: &mut [f32], a: f32, v2: &[f32], d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn axpy_f64(v1: &mut [f64], a: f64, v2: &[f64], d: usize) {
+pub fn axpy_f64(v1: &mut [f64], a: f64, v2: &[f64], d: usize) {
     let va = unsafe { _mm256_set1_pd(a) };
     let mut i = 0;
     while i + 16 <= d {
@@ -1240,7 +1241,7 @@ pub(super) fn sum_f32(v: &[f32], d: usize) -> f32 {
 }
 
 #[inline(always)]
-pub(super) fn sum_f64(v: &[f64], d: usize) -> f64 {
+pub fn sum_f64(v: &[f64], d: usize) -> f64 {
     let mut i = 0;
     let mut acc = unsafe { _mm256_setzero_pd() };
     while i + 4 <= d {
@@ -1416,9 +1417,9 @@ pub(super) fn rowdist_f32(
 
     if strides[1] == 1 {
         // C-order: rows are contiguous; SIMD over d, one point at a time.
-        for j in 0..n {
+        for (j, out_val) in out.iter_mut().enumerate().take(n) {
             let row = points.row(j);
-            out[j] = sqdist_f32(center, row.as_slice().expect("C-order row is contiguous"), d);
+            *out_val = sqdist_f32(center, row.as_slice().expect("C-order row is contiguous"), d);
         }
         return;
     }
@@ -1427,7 +1428,7 @@ pub(super) fn rowdist_f32(
         // Fortran-order: columns are contiguous; NR-way SIMD without packing.
         let col_stride = strides[1] as usize;
         let data_ptr = points.as_ptr();
-        let n_b_blocks = (n + NR_F32 - 1) / NR_F32;
+        let n_b_blocks = n.div_ceil(NR_F32);
         let mut tile = [0f32; NR_F32];
         for jj_block in 0..n_b_blocks {
             let jj = jj_block * NR_F32;
@@ -1448,8 +1449,8 @@ pub(super) fn rowdist_f32(
                 for j_local in 0..nc {
                     let j = jj + j_local;
                     let mut sum = 0f32;
-                    for k in 0..d {
-                        let diff = center[k] - unsafe { *data_ptr.add(j + k * col_stride) };
+                    for (k, &c) in center.iter().enumerate().take(d) {
+                        let diff = c - unsafe { *data_ptr.add(j + k * col_stride) };
                         sum += diff * diff;
                     }
                     out[j] = sum;
@@ -1460,7 +1461,7 @@ pub(super) fn rowdist_f32(
     }
 
     // General strides: pack into b_panel and use the packed micro-kernel.
-    let n_b_blocks = (n + NR_F32 - 1) / NR_F32;
+    let n_b_blocks = n.div_ceil(NR_F32);
     ROW_PANEL_F32.with(|panel| {
         let mut b_panel = panel.borrow_mut();
         b_panel.resize(NR_F32 * d, 0.0);
@@ -1572,9 +1573,9 @@ pub(super) fn rowdist_f64(
 
     if strides[1] == 1 {
         // C-order: rows are contiguous; SIMD over d, one point at a time.
-        for j in 0..n {
+        for (j, out_val) in out.iter_mut().enumerate().take(n) {
             let row = points.row(j);
-            out[j] = sqdist_f64(center, row.as_slice().expect("C-order row is contiguous"), d);
+            *out_val = sqdist_f64(center, row.as_slice().expect("C-order row is contiguous"), d);
         }
         return;
     }
@@ -1583,7 +1584,7 @@ pub(super) fn rowdist_f64(
         // Fortran-order: columns are contiguous; NR-way SIMD without packing.
         let col_stride = strides[1] as usize;
         let data_ptr = points.as_ptr();
-        let n_b_blocks = (n + NR_F64 - 1) / NR_F64;
+        let n_b_blocks = n.div_ceil(NR_F64);
         let mut tile = [0f64; NR_F64];
         for jj_block in 0..n_b_blocks {
             let jj = jj_block * NR_F64;
@@ -1604,8 +1605,8 @@ pub(super) fn rowdist_f64(
                 for j_local in 0..nc {
                     let j = jj + j_local;
                     let mut sum = 0f64;
-                    for k in 0..d {
-                        let diff = center[k] - unsafe { *data_ptr.add(j + k * col_stride) };
+                    for (k, &c) in center.iter().enumerate().take(d) {
+                        let diff = c - unsafe { *data_ptr.add(j + k * col_stride) };
                         sum += diff * diff;
                     }
                     out[j] = sum;
@@ -1616,7 +1617,7 @@ pub(super) fn rowdist_f64(
     }
 
     // General strides: pack into b_panel and use the packed micro-kernel.
-    let n_b_blocks = (n + NR_F64 - 1) / NR_F64;
+    let n_b_blocks = n.div_ceil(NR_F64);
     ROW_PANEL_F64.with(|panel| {
         let mut b_panel = panel.borrow_mut();
         b_panel.resize(NR_F64 * d, 0.0);

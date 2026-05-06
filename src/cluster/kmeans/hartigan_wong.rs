@@ -16,7 +16,7 @@ pub fn hartigan_wong<N, I, A>(
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync,
 {
     let (n, d) = (data.nrows(), data.ncols());
     let mut scratch = vec![N::zero(); d];
@@ -28,7 +28,7 @@ where
         N,
         A,
         I,
-    >(data, None, k, init, &mut cent, &mut sums, &mut scratch);
+    >(data, None, k, init, &mut cent, &mut sums);
 
     // Data structures needed by AS 136.
     let mut second = vec![0_usize; n]; // IC2
@@ -273,7 +273,7 @@ pub fn hartigan_wong_quick<N, I, A>(
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync,
 {
     let (n, d) = (data.nrows(), data.ncols());
     let mut scratch = vec![N::zero(); d];
@@ -283,7 +283,7 @@ where
         N,
         A,
         I,
-    >(data, None, k, init, &mut cent, &mut sums, &mut scratch);
+    >(data, None, k, init, &mut cent, &mut sums);
 
     let mut best2_idx = vec![0_usize; n];
     let mut best2_dist = vec![N::infinity(); n];

@@ -25,7 +25,7 @@ where
 }
 
 // `DistanceData` extends `Data`, so implement `Data` separately
-impl<'a, C, T, DF, F> crate::api::Data for CountingQueryData<'a, C, T, DF, F>
+impl<C, T, DF, F> crate::api::Data for CountingQueryData<'_, C, T, DF, F>
 where
     C: Float,
     T: AsRef<[C]>,
@@ -55,7 +55,7 @@ where
 }
 
 // implement DistanceSearch so the wrapper itself can be used as a query
-impl<'a, C, T, DF, F> crate::api::DistanceSearch<F> for CountingQueryData<'a, C, T, DF, F>
+impl<C, T, DF, F> crate::api::DistanceSearch<F> for CountingQueryData<'_, C, T, DF, F>
 where
     C: Float,
     T: AsRef<[C]>,
@@ -283,6 +283,7 @@ fn test_priority_search_uses_bounds_to_prune_distance_computations() {
 }
 
 #[test]
+#[allow(clippy::float_cmp)]
 fn test_priority_search_all_lower_bound_tracks_remaining_candidates() {
     let points = vec![vec![0.0], vec![1.0], vec![2.0], vec![10.0]];
     let dataset = TableWithDistance::with_distance(&points, Euclidean);

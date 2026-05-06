@@ -63,7 +63,6 @@ fn run() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-#[allow(clippy::type_complexity)]
 fn parse_cli_args<I>(args: I) -> Result<(String, f64, usize, Mode, TreeKind), Box<dyn Error>>
 where
     I: IntoIterator<Item = String>,

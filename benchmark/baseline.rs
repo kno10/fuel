@@ -28,8 +28,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let mode = args.next().ok_or("missing mode (origin|center|random|zero)")?;
 
-    let seed: u64 =
-        args.next().map(|s| s.parse().expect("seed must be an integer")).unwrap_or(RNG_SEED);
+    let seed: u64 = args.next().map_or(RNG_SEED, |s| s.parse().expect("seed must be an integer"));
 
     let rows = read_numeric_data(&csv_path)?;
     if rows.is_empty() {
@@ -53,7 +52,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         "center" => distance_from_center(&data),
         "random" => random(&data, seed),
         "zero" => zero(&data),
-        other => return Err(format!("unknown mode: {}", other).into()),
+        other => return Err(format!("unknown mode: {other}").into()),
     };
 
     let dist_count = distance.count();

@@ -19,7 +19,7 @@ fn bench_math_dot(c: &mut Criterion) {
         let v2 = vec![2.345678_f64; d];
 
         group.bench_with_input(format!("d={d}"), &d, |b, &d| {
-            b.iter(|| math::dot(black_box(&v1), black_box(&v2), black_box(d)))
+            b.iter(|| math::dot(black_box(&v1), black_box(&v2), black_box(d)));
         });
     }
     group.finish();
@@ -33,7 +33,7 @@ fn bench_math_dot_scalar(c: &mut Criterion) {
         let v2 = vec![2.345678_f64; d];
 
         group.bench_with_input(format!("d={d}"), &d, |b, &d| {
-            b.iter(|| math::scalar::dot(black_box(&v1), black_box(&v2), black_box(d)))
+            b.iter(|| math::scalar::dot(black_box(&v1), black_box(&v2), black_box(d)));
         });
     }
     group.finish();
@@ -49,7 +49,7 @@ fn bench_math_dot_avx2(c: &mut Criterion) {
             let v2 = vec![2.345678_f64; d];
 
             group.bench_with_input(format!("d={d}"), &d, |b, &d| {
-                b.iter(|| math::avx2::dot(black_box(&v1), black_box(&v2), black_box(d)))
+                b.iter(|| math::avx2::dot_f64(black_box(&v1), black_box(&v2), black_box(d)));
             });
         }
         group.finish();
@@ -68,7 +68,7 @@ fn bench_math_sqdist(c: &mut Criterion) {
         let v2 = vec![2.345678_f64; d];
 
         group.bench_with_input(format!("d={d}"), &d, |b, &d| {
-            b.iter(|| math::sqdist(black_box(&v1), black_box(&v2), black_box(d)))
+            b.iter(|| math::sqdist(black_box(&v1), black_box(&v2), black_box(d)));
         });
     }
     group.finish();
@@ -82,7 +82,7 @@ fn bench_math_sqdist_scalar(c: &mut Criterion) {
         let v2 = vec![2.345678_f64; d];
 
         group.bench_with_input(format!("d={d}"), &d, |b, &d| {
-            b.iter(|| math::scalar::sqdist(black_box(&v1), black_box(&v2), black_box(d)))
+            b.iter(|| math::scalar::sqdist(black_box(&v1), black_box(&v2), black_box(d)));
         });
     }
     group.finish();
@@ -98,7 +98,7 @@ fn bench_math_sqdist_avx2(c: &mut Criterion) {
             let v2 = vec![2.345678_f64; d];
 
             group.bench_with_input(format!("d={d}"), &d, |b, &d| {
-                b.iter(|| math::avx2::sqdist(black_box(&v1), black_box(&v2), black_box(d)))
+                b.iter(|| math::avx2::sqdist_f64(black_box(&v1), black_box(&v2), black_box(d)));
             });
         }
         group.finish();
@@ -164,11 +164,11 @@ fn bench_math_axpy_avx2(c: &mut Criterion) {
                 b.iter_batched(
                     || v1_base.clone(),
                     |mut v| {
-                        math::avx2::axpy(&mut v, black_box(3.15_f64), black_box(&v2), black_box(d));
+                        math::avx2::axpy_f64(&mut v, black_box(3.15_f64), black_box(&v2), black_box(d));
                         black_box(v)
                     },
                     criterion::BatchSize::SmallInput,
-                )
+                );
             });
         }
         group.finish();
@@ -186,7 +186,7 @@ fn bench_math_sum(c: &mut Criterion) {
         let v = vec![1.234567_f64; d];
 
         group.bench_with_input(format!("d={d}"), &d, |b, &d| {
-            b.iter(|| math::sum(black_box(&v), black_box(d)))
+            b.iter(|| math::sum(black_box(&v), black_box(d)));
         });
     }
     group.finish();
@@ -199,7 +199,7 @@ fn bench_math_sum_scalar(c: &mut Criterion) {
         let v = vec![1.234567_f64; d];
 
         group.bench_with_input(format!("d={d}"), &d, |b, &d| {
-            b.iter(|| math::scalar::sum(black_box(&v), black_box(d)))
+            b.iter(|| math::scalar::sum(black_box(&v), black_box(d)));
         });
     }
     group.finish();
@@ -214,7 +214,7 @@ fn bench_math_sum_avx2(c: &mut Criterion) {
             let v = vec![1.234567_f64; d];
 
             group.bench_with_input(format!("d={d}"), &d, |b, &d| {
-                b.iter(|| math::avx2::sum(black_box(&v), black_box(d)))
+                b.iter(|| math::avx2::sum_f64(black_box(&v), black_box(d)));
             });
         }
         group.finish();
@@ -232,7 +232,7 @@ fn bench_math_norm(c: &mut Criterion) {
         let v = vec![1.234567_f64; d];
 
         group.bench_with_input(format!("d={d}"), &d, |b, &d| {
-            b.iter(|| math::norm(black_box(&v), black_box(d)))
+            b.iter(|| math::norm(black_box(&v), black_box(d)));
         });
     }
     group.finish();
@@ -245,7 +245,7 @@ fn bench_math_norm_scalar(c: &mut Criterion) {
         let v = vec![1.234567_f64; d];
 
         group.bench_with_input(format!("d={d}"), &d, |b, &d| {
-            b.iter(|| math::scalar::norm(black_box(&v), black_box(d)))
+            b.iter(|| math::scalar::norm(black_box(&v), black_box(d)));
         });
     }
     group.finish();
@@ -260,7 +260,7 @@ fn bench_math_norm_avx2(c: &mut Criterion) {
             let v = vec![1.234567_f64; d];
 
             group.bench_with_input(format!("d={d}"), &d, |b, &d| {
-                b.iter(|| math::avx2::norm(black_box(&v), black_box(d)))
+                b.iter(|| math::avx2::dot_f64(black_box(&v), black_box(&v), black_box(d)).sqrt());
             });
         }
         group.finish();

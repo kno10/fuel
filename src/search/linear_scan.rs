@@ -72,16 +72,16 @@ mod tests {
     use super::LinearScanSearcher;
     use crate::api::data::DistanceData;
     use crate::api::ndarray::NdArrayDatasetWithDistance;
+    use crate::distance::Euclidean;
     use crate::{CoordinateQuery, KnnSearch, RangeSearch};
 
     #[test]
     fn linear_scan_searcher_knn_matches_expected_order() {
         let data = array![[0.0f32, 0.0], [1.0, 0.0], [2.0, 0.0]];
-        let dataset = NdArrayDatasetWithDistance::new(&data);
+        let dataset = NdArrayDatasetWithDistance::with_distance(&data, Euclidean);
         let searcher = LinearScanSearcher::new(&dataset);
 
-        let mut query = dataset.query();
-        query.set_coordinates(&[1.0f32, 0.0]);
+        let query = dataset.query().with_coordinates(&[1.0f32, 0.0]);
 
         let neighbors = searcher.search_knn(&query, 2);
         assert_eq!(neighbors.len(), 3);
@@ -95,11 +95,10 @@ mod tests {
     #[test]
     fn linear_scan_searcher_range_returns_points_within_radius() {
         let data = array![[0.0f64, 0.0], [1.0, 0.0], [2.0, 0.0]];
-        let dataset = NdArrayDatasetWithDistance::new(&data);
+        let dataset = NdArrayDatasetWithDistance::with_distance(&data, Euclidean);
         let searcher = LinearScanSearcher::new(&dataset);
 
-        let mut query = dataset.query();
-        query.set_coordinates(&[0.5f64, 0.0]);
+        let query = dataset.query().with_coordinates(&[0.5f64, 0.0]);
 
         let neighbors = searcher.search_range(&query, 1.0);
         let indices: Vec<usize> = neighbors.into_iter().map(|pair| pair.index).collect();

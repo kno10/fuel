@@ -3,7 +3,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use super::make_rng;
-use crate::distance::DistanceFunction;
+use crate::distance::{DistanceFunction, Euclidean};
 use crate::intrinsicdimensionality::{
     ABID, ALID, AggregatedHillID, GeneralizedExpansionDimension, HillID, LMomentsEstimator,
     MethodOfMoments, ProbabilityWeightedMoments, ProbabilityWeightedMoments2, RABID, RVEstimator,
@@ -418,7 +418,7 @@ fn isolation_forest_f32<'py>(
     seed: Option<u64>,
 ) -> PyResult<Py<PyAny>> {
     let array = data.as_array();
-    let dataset = NdArrayDatasetWithDistance::new(&array);
+    let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
     let result =
         outlier::isolation_forest::<_, f32>(&dataset, num_trees, subsample_size, seed.unwrap_or(0));
     result_to_py_outlier(py, result)
@@ -430,7 +430,7 @@ fn isolation_forest_f64<'py>(
     seed: Option<u64>,
 ) -> PyResult<Py<PyAny>> {
     let array = data.as_array();
-    let dataset = NdArrayDatasetWithDistance::new(&array);
+    let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
     let result =
         outlier::isolation_forest::<_, f64>(&dataset, num_trees, subsample_size, seed.unwrap_or(0));
     result_to_py_outlier(py, result)
@@ -439,7 +439,7 @@ fn isolation_forest_f64<'py>(
 #[pyfunction]
 fn zero_f32<'py>(py: Python<'py>, data: PyReadonlyArray2<'py, f32>) -> PyResult<Py<PyAny>> {
     let array = data.as_array();
-    let dataset = NdArrayDatasetWithDistance::new(&array);
+    let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
     let result = outlier::zero::<_, f32>(dataset);
     result_to_py_outlier(py, result)
 }
@@ -447,7 +447,7 @@ fn zero_f32<'py>(py: Python<'py>, data: PyReadonlyArray2<'py, f32>) -> PyResult<
 #[pyfunction]
 fn zero_f64<'py>(py: Python<'py>, data: PyReadonlyArray2<'py, f64>) -> PyResult<Py<PyAny>> {
     let array = data.as_array();
-    let dataset = NdArrayDatasetWithDistance::new(&array);
+    let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
     let result = outlier::zero::<_, f64>(dataset);
     result_to_py_outlier(py, result)
 }
@@ -457,7 +457,7 @@ fn random_f32<'py>(
     py: Python<'py>, data: PyReadonlyArray2<'py, f32>, seed: Option<u64>,
 ) -> PyResult<Py<PyAny>> {
     let array = data.as_array();
-    let dataset = NdArrayDatasetWithDistance::new(&array);
+    let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
     let result = outlier::random::<_, f32>(dataset, seed.unwrap_or(0));
     result_to_py_outlier(py, result)
 }
@@ -467,7 +467,7 @@ fn random_f64<'py>(
     py: Python<'py>, data: PyReadonlyArray2<'py, f64>, seed: Option<u64>,
 ) -> PyResult<Py<PyAny>> {
     let array = data.as_array();
-    let dataset = NdArrayDatasetWithDistance::new(&array);
+    let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
     let result = outlier::random::<_, f64>(dataset, seed.unwrap_or(0));
     result_to_py_outlier(py, result)
 }

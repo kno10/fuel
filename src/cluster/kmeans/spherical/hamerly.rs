@@ -1,7 +1,7 @@
 use super::common::*;
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::{Centers, KMeansResult};
-use crate::{Float, VectorData as Dataset, math};
+use crate::{Float, VectorData as Dataset, math, par_zip_chunks_map_mut};
 
 #[inline(always)]
 fn recompute_separation<N>(cent: &Centers<N>, k: usize, d: usize, csim: &mut [N])
@@ -29,7 +29,7 @@ fn sph_hamerly_initial_assignment<N, A, I>(
 ) -> (Vec<usize>, Vec<usize>, Vec<(N, N)>)
 where
     N: Float,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync,
     I: Initialization<N>,
 {
     let (n, d) = (data.nrows(), data.ncols());
@@ -55,28 +55,44 @@ where
             ccsim[j * k + i] = sq;
         }
     }
-    let mut scratch = vec![N::zero(); d];
-    for i in 0..n {
-        data.load_into(i, &mut scratch, d);
-        let mut max1 = clamp_one(math::dot(&scratch, cent.center(0), d));
-        let mut max2 = -N::infinity();
-        let mut a = 0usize;
-        for j in 1..k {
-            if max2 < ccsim[a * k + j] {
-                let sim = clamp_one(math::dot(&scratch, cent.center(j), d));
-                if sim > max1 {
-                    a = j;
-                    max2 = max1;
-                    max1 = sim;
-                } else if sim > max2 {
-                    max2 = sim;
+    let ccsim: &[N] = &ccsim;
+    let deltas: Vec<(Vec<usize>, Vec<N>)> =
+        par_zip_chunks_map_mut(&mut assign, &mut bounds, 1, |i0, assign_chunk, bounds_chunk| {
+            let mut delta_csize = vec![0usize; k];
+            let mut delta_sums = vec![N::zero(); k * d];
+            let mut point = vec![N::zero(); d];
+            for (ci, (aa, bound)) in
+                assign_chunk.iter_mut().zip(bounds_chunk.iter_mut()).enumerate()
+            {
+                let i = i0 + ci;
+                data.load_into(i, &mut point, d);
+                let mut max1 = clamp_one(math::dot(&point, cent.center(0), d));
+                let mut max2 = -N::infinity();
+                let mut a = 0usize;
+                for j in 1..k {
+                    if max2 < ccsim[a * k + j] {
+                        let sim = clamp_one(math::dot(&point, cent.center(j), d));
+                        if sim > max1 {
+                            a = j;
+                            max2 = max1;
+                            max1 = sim;
+                        } else if sim > max2 {
+                            max2 = sim;
+                        }
+                    }
                 }
+                *aa = a;
+                *bound = (max1, max2);
+                delta_csize[a] += 1;
+                math::add_assign(&mut delta_sums[a * d..a * d + d], &point, d);
             }
+            (delta_csize, delta_sums)
+        });
+    for (dc, ds) in deltas {
+        for j in 0..k {
+            csize[j] += dc[j];
+            math::add_assign(sums.center_mut(j), &ds[j * d..j * d + d], d);
         }
-        assign[i] = a;
-        bounds[i] = (max1, max2);
-        csize[a] += 1;
-        math::add_assign(sums.center_mut(a), &scratch, d);
     }
     (assign, csize, bounds)
 }
@@ -119,9 +135,9 @@ pub fn spherical_hamerly<N, I, A>(
 where
     N: Float,
     I: Initialization<N>,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync,
 {
-    let (n, d) = (data.nrows(), data.ncols());
+    let d = data.ncols();
     let mut scratch = vec![N::zero(); d];
     let mut cent = Centers::<N>::new(k, d);
     let mut sums = Centers::<N>::new(k, d);
@@ -150,43 +166,62 @@ where
         }
         update_bounds(&mut bounds, &assign, &msim);
         recompute_separation(&cent, k, d, &mut csim);
+        let csim: &[N] = &csim;
+        let deltas: Vec<(usize, Vec<N>, Vec<i64>)> =
+            par_zip_chunks_map_mut(&mut assign, &mut bounds, 1, |i0, assign_chunk, bounds_chunk| {
+                let mut point = vec![N::zero(); d];
+                let mut delta_sums = vec![N::zero(); k * d];
+                let mut delta_csize = vec![0i64; k];
+                let mut local_changed = 0usize;
+                for (ci, (aa, bound)) in
+                    assign_chunk.iter_mut().zip(bounds_chunk.iter_mut()).enumerate()
+                {
+                    let i = i0 + ci;
+                    let orig = *aa;
+                    let mut ls = bound.0;
+                    let us = bound.1;
+                    if ls >= us || ls >= csim[orig] {
+                        continue;
+                    }
+                    data.load_into(i, &mut point, d);
+                    ls = clamp_one(math::dot(&point, cent.center(orig), d));
+                    if ls >= us {
+                        bound.0 = ls;
+                        continue;
+                    }
+                    let (mut cur, mut max2) = (orig, -N::infinity());
+                    for j in 0..k {
+                        if j == orig {
+                            continue;
+                        }
+                        let sim = clamp_one(math::dot(&point, cent.center(j), d));
+                        if sim > ls {
+                            cur = j;
+                            max2 = ls;
+                            ls = sim;
+                        } else if sim > max2 {
+                            max2 = sim;
+                        }
+                    }
+                    if cur != orig {
+                        *aa = cur;
+                        delta_csize[orig] -= 1;
+                        delta_csize[cur] += 1;
+                        math::sub_assign(&mut delta_sums[orig * d..orig * d + d], &point, d);
+                        math::add_assign(&mut delta_sums[cur * d..cur * d + d], &point, d);
+                        local_changed += 1;
+                    }
+                    *bound = (ls, max2);
+                }
+                (local_changed, delta_sums, delta_csize)
+            });
         let mut changed = 0;
-        for i in 0..n {
-            data.load_into(i, &mut scratch, d);
-            let orig = assign[i];
-            let mut ls = bounds[i].0;
-            let us = bounds[i].1;
-            if ls >= us || ls >= csim[orig] {
-                continue;
-            }
-            ls = clamp_one(math::dot(&scratch, cent.center(orig), d));
-            if ls >= us {
-                bounds[i].0 = ls;
-                continue;
-            }
-            let (mut cur, mut max2) = (orig, -N::infinity());
+        for (c, ds, dc) in deltas {
+            changed += c;
             for j in 0..k {
-                if j == orig {
-                    continue;
-                }
-                let sim = clamp_one(math::dot(&scratch, cent.center(j), d));
-                if sim > ls {
-                    cur = j;
-                    max2 = ls;
-                    ls = sim;
-                } else if sim > max2 {
-                    max2 = sim;
-                }
+                math::add_assign(sums.center_mut(j), &ds[j * d..j * d + d], d);
+                csize[j] = (csize[j] as i64 + dc[j]) as usize;
             }
-            if cur != orig {
-                assign[i] = cur;
-                csize[orig] -= 1;
-                csize[cur] += 1;
-                math::sub_assign(sums.center_mut(orig), &scratch, d);
-                math::add_assign(sums.center_mut(cur), &scratch, d);
-                changed += 1;
-            }
-            bounds[i] = (ls, max2);
         }
         if changed == 0 {
             break;
