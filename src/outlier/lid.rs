@@ -55,8 +55,8 @@ mod tests {
 
         assert_outlier_auc_approx(
             "LID-10",
-            auc(&result.scores, &labels),
-            auc(expected, &labels),
+            auroc(&result.scores, &labels),
+            auroc(expected, &labels),
             0.2,
         );
         assert_outlier_scores_approx("LID-10", &result.scores, expected, 10.0);
@@ -76,8 +76,8 @@ mod tests {
 
         assert_outlier_auc_approx(
             "LID-20-Hill",
-            auc(&result.scores, &labels),
-            auc(expected, &labels),
+            auroc(&result.scores, &labels),
+            auroc(expected, &labels),
             1e-6,
         );
         assert_outlier_scores_approx("LID-20-Hill", &result.scores, expected, 1e-6);

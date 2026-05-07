@@ -196,8 +196,8 @@ mod tests {
 
         assert_outlier_auc_approx(
             "IForest-full",
-            auc(&results.scores, &labels),
-            auc(expected, &labels),
+            auroc(&results.scores, &labels),
+            auroc(expected, &labels),
             1e-2,
         );
         assert_outlier_scores_approx("IForest-full", &results.scores, expected, 1e-1);

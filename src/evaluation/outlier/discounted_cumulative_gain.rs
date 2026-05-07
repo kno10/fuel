@@ -69,7 +69,7 @@ pub fn normalized_discounted_cumulative_gain<
     if ideal <= 0.0 {
         return 0.0;
     }
-    dcg(scores, labels) / ideal
+    (dcg(scores, labels) / ideal).clamp(0.0, 1.0)
 }
 
 /// Adjusted DCG, computed from normalized DCG with expected random baseline.
@@ -95,13 +95,13 @@ pub fn adjusted_dcg<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
     if expected >= 1.0 {
         0.0
     } else {
-        (ndcg - expected) / (1.0 - expected)
+        ((ndcg - expected) / (1.0 - expected)).min(1.0)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{dcg, normalized_discounted_cumulative_gain};
+    use super::{adjusted_dcg, dcg, normalized_discounted_cumulative_gain};
 
     #[test]
     fn test_dcg_ndcg_ties() {
@@ -113,6 +113,22 @@ mod tests {
         // with ties the top score group (0.6) includes 1 positive among 2 items.
         assert!(v > 0.0 && v <= 1.0);
         assert!((dcg(&scores, &labels) / ideal - v).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_ndcg_clamps_to_one() {
+        let scores = [0.9, 0.8, 0.7, 0.6];
+        let labels = [1u8, 1, 1, 1];
+        let v = normalized_discounted_cumulative_gain(&scores, &labels);
+        assert_eq!(v, 1.0);
+    }
+
+    #[test]
+    fn test_adjusted_dcg_clamps_to_one() {
+        let scores = [0.9, 0.8, 0.7, 0.6, 0.5];
+        let labels = [1u8, 1, 1, 0, 0];
+        let v = adjusted_dcg(&scores, &labels);
+        assert_eq!(v, 1.0);
     }
 
     #[test]

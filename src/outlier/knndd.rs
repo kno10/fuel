@@ -79,8 +79,8 @@ mod tests {
 
         assert_outlier_auc_approx(
             "KNNDD-10",
-            auc(&result.scores, &labels),
-            auc(expected, &labels),
+            auroc(&result.scores, &labels),
+            auroc(expected, &labels),
             1e-12,
         );
         assert_outlier_scores_approx("KNNDD-10", &result.scores, expected, 1e-6);

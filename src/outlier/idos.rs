@@ -74,8 +74,8 @@ mod tests {
         let expected = reference.get("IDOS-10").expect("No reference for IDOS-10");
         let labels: Vec<u8> = label_from_reference(&reference);
 
-        let auc_res = auc(&result.scores, &labels);
-        let auc_exp = auc(expected, &labels);
+        let auc_res = auroc(&result.scores, &labels);
+        let auc_exp = auroc(expected, &labels);
         eprintln!("IDOS-10: auc_result={} auc_expected={}", auc_res, auc_exp);
         eprintln!("IDOS-10 first 20 res: {:?}", &result.scores[..20]);
         eprintln!("IDOS-10 first 20 exp: {:?}", &expected[..20]);
@@ -97,8 +97,8 @@ mod tests {
         let expected = reference.get("IDOS-20-Hill").expect("No reference for IDOS-20-Hill");
         let labels: Vec<u8> = label_from_reference(&reference);
 
-        let auc_res = auc(&result.scores, &labels);
-        let auc_exp = auc(expected, &labels);
+        let auc_res = auroc(&result.scores, &labels);
+        let auc_exp = auroc(expected, &labels);
         println!("IDOS-20-Hill: auc_result={} auc_expected={}", auc_res, auc_exp);
         println!("IDOS first 20 res: {:?}", &result.scores[..20]);
         println!("IDOS first 20 exp: {:?}", &expected[..20]);

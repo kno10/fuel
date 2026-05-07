@@ -21,7 +21,7 @@ where
 
     let scores: Vec<F> =
         crate::outlier::common::for_each_knn(tree, data, k_effective, false, |_idx, neighbors| {
-            neighbors.iter().map(|(_, distance)| *distance).sum::<F>()
+            neighbors.iter().take(k_effective).map(|(_, distance)| *distance).sum::<F>()
         });
 
     make_outlier_result(scores, "WeightedKNN", false, F::zero(), F::zero(), F::infinity())
@@ -75,8 +75,8 @@ mod tests {
 
         assert_outlier_auc_approx(
             "KNNW-10",
-            auc(&result.scores, &labels),
-            auc(expected, &labels),
+            auroc(&result.scores, &labels),
+            auroc(expected, &labels),
             1e-12,
         );
         assert_outlier_scores_approx("KNNW-10", &result.scores, expected, 1e-6);

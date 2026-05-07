@@ -125,7 +125,7 @@ mod tests {
             TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(42);
         let tree = VPTree::new(&table, 2, &mut rng);
-        let proxy = ProxyKnnSearcher::new(&tree, &table, 2, 2);
+        let proxy = ProxyKnnSearcher::new(&tree, &table, 2);
 
         for index in 0..table.len() {
             let mut query = table.query();
