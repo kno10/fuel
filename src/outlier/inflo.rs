@@ -51,36 +51,32 @@ where
             if pruned[i] {
                 F::one()
             } else {
+                let valid_distance = |d: F| d.to_f64().filter(|v| v.is_finite() && *v > 0.0);
                 let union: HashSet<usize> = neighborhoods[i]
                     .iter()
                     .map(|(j, _)| *j)
                     .chain(rknn[i].iter().copied())
                     .collect();
 
-                let mut sum = 0.0_f64;
-                let mut count = 0usize;
-                for &j in union.iter() {
-                    if j == i {
-                        continue;
-                    }
-                    let d_j = knn_distances.get(j).copied().unwrap_or(F::zero());
-                    let d_j_f = d_j.to_f64().unwrap_or(0.0);
-                    if d_j_f <= 0.0 {
-                        sum = f64::INFINITY;
-                        count += 1;
-                        break;
-                    }
-                    sum += 1.0 / d_j_f;
-                    count += 1;
-                }
+                let (sum, count) = union.iter().copied().filter(|&j| j != i).fold(
+                    (0.0_f64, 0usize),
+                    |(sum, count), j| match valid_distance(knn_distances[j]) {
+                        Some(d_j) => (sum + 1.0 / d_j, count + 1),
+                        None => (f64::INFINITY, count + 1),
+                    },
+                );
 
-                let kd = knn_distances[i].to_f64().unwrap_or(0.0);
-                let inflo = if count == 0 {
-                    1.0
-                } else {
-                    let val = sum * kd;
-                    if val == 0.0 { 1.0 } else { val / (count as f64) }
-                };
+                let inflo = valid_distance(knn_distances[i])
+                    .map(|kd| {
+                        let val = sum * kd;
+                        if val.is_nan() || val == 0.0 {
+                            1.0
+                        } else {
+                            val / (count as f64)
+                        }
+                    })
+                    .unwrap_or(1.0);
+
                 F::from_f64(inflo).unwrap_or(F::zero())
             }
         });
@@ -108,6 +104,18 @@ mod tests {
         let results = influence_outlier(&tree, &data, 2, 1.0);
         assert_eq!(results.scores.len(), 4);
         assert!(results.scores[3] > results.scores[0]);
+    }
+
+    #[test]
+    fn inflo_zero_distance_does_not_produce_nan() {
+        let points = vec![vec![0.0, 0.0], vec![0.0, 0.0], vec![1.0, 1.0]];
+        let data = TableWithDistance::with_distance(&points, Euclidean);
+        let tree: crate::search::vptree::VPTree<f64> =
+            crate::search::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
+
+        let results = influence_outlier(&tree, &data, 2, 1.0);
+        assert_eq!(results.scores.len(), 3);
+        assert!(results.scores.iter().all(|score| !score.is_nan()));
     }
 
     #[test]
