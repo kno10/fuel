@@ -1,4 +1,4 @@
-use crate::evaluation::outlier::sort_score_label;
+use crate::evaluation::outlier::{score_equal, sort_score_label};
 
 /// Area under ROC with tie handling consistent with ELKI: pairs in tied score groups get 0.5.
 pub fn receiver_operating_curve<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
@@ -26,7 +26,7 @@ pub fn receiver_operating_curve<F: Copy + Into<f64> + PartialOrd, L: Copy + Into
         let mut group_pos = 0usize;
         let mut group_neg = 0usize;
 
-        while i < n && pairs[i].0 == score {
+        while i < n && score_equal(pairs[i].0, score) {
             if pairs[i].1 == 1 {
                 group_pos += 1;
             } else {

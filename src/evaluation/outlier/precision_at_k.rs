@@ -1,4 +1,4 @@
-use crate::evaluation::outlier::sort_score_label;
+use crate::evaluation::outlier::{score_equal, sort_score_label};
 
 fn sorted_groups<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
     scores: &[F], labels: &[L],
@@ -11,7 +11,7 @@ fn sorted_groups<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
         let score = pairs[i].0;
         let mut gp = 0usize;
         let mut gs = 0usize;
-        while i < pairs.len() && pairs[i].0 == score {
+        while i < pairs.len() && score_equal(pairs[i].0, score) {
             if pairs[i].1 == 1 {
                 gp += 1;
             }

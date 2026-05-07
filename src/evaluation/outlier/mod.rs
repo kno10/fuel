@@ -16,6 +16,10 @@ pub(crate) fn adjusted_value(value: f64, expected: f64) -> f64 {
     }
 }
 
+pub(crate) fn score_equal(a: f64, b: f64) -> bool {
+    a == b || (a.is_nan() && b.is_nan())
+}
+
 /// Shared sorter for (`score`, `label`) pairs in descending score order.
 /// Labels are mapped to binary 0/1 (nonzero -> 1).
 pub fn sort_score_label<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
@@ -29,10 +33,17 @@ pub fn sort_score_label<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
         .map(|(&s, &l)| (s.into(), if l.into() != 0 { 1 } else { 0 }))
         .collect();
 
-    pairs.sort_by(|a, b| match a.0.partial_cmp(&b.0) {
-        Some(Ordering::Less) => Ordering::Greater,
-        Some(Ordering::Greater) => Ordering::Less,
-        _ => Ordering::Equal,
+    pairs.sort_by(|a, b| {
+        match (a.0.is_nan(), b.0.is_nan()) {
+            (true, true) => Ordering::Equal,
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+            (false, false) => match a.0.partial_cmp(&b.0) {
+                Some(Ordering::Less) => Ordering::Greater,
+                Some(Ordering::Greater) => Ordering::Less,
+                _ => Ordering::Equal,
+            },
+        }
     });
 
     pairs

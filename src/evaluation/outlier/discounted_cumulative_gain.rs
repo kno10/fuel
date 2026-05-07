@@ -1,4 +1,4 @@
-use crate::evaluation::outlier::sort_score_label;
+use crate::evaluation::outlier::{score_equal, sort_score_label};
 
 fn discount(rank: usize) -> f64 { 1.0 / ((rank as f64 + 1.0).log2()) }
 
@@ -23,12 +23,16 @@ pub fn discounted_cumulative_gain<F: Copy + Into<f64> + PartialOrd, L: Copy + In
         let mut group_pos = 0usize;
         let mut group_size = 0usize;
 
-        while idx < n && pairs[idx].0 == score {
-            if pairs[idx].1 == 1 {
-                group_pos += 1;
+        while idx < n {
+            if score_equal(pairs[idx].0, score) {
+                if pairs[idx].1 == 1 {
+                    group_pos += 1;
+                }
+                group_size += 1;
+                idx += 1;
+            } else {
+                break;
             }
-            group_size += 1;
-            idx += 1;
         }
 
         if group_pos > 0 {
@@ -109,5 +113,13 @@ mod tests {
         // with ties the top score group (0.6) includes 1 positive among 2 items.
         assert!(v > 0.0 && v <= 1.0);
         assert!((dcg(&scores, &labels) / ideal - v).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_dcg_nan_score_does_not_loop_forever() {
+        let scores = [0.3, f64::NAN, 0.6];
+        let labels = [1u8, 0, 1];
+        let _ = dcg(&scores, &labels);
+        let _ = normalized_discounted_cumulative_gain(&scores, &labels);
     }
 }

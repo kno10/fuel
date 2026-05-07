@@ -1,4 +1,4 @@
-use crate::evaluation::outlier::sort_score_label;
+use crate::evaluation::outlier::{score_equal, sort_score_label};
 
 /// Maximum F1 score across thresholds with ties handled by group-level values.
 pub fn maximum_f1<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
@@ -25,7 +25,7 @@ pub fn maximum_f1<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
         let mut group_pos = 0usize;
         let mut group_total = 0usize;
 
-        while i < n && pairs[i].0 == score {
+        while i < n && score_equal(pairs[i].0, score) {
             if pairs[i].1 == 1 {
                 group_pos += 1;
             }

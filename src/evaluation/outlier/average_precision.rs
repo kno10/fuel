@@ -1,4 +1,4 @@
-use crate::evaluation::outlier::sort_score_label;
+use crate::evaluation::outlier::{score_equal, sort_score_label};
 
 /// Expected average precision in presence of ties, as in ELKI.
 #[allow(clippy::float_cmp, clippy::cast_precision_loss)]
@@ -28,7 +28,7 @@ pub fn average_precision<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
         let mut gp = 0usize;
         let mut gs = 0usize;
 
-        while i < n && pairs[i].0 == score {
+        while i < n && score_equal(pairs[i].0, score) {
             if pairs[i].1 == 1 {
                 gp += 1;
             }

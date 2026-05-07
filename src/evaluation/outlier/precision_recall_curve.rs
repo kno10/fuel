@@ -1,4 +1,4 @@
-use crate::evaluation::outlier::sort_score_label;
+use crate::evaluation::outlier::{score_equal, sort_score_label};
 
 pub fn pr_curve<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
     scores: &[F], labels: &[L],
@@ -28,7 +28,7 @@ pub fn pr_curve<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
         let mut group_pos = 0;
         let mut group_total = 0;
 
-        while i < n && pairs[i].0 == score {
+        while i < n && score_equal(pairs[i].0, score) {
             if pairs[i].1 == 1 {
                 group_pos += 1;
             }
