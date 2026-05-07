@@ -33,6 +33,10 @@ use fuel::outlier::weighted_knn::weighted_knn;
 use fuel::outlier::{intrinsic_dimensionality_outlier_score, local_outlier_probabilities};
 use fuel::search::proxy::ProxyKnnSearcher;
 use fuel::{Data, DistanceData, KnnSearch, RangeSearch, VectorData};
+use fuel::distance::{
+    Arccosine, BrayCurtis, Canberra, Chebyshev, Cosine, DistanceFunction, Euclidean,
+    Hellinger, Manhattan, SquaredEuclidean,
+};
 use io::{FileFormat, ReadOptions, read_numeric_table};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -136,6 +140,22 @@ struct Config {
     disable: Vec<String>,
     ksquare_max: usize,
     time_limit: Option<Duration>,
+    distance: String,
+}
+
+fn parse_distance(value: &str) -> Result<String, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "euclidean" | "l2" | "euclid" => Ok("euclidean".to_string()),
+        "squared_euclidean" | "sqeuclidean" | "squared" => Ok("squared_euclidean".to_string()),
+        "manhattan" | "l1" | "cityblock" => Ok("manhattan".to_string()),
+        "chebyshev" | "linf" | "linfty" => Ok("chebyshev".to_string()),
+        "cosine" => Ok("cosine".to_string()),
+        "arccosine" | "angular" => Ok("arccosine".to_string()),
+        "canberra" => Ok("canberra".to_string()),
+        "braycurtis" | "bray_curtis" => Ok("braycurtis".to_string()),
+        "hellinger" => Ok("hellinger".to_string()),
+        other => Err(format!("Unsupported distance: {}", other)),
+    }
 }
 
 fn parse_delimiter(value: &str) -> Result<Option<u8>, String> {
@@ -255,6 +275,7 @@ fn print_usage(program_name: &str) {
     eprintln!("      --no-header           Do not treat the first line as a header");
     eprintln!("      --disable <patterns>  Disable methods by substring or comma-separated list");
     eprintln!("      --ksquare-max <n>     Maximum k for quadratic-cost methods (default 1000)");
+    eprintln!("      --distance <name>     Distance function: euclidean, manhattan, chebyshev, cosine, arccosine, canberra, braycurtis, hellinger, squared_euclidean");
     eprintln!("      --time-limit <secs>   Per-method time limit in seconds");
 }
 
@@ -270,6 +291,7 @@ fn parse_args() -> Result<Config, String> {
         disable: Vec::new(),
         ksquare_max: 1000,
         time_limit: None,
+        distance: "euclidean".to_string(),
     };
 
     let mut positional = Vec::new();
@@ -323,6 +345,11 @@ fn parse_args() -> Result<Config, String> {
                     args.next().ok_or_else(|| "Missing value for --ksquare-max".to_string())?;
                 config.ksquare_max =
                     value.parse().map_err(|e| format!("Invalid ksquare-max: {}", e))?;
+            }
+            "--distance" => {
+                let value =
+                    args.next().ok_or_else(|| "Missing value for --distance".to_string())?;
+                config.distance = parse_distance(&value)?;
             }
             "--time-limit" => {
                 let value =
@@ -497,6 +524,32 @@ fn format_value(value: f64) -> String {
     s
 }
 
+fn run_with_distance<W, DF>(
+    writer: &mut W,
+    points: &[Vec<f64>],
+    config: &Config,
+    options: ComputeKnnOutlierScoresOptions,
+    distance_name: &str,
+    distance_fn: DF,
+) -> Result<(), String>
+where
+    W: Write,
+    DF: DistanceFunction<[f64], f64> + Copy + Sync,
+{
+    let data = fuel::TableWithDistance::with_distance(points, distance_fn);
+    let mut rng = StdRng::seed_from_u64(42);
+    let index_start = Instant::now();
+    let tree = fuel::search::vptree::VPTree::new(&data, 2, &mut rng);
+    let ks = build_sorted_ks(config.ks.clone());
+    let max_k = ks.iter().copied().max().unwrap_or(0).min(data.len().saturating_sub(1));
+    let proxy = ProxyKnnSearcher::new(&tree, &data, max_k + 2);
+    let index_time = index_start.elapsed();
+    eprintln!("Data indexing time ({}): {:.3}s", distance_name, index_time.as_secs_f64());
+
+    compute_knn_outlier_scores(writer, &proxy, &data, ks, options)
+        .map_err(|e| e.to_string())
+}
+
 fn main() {
     let config = match parse_args() {
         Ok(config) => config,
@@ -533,23 +586,13 @@ fn main() {
         std::process::exit(1);
     }
 
-    let data = fuel::TableWithDistance::with_distance(&points, fuel::distance::Euclidean);
-    let mut rng = StdRng::seed_from_u64(42);
-    let index_start = Instant::now();
-    let tree = fuel::search::vptree::VPTree::new(&data, 2, &mut rng);
-    let ks = build_sorted_ks(config.ks.clone());
-    let max_k = ks.iter().copied().max().unwrap_or(0).min(data.len().saturating_sub(1));
-    let proxy = ProxyKnnSearcher::new(&tree, &data, max_k + 2);
-    let index_time = index_start.elapsed();
-    eprintln!("Data indexing time: {:.3}s", index_time.as_secs_f64());
-
     let options = ComputeKnnOutlierScoresOptions {
-        disabled: config.disable,
+        disabled: config.disable.clone(),
         ksquare_max: config.ksquare_max,
         time_limit: config.time_limit,
     };
 
-    let mut writer = match open_writer(config.output) {
+    let mut writer = match open_writer(config.output.clone()) {
         Ok(writer) => writer,
         Err(err) => {
             eprintln!("Failed to open output: {}", err);
@@ -557,7 +600,22 @@ fn main() {
         }
     };
 
-    if let Err(err) = compute_knn_outlier_scores(&mut writer, &proxy, &data, ks, options) {
+    let result = match config.distance.as_str() {
+        "euclidean" => run_with_distance(&mut writer, &points, &config, options, "euclidean", Euclidean),
+        "squared_euclidean" => {
+            run_with_distance(&mut writer, &points, &config, options, "squared_euclidean", SquaredEuclidean)
+        }
+        "manhattan" => run_with_distance(&mut writer, &points, &config, options, "manhattan", Manhattan),
+        "chebyshev" => run_with_distance(&mut writer, &points, &config, options, "chebyshev", Chebyshev),
+        "cosine" => run_with_distance(&mut writer, &points, &config, options, "cosine", Cosine),
+        "arccosine" => run_with_distance(&mut writer, &points, &config, options, "arccosine", Arccosine),
+        "canberra" => run_with_distance(&mut writer, &points, &config, options, "canberra", Canberra),
+        "braycurtis" => run_with_distance(&mut writer, &points, &config, options, "braycurtis", BrayCurtis),
+        "hellinger" => run_with_distance(&mut writer, &points, &config, options, "hellinger", Hellinger),
+        _ => Err(format!("Unsupported distance: {}", config.distance)),
+    };
+
+    if let Err(err) = result {
         eprintln!("Failed to compute or write outlier scores: {}", err);
         std::process::exit(1);
     }
