@@ -8,6 +8,14 @@ pub mod receiver_operating_curve;
 
 use std::cmp::Ordering;
 
+pub(crate) fn adjusted_value(value: f64, expected: f64) -> f64 {
+    if expected >= 1.0 {
+        0.0
+    } else {
+        (value - expected) / (1.0 - expected)
+    }
+}
+
 /// Shared sorter for (`score`, `label`) pairs in descending score order.
 /// Labels are mapped to binary 0/1 (nonzero -> 1).
 pub fn sort_score_label<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(

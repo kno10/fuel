@@ -50,6 +50,15 @@ pub fn precision_at_k<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
     0.0
 }
 
+/// Adjusted R-Precision.
+pub fn adjusted_r_precision<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
+    scores: &[F], labels: &[L],
+) -> f64 {
+    let npos = labels.iter().filter(|&&l| l.into() != 0).count() as f64;
+    let n = scores.len() as f64;
+    super::adjusted_value(r_precision(scores, labels), npos / n)
+}
+
 /// R-Precision: precision at k = number of positives.
 pub fn r_precision<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
     scores: &[F], labels: &[L],

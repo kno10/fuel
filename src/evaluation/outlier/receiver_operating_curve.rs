@@ -43,22 +43,29 @@ pub fn receiver_operating_curve<F: Copy + Into<f64> + PartialOrd, L: Copy + Into
     auctotal / (npos as f64 * nneg as f64)
 }
 
-pub fn auc<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
+pub fn auroc<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
     scores: &[F], labels: &[L],
 ) -> f64 {
     receiver_operating_curve(scores, labels)
 }
 
+/// Adjusted area under ROC curve, with random baseline mapped to 0.
+pub fn adjusted_auroc<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
+    scores: &[F], labels: &[L],
+) -> f64 {
+    2.0 * auroc(scores, labels) - 1.0
+}
+
 #[cfg(test)]
 mod tests {
-    use super::auc;
+    use super::auroc;
 
     #[test]
-    fn test_auc_ties() {
+    fn test_auroc_ties() {
         // Score order: 0.9(P), 0.6(P), 0.6(N), 0.3(N), 0.1(P)
         let scores = [0.3, 0.6, 0.6, 0.1, 0.9];
         let labels = [0u8, 1, 0, 1, 1];
-        let v = auc(&scores, &labels);
+        let v = auroc(&scores, &labels);
         assert!((v - 0.5833333333333333).abs() < 1e-12);
     }
 }

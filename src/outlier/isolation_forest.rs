@@ -166,7 +166,7 @@ where
 mod tests {
     use super::*;
     use crate::distance::Euclidean;
-    use crate::evaluation::outlier::receiver_operating_curve::auc;
+    use crate::evaluation::outlier::receiver_operating_curve::auroc;
     use crate::outlier::common::*;
     use crate::{Data, TableWithDistance};
 

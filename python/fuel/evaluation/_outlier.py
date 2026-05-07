@@ -16,19 +16,62 @@ def _ensure_u8(labels):
     return a
 
 
-def auc(scores, labels):
-    """Area under the ROC curve (AUROC). Tie-aware."""
-    return _fuel.outlier_auc(_ensure_f64(scores), _ensure_u8(labels))
+def auroc(scores, labels):
+    """Area under the ROC curve (AUROC). Tie-aware.
+
+    Parameters
+    ----------
+    scores : array_like
+        Score values for each sample.
+    labels : array_like
+        Binary labels indicating the positive class.
+    """
+    return _fuel.outlier_auroc(_ensure_f64(scores), _ensure_u8(labels))
 
 
 def average_precision(scores, labels):
-    """Average precision (AP). Tie-aware, consistent with ELKI."""
+    """Average precision (AP). Tie-aware."""
     return _fuel.outlier_average_precision(_ensure_f64(scores), _ensure_u8(labels))
 
 
 def auprc(scores, labels):
     """Area under the precision-recall curve. Trapezoid rule on ELKI-style PR curve."""
     return _fuel.outlier_auprc(_ensure_f64(scores), _ensure_u8(labels))
+
+
+def adjusted_auroc(scores, labels):
+    """Adjusted area under the ROC curve (AUROC with random baseline at 0)."""
+    return _fuel.outlier_adjusted_auroc(_ensure_f64(scores), _ensure_u8(labels))
+
+
+def adjusted_auprc(scores, labels):
+    """Adjusted area under the precision-recall curve."""
+    return _fuel.outlier_adjusted_auprc(_ensure_f64(scores), _ensure_u8(labels))
+
+
+def adjusted_auprgc(scores, labels):
+    """Adjusted area under the precision-recall gain curve."""
+    return _fuel.outlier_adjusted_auprgc(_ensure_f64(scores), _ensure_u8(labels))
+
+
+def adjusted_average_precision(scores, labels):
+    """Adjusted average precision."""
+    return _fuel.outlier_adjusted_average_precision(_ensure_f64(scores), _ensure_u8(labels))
+
+
+def adjusted_r_precision(scores, labels):
+    """Adjusted R-Precision."""
+    return _fuel.outlier_adjusted_r_precision(_ensure_f64(scores), _ensure_u8(labels))
+
+
+def adjusted_maximum_f1(scores, labels):
+    """Adjusted maximum F1 score."""
+    return _fuel.outlier_adjusted_maximum_f1(_ensure_f64(scores), _ensure_u8(labels))
+
+
+def adjusted_dcg(scores, labels):
+    """Adjusted DCG, computed from normalized DCG with a random baseline."""
+    return _fuel.outlier_adjusted_dcg(_ensure_f64(scores), _ensure_u8(labels))
 
 
 def pr_curve(scores, labels):

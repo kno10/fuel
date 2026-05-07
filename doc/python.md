@@ -7,7 +7,7 @@ maturin develop --release
 ```
 
 All functions are in the `fuel` package under sub-modules:
-`fuel.cluster`, `fuel.outlier`, `fuel.evaluation`, `fuel.search`.
+`fuel.cluster`, `fuel.outlier`, `fuel.evaluation.cluster`, `fuel.evaluation.outlier`, and `fuel.search`.
 
 ---
 
@@ -627,7 +627,8 @@ Used by `local_density_factor` and `simple_kernel_density_lof`:
 ## Evaluation methods
 
 ```python
-import fuel.evaluation as evaluation
+import fuel.evaluation.cluster
+import fuel.evaluation.outlier
 ```
 
 ### External clustering measures
@@ -680,15 +681,24 @@ corr      = evaluation.cophenetic_correlation(linkage1, linkage2)
 
 Scores are `float64` arrays; labels are binary `uint8` arrays (1 = outlier).
 
+The adjusted measures subtract an expected baseline to correct for chance performance, following ELKI-style adjusted evaluation.
+
 | Function | Returns |
 |----------|---------|
-| `auc(scores, labels)` | AUROC |
+| `auroc(scores, labels)` | AUROC |
+| `adjusted_auroc(scores, labels)` | Adjusted AUROC |
 | `average_precision(scores, labels)` | AP |
+| `adjusted_average_precision(scores, labels)` | Adjusted average precision |
 | `auprc(scores, labels)` | Area under PR curve |
+| `adjusted_auprc(scores, labels)` | Adjusted area under PR curve |
+| `adjusted_auprgc(scores, labels)` | Adjusted area under PR-gain curve |
 | `pr_curve(scores, labels)` | dict: recall, precision (1-D arrays) |
 | `prg_auc(scores, labels)` | Area under PR-gain curve |
 | `dcg(scores, labels)` | DCG |
+| `adjusted_dcg(scores, labels)` | Adjusted DCG |
 | `ndcg(scores, labels)` | NDCG |
 | `maximum_f1(scores, labels)` | Max F1 across thresholds |
+| `adjusted_maximum_f1(scores, labels)` | Adjusted max F1 |
 | `precision_at_k(scores, labels, k)` | Precision@k |
 | `r_precision(scores, labels)` | R-precision |
+| `adjusted_r_precision(scores, labels)` | Adjusted R-precision |

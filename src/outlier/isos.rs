@@ -128,7 +128,7 @@ mod tests {
     use super::*;
     use crate::TableWithDistance;
     use crate::distance::Euclidean;
-    use crate::evaluation::outlier::receiver_operating_curve::auc;
+    use crate::evaluation::outlier::receiver_operating_curve::auroc;
     use crate::intrinsicdimensionality::HillID;
     use crate::outlier::common::*;
 

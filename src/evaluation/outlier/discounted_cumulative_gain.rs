@@ -68,6 +68,33 @@ pub fn normalized_discounted_cumulative_gain<
     dcg(scores, labels) / ideal
 }
 
+/// Adjusted DCG, computed from normalized DCG with expected random baseline.
+fn expected_ndcg(npos: usize, n: usize) -> f64 {
+    if n == 0 || npos == 0 {
+        return 0.0;
+    }
+    let ideal = (1..=npos).map(|rank| 1.0 / ((rank as f64 + 1.0).log2())).sum::<f64>();
+    if ideal <= 0.0 {
+        return 0.0;
+    }
+    let expected_dcg = (npos as f64 / n as f64)
+        * (1..=n).map(|rank| 1.0 / ((rank as f64 + 1.0).log2())).sum::<f64>();
+    expected_dcg / ideal
+}
+
+pub fn adjusted_dcg<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
+    scores: &[F], labels: &[L],
+) -> f64 {
+    let n = scores.len();
+    let ndcg = normalized_discounted_cumulative_gain(scores, labels);
+    let expected = expected_ndcg(labels.iter().filter(|&&l| l.into() != 0).count(), n);
+    if expected >= 1.0 {
+        0.0
+    } else {
+        (ndcg - expected) / (1.0 - expected)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{dcg, normalized_discounted_cumulative_gain};

@@ -161,9 +161,9 @@ mod tests {
         let labels: Vec<u8> = crate::outlier::common::label_from_reference(&reference);
 
         let auc_result =
-            crate::evaluation::outlier::receiver_operating_curve::auc(&result.scores, &labels);
+            crate::evaluation::outlier::receiver_operating_curve::auroc(&result.scores, &labels);
         let auc_expected =
-            crate::evaluation::outlier::receiver_operating_curve::auc(expected, &labels);
+            crate::evaluation::outlier::receiver_operating_curve::auroc(expected, &labels);
         println!("SOD-10: auc_result={}, auc_expected={}", auc_result, auc_expected);
         println!("SOD-10 first scores {:?}", &result.scores[0..10]);
         println!("SOD-10 first expected {:?}", &expected[0..10]);

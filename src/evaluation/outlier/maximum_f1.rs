@@ -49,6 +49,15 @@ pub fn maximum_f1<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
     best_f1
 }
 
+/// Adjusted maximum F1.
+pub fn adjusted_maximum_f1<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
+    scores: &[F], labels: &[L],
+) -> f64 {
+    let npos = labels.iter().filter(|&&l| l.into() != 0).count() as f64;
+    let n = scores.len() as f64;
+    super::adjusted_value(maximum_f1(scores, labels), npos / n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::maximum_f1;

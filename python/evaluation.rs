@@ -24,15 +24,15 @@ use crate::evaluation::cluster::internal::pbm_index::pbm_index;
 use crate::evaluation::cluster::internal::silhouette::{silhouette, simplified_silhouette};
 use crate::evaluation::cluster::internal::squared_errors::squared_errors;
 use crate::evaluation::cluster::internal::variance_ratio::variance_ratio_criterion;
-use crate::evaluation::outlier::average_precision::average_precision;
+use crate::evaluation::outlier::average_precision::{average_precision, adjusted_average_precision};
 use crate::evaluation::outlier::discounted_cumulative_gain::{
-    dcg, normalized_discounted_cumulative_gain,
+    dcg, normalized_discounted_cumulative_gain, adjusted_dcg,
 };
-use crate::evaluation::outlier::maximum_f1::maximum_f1;
-use crate::evaluation::outlier::precision_at_k::{precision_at_k, r_precision};
-use crate::evaluation::outlier::precision_recall_curve::{auprc, pr_curve};
-use crate::evaluation::outlier::precision_recall_gain::prg_auc;
-use crate::evaluation::outlier::receiver_operating_curve::auc;
+use crate::evaluation::outlier::maximum_f1::{maximum_f1, adjusted_maximum_f1};
+use crate::evaluation::outlier::precision_at_k::{precision_at_k, r_precision, adjusted_r_precision};
+use crate::evaluation::outlier::precision_recall_curve::{auprc, pr_curve, adjusted_auprc};
+use crate::evaluation::outlier::precision_recall_gain::{prg_auc, adjusted_auprgc};
+use crate::evaluation::outlier::receiver_operating_curve::{auroc, adjusted_auroc};
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -496,10 +496,59 @@ fn scores_from_array(arr: &PyReadonlyArray1<'_, f64>) -> Vec<f64> { arr.as_array
 fn binary_labels_from_array(arr: &PyReadonlyArray1<'_, u8>) -> Vec<u8> { arr.as_array().to_vec() }
 
 #[pyfunction]
-fn outlier_auc(
+fn outlier_auroc(
     _py: Python<'_>, scores: PyReadonlyArray1<'_, f64>, labels: PyReadonlyArray1<'_, u8>,
 ) -> PyResult<f64> {
-    Ok(auc(&scores_from_array(&scores), &binary_labels_from_array(&labels)))
+    Ok(auroc(&scores_from_array(&scores), &binary_labels_from_array(&labels)))
+}
+
+#[pyfunction]
+fn outlier_adjusted_auroc(
+    _py: Python<'_>, scores: PyReadonlyArray1<'_, f64>, labels: PyReadonlyArray1<'_, u8>,
+) -> PyResult<f64> {
+    Ok(adjusted_auroc(&scores_from_array(&scores), &binary_labels_from_array(&labels)))
+}
+
+#[pyfunction]
+fn outlier_adjusted_auprc(
+    _py: Python<'_>, scores: PyReadonlyArray1<'_, f64>, labels: PyReadonlyArray1<'_, u8>,
+) -> PyResult<f64> {
+    Ok(adjusted_auprc(&scores_from_array(&scores), &binary_labels_from_array(&labels)))
+}
+
+#[pyfunction]
+fn outlier_adjusted_auprgc(
+    _py: Python<'_>, scores: PyReadonlyArray1<'_, f64>, labels: PyReadonlyArray1<'_, u8>,
+) -> PyResult<f64> {
+    Ok(adjusted_auprgc(&scores_from_array(&scores), &binary_labels_from_array(&labels)))
+}
+
+#[pyfunction]
+fn outlier_adjusted_average_precision(
+    _py: Python<'_>, scores: PyReadonlyArray1<'_, f64>, labels: PyReadonlyArray1<'_, u8>,
+) -> PyResult<f64> {
+    Ok(adjusted_average_precision(&scores_from_array(&scores), &binary_labels_from_array(&labels)))
+}
+
+#[pyfunction]
+fn outlier_adjusted_r_precision(
+    _py: Python<'_>, scores: PyReadonlyArray1<'_, f64>, labels: PyReadonlyArray1<'_, u8>,
+) -> PyResult<f64> {
+    Ok(adjusted_r_precision(&scores_from_array(&scores), &binary_labels_from_array(&labels)))
+}
+
+#[pyfunction]
+fn outlier_adjusted_maximum_f1(
+    _py: Python<'_>, scores: PyReadonlyArray1<'_, f64>, labels: PyReadonlyArray1<'_, u8>,
+) -> PyResult<f64> {
+    Ok(adjusted_maximum_f1(&scores_from_array(&scores), &binary_labels_from_array(&labels)))
+}
+
+#[pyfunction]
+fn outlier_adjusted_dcg(
+    _py: Python<'_>, scores: PyReadonlyArray1<'_, f64>, labels: PyReadonlyArray1<'_, u8>,
+) -> PyResult<f64> {
+    Ok(adjusted_dcg(&scores_from_array(&scores), &binary_labels_from_array(&labels)))
 }
 
 #[pyfunction]
@@ -596,7 +645,14 @@ pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(dbcv_score))?;
     m.add_wrapped(wrap_pyfunction!(cophenetic_distance_vector))?;
     m.add_wrapped(wrap_pyfunction!(cophenetic_corr))?;
-    m.add_wrapped(wrap_pyfunction!(outlier_auc))?;
+    m.add_wrapped(wrap_pyfunction!(outlier_auroc))?;
+    m.add_wrapped(wrap_pyfunction!(outlier_adjusted_auroc))?;
+    m.add_wrapped(wrap_pyfunction!(outlier_adjusted_auprc))?;
+    m.add_wrapped(wrap_pyfunction!(outlier_adjusted_auprgc))?;
+    m.add_wrapped(wrap_pyfunction!(outlier_adjusted_average_precision))?;
+    m.add_wrapped(wrap_pyfunction!(outlier_adjusted_r_precision))?;
+    m.add_wrapped(wrap_pyfunction!(outlier_adjusted_maximum_f1))?;
+    m.add_wrapped(wrap_pyfunction!(outlier_adjusted_dcg))?;
     m.add_wrapped(wrap_pyfunction!(outlier_average_precision))?;
     m.add_wrapped(wrap_pyfunction!(outlier_auprc))?;
     m.add_wrapped(wrap_pyfunction!(outlier_pr_curve))?;

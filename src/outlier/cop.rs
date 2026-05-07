@@ -247,8 +247,8 @@ mod tests {
 
         crate::outlier::common::assert_outlier_auc_approx(
             "COP-10",
-            crate::evaluation::outlier::receiver_operating_curve::auc(&result.scores, &labels),
-            crate::evaluation::outlier::receiver_operating_curve::auc(expected, &labels),
+            crate::evaluation::outlier::receiver_operating_curve::auroc(&result.scores, &labels),
+            crate::evaluation::outlier::receiver_operating_curve::auroc(expected, &labels),
             1e-6,
         );
         crate::outlier::common::assert_outlier_scores_approx(

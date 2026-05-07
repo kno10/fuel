@@ -35,6 +35,13 @@ pub fn prg_auc<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
     area
 }
 
+/// Adjusted area under precision-recall gain curve.
+pub fn adjusted_auprgc<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
+    scores: &[F], labels: &[L],
+) -> f64 {
+    (prg_auc(scores, labels) - 0.5) * 2.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::prg_auc;

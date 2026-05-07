@@ -67,6 +67,15 @@ pub fn auprc<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
     precision_recall_curve(scores, labels)
 }
 
+/// Adjusted area under precision-recall curve.
+pub fn adjusted_auprc<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
+    scores: &[F], labels: &[L],
+) -> f64 {
+    let npos = labels.iter().filter(|&&l| l.into() != 0).count() as f64;
+    let n = scores.len() as f64;
+    super::adjusted_value(auprc(scores, labels), npos / n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::auprc;
