@@ -7,8 +7,8 @@ use std::time::Instant;
 use common::{CountingDistance, read_numeric_data};
 use fuel::cluster::hdbscan::extraction::{ExtractedHierarchy, extract_simplified_hierarchy};
 use fuel::cluster::hierarchical::{
-    CentroidLinkage, CompleteLinkage, GroupAverageLinkage, MedianLinkage,
-    MergeHistory, MinimumSumSquaresLinkage, MinimumVarianceIncreaseLinkage, MinimumVarianceLinkage,
+    CentroidLinkage, CompleteLinkage, GroupAverageLinkage, MedianLinkage, MergeHistory,
+    MinimumSumSquaresLinkage, MinimumVarianceIncreaseLinkage, MinimumVarianceLinkage,
     SingleLinkage, WardLinkage, WeightedAverageLinkage, agnes,
 };
 use fuel::distance::Euclidean;
@@ -67,7 +67,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         "minimum_variance_linkage" | "mnvar" => agnes(&condensed, MinimumVarianceLinkage),
         "minimum_sum_squares" | "missq" | "mnssq" => agnes(&condensed, MinimumSumSquaresLinkage),
         _ => return Err("unknown linkage type".into()),
-    };
+    }?;
     let elapsed = start.elapsed();
     let distance_count_after_algorithm = distance.count();
 

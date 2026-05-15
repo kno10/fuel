@@ -184,7 +184,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             }
             _ => panic!("set_muellner does not support the chosen linkage"),
         },
-    };
+    }?;
     let elapsed = start.elapsed();
 
     let labels = cut_dendrogram_by_number_of_clusters(&history, cluster_count);

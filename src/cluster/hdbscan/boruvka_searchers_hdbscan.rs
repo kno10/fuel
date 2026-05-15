@@ -43,7 +43,7 @@ impl<F: Float> Ord for Edge<F> {
 #[must_use]
 pub fn boruvka_searchers_hdbscan<'a, S, D, F>(
     tree: &'a S, data: &'a D, min_points: usize,
-) -> HdbscanHierarchy<F>
+) -> Result<HdbscanHierarchy<F>, String>
 where
     F: Float + 'a,
     D: DistanceData<F> + VectorData<F> + ?Sized + 'a,
@@ -54,9 +54,9 @@ where
     assert!(n > 0, "number of points must be positive");
     assert!(min_points > 0, "min_points must be greater than 0");
 
-    let core_distances = compute_core_distances_tree(tree, data, min_points);
+    let core_distances = compute_core_distances_tree(tree, data, min_points)?;
     if n == 1 {
-        return HdbscanHierarchy::new(MergeHistory::new(), core_distances);
+        return Ok(HdbscanHierarchy::new(MergeHistory::new(), core_distances));
     }
 
     let mut uf = UnionFind::new(n);
@@ -84,6 +84,7 @@ where
     let mut edges = Vec::with_capacity(max_edges);
 
     while edges.len() < max_edges {
+        crate::poll_interrupted()?;
         // Purge same-component entries and refill as needed.
         for a in 0..n {
             let Some(heap) = neighbor_heaps[a].as_mut() else {
@@ -186,7 +187,7 @@ where
         builder.merge_points(edge.a, edge.b, edge.dist);
     }
 
-    HdbscanHierarchy::new(builder.into_history(), core_distances)
+    Ok(HdbscanHierarchy::new(builder.into_history(), core_distances))
 }
 
 /// Unfiltered initialization matching heap_of_searchers_hdbscan.
@@ -267,8 +268,8 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(23);
         let tree = VPTree::<f64>::new(&data, 3, &mut rng);
 
-        let expected = hdbscan_prim(&data, 2);
-        let got = boruvka_searchers_hdbscan(&tree, &data, 2);
+        let expected = hdbscan_prim(&data, 2).unwrap();
+        let got = boruvka_searchers_hdbscan(&tree, &data, 2).unwrap();
         assert_eq!(got, expected);
     }
 
@@ -284,8 +285,8 @@ mod tests {
         let tree = VPTree::<f64>::new(&data, n, &mut rng);
 
         for min_pts in [2, 5, 10] {
-            let expected = hdbscan_prim(&data, min_pts);
-            let got = boruvka_searchers_hdbscan(&tree, &data, min_pts);
+            let expected = hdbscan_prim(&data, min_pts).unwrap();
+            let got = boruvka_searchers_hdbscan(&tree, &data, min_pts).unwrap();
             assert_eq!(
                 got.merges.len(),
                 expected.merges.len(),
@@ -329,8 +330,8 @@ mod tests {
         let tree = VPTree::<f64>::new(&data, n, &mut rng);
 
         let min_pts = 10;
-        let expected = hdbscan_prim(&data, min_pts);
-        let got = boruvka_searchers_hdbscan(&tree, &data, min_pts);
+        let expected = hdbscan_prim(&data, min_pts).unwrap();
+        let got = boruvka_searchers_hdbscan(&tree, &data, min_pts).unwrap();
         assert_eq!(
             got.merges.len(),
             expected.merges.len(),

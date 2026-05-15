@@ -30,7 +30,7 @@ mod tests {
     fn cut_by_height_matches_expected_partition() {
         let d = vec![1.0, 2.0, 3.0, 1.5, 2.5, 1.0];
         let cm = crate::CondensedDistanceMatrix::new_from_condensed(d, 4, false);
-        let history = agnes(&cm, SingleLinkage);
+        let history = agnes(&cm, SingleLinkage).unwrap();
 
         let labels = cut_dendrogram_by_height(&history, 1.1);
         assert_eq!(labels, vec![0, 0, 1, 1]);

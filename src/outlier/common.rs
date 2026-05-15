@@ -12,7 +12,7 @@ use crate::{DistanceData, Float, IndexQuery, KnnSearch, RangeSearch};
 #[cfg(feature = "parallel")]
 pub fn for_each_knn<'a, S, D, F, R, Op>(
     tree: &S, data: &'a D, k_effective: usize, include_self: bool, op: Op,
-) -> Vec<R>
+) -> Result<Vec<R>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -20,12 +20,17 @@ where
     Op: Fn(usize, Vec<(usize, F)>) -> R + Send + Sync,
     R: Send,
 {
+    use std::sync::atomic::Ordering;
+
     use rayon::prelude::*;
 
     let k_query = k_effective + if include_self { 0 } else { 1 };
     (0..data.len())
         .into_par_iter()
-        .map(|idx| {
+        .map(|idx| -> Result<R, String> {
+            if crate::SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
+                return Err("interrupted".to_string());
+            }
             let mut query = data.query();
             query.set_index(idx);
             let mut neighbors: Vec<(usize, F)> = tree
@@ -37,7 +42,8 @@ where
                 neighbors.retain(|neighbor| neighbor.0 != idx);
                 neighbors.truncate(k_effective);
             }
-            op(idx, neighbors)
+            crate::poll_interrupted()?;
+            Ok(op(idx, neighbors))
         })
         .collect()
 }
@@ -45,7 +51,7 @@ where
 #[cfg(not(feature = "parallel"))]
 pub fn for_each_knn<'a, S, D, F, R, Op>(
     tree: &S, data: &'a D, k_effective: usize, include_self: bool, op: Op,
-) -> Vec<R>
+) -> Result<Vec<R>, String>
 where
     F: Float,
     D: DistanceData<F> + 'a,
@@ -54,10 +60,10 @@ where
 {
     let k_query = k_effective + if include_self { 0 } else { 1 };
     data.iter()
-        .map(|idx| {
+        .map(|idx| -> Result<R, String> {
+            crate::poll_interrupted()?;
             let mut query = data.query();
             query.set_index(idx);
-
             let mut neighbors: Vec<(usize, F)> = tree
                 .search_knn(&query, k_query)
                 .into_iter()
@@ -67,7 +73,7 @@ where
                 neighbors.retain(|neighbor| neighbor.0 != idx);
                 neighbors.truncate(k_effective);
             }
-            op(idx, neighbors)
+            Ok(op(idx, neighbors))
         })
         .collect()
 }
@@ -75,7 +81,7 @@ where
 #[cfg(feature = "parallel")]
 pub fn for_each_range<'a, S, D, F, R, Op>(
     tree: &S, data: &'a D, d: F, include_self: bool, op: Op,
-) -> Vec<R>
+) -> Result<Vec<R>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -83,11 +89,16 @@ where
     Op: Fn(usize, Vec<(usize, F)>) -> R + Send + Sync,
     R: Send,
 {
+    use std::sync::atomic::Ordering;
+
     use rayon::prelude::*;
 
     (0..data.len())
         .into_par_iter()
-        .map(|idx| {
+        .map(|idx| -> Result<R, String> {
+            if crate::SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
+                return Err("interrupted".to_string());
+            }
             let mut query = data.query();
             query.set_index(idx);
             let neighbors: Vec<(usize, F)> = tree
@@ -96,7 +107,8 @@ where
                 .filter(|neighbor| include_self || neighbor.index != idx)
                 .map(|neighbor| (neighbor.index, neighbor.distance))
                 .collect();
-            op(idx, neighbors)
+            crate::poll_interrupted()?;
+            Ok(op(idx, neighbors))
         })
         .collect()
 }
@@ -104,7 +116,7 @@ where
 #[cfg(not(feature = "parallel"))]
 pub fn for_each_range<'a, S, D, F, R, Op>(
     tree: &S, data: &'a D, d: F, include_self: bool, op: Op,
-) -> Vec<R>
+) -> Result<Vec<R>, String>
 where
     F: Float,
     D: DistanceData<F> + 'a,
@@ -112,7 +124,8 @@ where
     Op: Fn(usize, Vec<(usize, F)>) -> R,
 {
     data.iter()
-        .map(|idx| {
+        .map(|idx| -> Result<R, String> {
+            crate::poll_interrupted()?;
             let mut query = data.query();
             query.set_index(idx);
             let neighbors: Vec<(usize, F)> = tree
@@ -121,7 +134,7 @@ where
                 .filter(|neighbor| include_self || neighbor.index != idx)
                 .map(|neighbor| (neighbor.index, neighbor.distance))
                 .collect();
-            op(idx, neighbors)
+            Ok(op(idx, neighbors))
         })
         .collect()
 }

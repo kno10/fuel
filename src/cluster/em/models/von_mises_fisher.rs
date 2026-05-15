@@ -235,7 +235,7 @@ mod tests {
         let models =
             VonMisesFisherModelFactory::build_initial_models_dispatch(FirstK::<f64>::new(), &ds, 2);
         let cfg = EmConfig::<f64> { maxiter: 100, ..Default::default() };
-        let result = expectation_maximization(&ds, 2, models, cfg);
+        let result = expectation_maximization(&ds, 2, models, cfg).unwrap();
         assert!(result.n_iter > 0);
         assert!(result.log_likelihood.is_finite());
         assert_eq!(result.models.len(), 2);

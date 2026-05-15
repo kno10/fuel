@@ -3,7 +3,7 @@ use std::ops::{AddAssign, MulAssign, SubAssign};
 
 use ndarray::Array2;
 
-use crate::{Float, VectorData as Dataset, math}; // FIXME: no longer necessary here if we use crate::Float?
+use crate::{Float, VectorData as Dataset, math};
 
 /// Pluggable cluster model for expectation-maximization.
 pub trait EmModel<N>
@@ -134,7 +134,7 @@ where
 fn assign_probabilities_to_instances<N, A, Mo>(
     data: &A, models: &[Mo], probs: &mut [N], scratch: &mut [N], min_log_likelihood: N,
     noise_log_density: Option<N>, mut noise_probs: Option<&mut [N]>,
-) -> (N, Option<N>)
+) -> Result<(N, Option<N>), String>
 where
     N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
     A: Dataset<N>,
@@ -148,6 +148,7 @@ where
     let mut noise_sum = N::zero();
 
     for i in 0..n {
+        crate::check_interrupted()?;
         data.load_into(i, scratch, d);
         for j in 0..k {
             let v = models[j].estimate_log_density(scratch);
@@ -170,15 +171,16 @@ where
         em_sum += logp;
     }
 
-    (
+    Ok((
         em_sum / N::from(n).unwrap(),
         if noise_log_density.is_some() { Some(noise_sum / N::from(n).unwrap()) } else { None },
-    )
+    ))
 }
 
 fn recompute_models_soft<N, A, Mo>(
     data: &A, probs: &[N], models: &mut [Mo], prior: N, scratch: &mut [N],
-) where
+) -> Result<(), String>
+where
     N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
     A: Dataset<N>,
     Mo: EmModel<N>,
@@ -194,6 +196,7 @@ fn recompute_models_soft<N, A, Mo>(
 
     if needs_two_pass {
         for i in 0..n {
+            crate::check_interrupted()?;
             data.load_into(i, scratch, d);
             for j in 0..k {
                 let p = probs[i * k + j];
@@ -211,6 +214,7 @@ fn recompute_models_soft<N, A, Mo>(
     let mut wsum = vec![N::zero(); k];
     math::fill(&mut wsum, N::zero(), k);
     for i in 0..n {
+        crate::check_interrupted()?;
         data.load_into(i, scratch, d);
         for j in 0..k {
             let p = probs[i * k + j];
@@ -229,12 +233,14 @@ fn recompute_models_soft<N, A, Mo>(
         };
         models[j].finalize_estep(weight, prior);
     }
+    Ok(())
 }
 
 fn recompute_models_hard<N, A, Mo>(
     data: &A, probs: &[N], noise_probs: Option<&[N]>, models: &mut [Mo], prior: N,
     scratch: &mut [N],
-) where
+) -> Result<(), String>
+where
     N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
     A: Dataset<N>,
     Mo: EmModel<N>,
@@ -250,6 +256,7 @@ fn recompute_models_hard<N, A, Mo>(
 
     if needs_two_pass {
         for i in 0..n {
+            crate::check_interrupted()?;
             data.load_into(i, scratch, d);
             let slice = &probs[i * k..(i + 1) * k];
             let best = argmax(slice);
@@ -272,6 +279,7 @@ fn recompute_models_hard<N, A, Mo>(
     let mut wsum = vec![N::zero(); k];
     math::fill(&mut wsum, N::zero(), k);
     for i in 0..n {
+        crate::check_interrupted()?;
         data.load_into(i, scratch, d);
         let slice = &probs[i * k..(i + 1) * k];
         let best = argmax(slice);
@@ -294,12 +302,13 @@ fn recompute_models_hard<N, A, Mo>(
         };
         models[j].finalize_estep(weight, prior);
     }
+    Ok(())
 }
 
 /// Generic EM solver for mixture models.
 pub fn expectation_maximization<N, A, Mo>(
     data: &A, k: usize, mut models: Vec<Mo>, config: EmConfig<N>,
-) -> EmResult<N, Mo>
+) -> Result<EmResult<N, Mo>, String>
 where
     N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
     A: Dataset<N>,
@@ -327,7 +336,7 @@ where
         config.min_log_likelihood,
         noise_density,
         noise_slice,
-    );
+    )?;
 
     let mut best_log_likelihood = N::neg_infinity();
     let mut last_improvement = 0usize;
@@ -337,6 +346,8 @@ where
         iter += 1;
         let old = log_likelihood;
 
+        crate::check_interrupted()?;
+
         if config.hard {
             recompute_models_hard::<N, A, Mo>(
                 data,
@@ -345,7 +356,7 @@ where
                 &mut models,
                 config.prior,
                 &mut scratch,
-            );
+            )?;
         } else {
             recompute_models_soft::<N, A, Mo>(
                 data,
@@ -353,7 +364,7 @@ where
                 &mut models,
                 config.prior,
                 &mut scratch,
-            );
+            )?;
         }
 
         if config.noise_ratio > N::zero()
@@ -366,7 +377,7 @@ where
         }
 
         noise_slice = noise_probs.as_deref_mut();
-        let (new_log_likelihood, new_noise_weight) = assign_probabilities_to_instances(
+        let (new_log_likelihood, new_noise_weight) = assign_probabilities_to_instances::<N, A, Mo>(
             data,
             &models,
             &mut probs,
@@ -378,7 +389,7 @@ where
                 None
             },
             noise_slice,
-        );
+        )?;
         log_likelihood = new_log_likelihood;
         noise_weight = new_noise_weight;
 
@@ -398,6 +409,7 @@ where
 
     let mut assignments = Vec::with_capacity(n);
     for i in 0..n {
+        crate::check_interrupted()?;
         let slice = &probs[i * k..(i + 1) * k];
         let mut best = argmax(slice);
         if let Some(noise_vec) = noise_probs.as_ref()
@@ -414,5 +426,5 @@ where
         None
     };
 
-    EmResult { models, assignments, responsibilities, n_iter: iter, log_likelihood }
+    Ok(EmResult { models, assignments, responsibilities, n_iter: iter, log_likelihood })
 }

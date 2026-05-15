@@ -9,7 +9,9 @@ use crate::cluster::hierarchical::pointer::{PointerRepresentation, pointer_to_me
 use crate::{DistanceData, Float};
 
 // Original CLINK uses the same pointer format as SLINK.
-pub fn clink_pointer<F: Float, D: DistanceData<F>>(data: &D) -> PointerRepresentation<F> {
+pub fn clink_pointer<F: Float, D: DistanceData<F>>(
+    data: &D,
+) -> Result<PointerRepresentation<F>, String> {
     let n = data.len();
     assert!(n > 0, "number of points must be positive");
 
@@ -18,6 +20,7 @@ pub fn clink_pointer<F: Float, D: DistanceData<F>>(data: &D) -> PointerRepresent
     let mut m = vec![F::infinity(); n];
 
     for cur in 1..n {
+        crate::poll_interrupted()?;
         m[cur] = F::infinity();
 
         for (i, slot) in m.iter_mut().enumerate().take(cur) {
@@ -77,13 +80,12 @@ pub fn clink_pointer<F: Float, D: DistanceData<F>>(data: &D) -> PointerRepresent
         }
     }
 
-    PointerRepresentation::new(pi, lambda)
+    Ok(PointerRepresentation::new(pi, lambda))
 }
 
 /// Perform CLINK and convert to merge history (generic version).
-#[must_use]
-pub fn clink<F: Float, D: DistanceData<F>>(data: &D) -> MergeHistory<F> {
-    pointer_to_merge_history(&clink_pointer(data))
+pub fn clink<F: Float, D: DistanceData<F>>(data: &D) -> Result<MergeHistory<F>, String> {
+    Ok(pointer_to_merge_history(&clink_pointer(data)?))
 }
 
 #[cfg(test)]
@@ -103,7 +105,7 @@ mod tests {
             crate::distance::Euclidean,
             |access, min_clusters| {
                 let cm = CondensedDistanceMatrix::new_from_data(access);
-                let history = clink(&cm);
+                let history = clink(&cm).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -117,7 +119,7 @@ mod tests {
         let d = vec![1.0, 8.0, 15.0, 22.0, 2.0, 9.0, 16.0, 3.0, 10.0, 4.0];
         let binding = d.clone();
         let cm = CondensedDistanceMatrix::new_from_condensed(binding, 5, false);
-        let h = pointer_to_merge_history(&clink_pointer(&cm));
+        let h = pointer_to_merge_history(&clink_pointer(&cm).unwrap());
         assert_eq!(h.len(), 4);
         assert_eq!(h.last().expect("non-empty history").size, 5);
     }
@@ -127,10 +129,10 @@ mod tests {
         // For this strictly chain-like case with increasing gaps both methods agree.
         let d = vec![1.0, 3.0, 8.0, 2.0, 7.0, 6.0];
         let cm_a = CondensedDistanceMatrix::new_from_condensed(d.clone(), 4, false);
-        let a = agnes(&cm_a, CompleteLinkage);
+        let a = agnes(&cm_a, CompleteLinkage).unwrap();
         let binding = d.clone();
         let cm = CondensedDistanceMatrix::new_from_condensed(binding, 4, false);
-        let c = pointer_to_merge_history(&clink_pointer(&cm));
+        let c = pointer_to_merge_history(&clink_pointer(&cm).unwrap());
         assert_eq!(a, c);
     }
 
@@ -139,7 +141,7 @@ mod tests {
         let d = vec![1.0, 3.0, 8.0, 2.0, 7.0, 6.0];
         let binding = d.clone();
         let cm = CondensedDistanceMatrix::new_from_condensed(binding, 4, false);
-        let p = clink_pointer(&cm);
+        let p = clink_pointer(&cm).unwrap();
         assert_eq!(p.pi.len(), 4);
         assert_eq!(p.lambda.len(), 4);
     }

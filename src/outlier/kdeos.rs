@@ -11,7 +11,7 @@ const KDEOS_CUTOFF: f64 = 1e-20;
 pub fn kdeos<'a, S, D, F>(
     tree: &S, data: &'a D, kmin: usize, kmax: usize, kernel: KernelDensityFunction,
     min_bandwidth: f64, scale: f64, idim: Option<usize>,
-) -> OutlierResult<F>
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
@@ -19,14 +19,14 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             Vec::new(),
             "KDEOS",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
     let kmin = kmin.max(1);
@@ -36,7 +36,7 @@ where
     let knum = kmax + 1 - kmin;
 
     let neighborhoods: Vec<Vec<(usize, F)>> =
-        for_each_knn(tree, data, k_effective + 1, true, |_, neigh| neigh);
+        for_each_knn(tree, data, k_effective + 1, true, |_, neigh| neigh)?;
 
     let dim = match idim {
         Some(d) if d > 0 => d as f64,
@@ -93,47 +93,46 @@ where
     }
 
     let normal = Normal::new(0.0, 1.0).unwrap();
-    let scores: Vec<F> = (0..size)
-        .par_map(|i| {
-            let neigh = &neighborhoods[i];
-            let score: f64 = if neigh.is_empty() {
-                1.0
-            } else {
-                let mut score_sum = 0.0_f64;
-                // Include self and neighbors as in ELKI KDEOS score calculation:
-                // query has been kept in neigh in position 0 from kNN(k_effective+1).
-                for (k, _) in densities.iter().take(knum).enumerate() {
-                    let mut mean = 0.0_f64;
-                    for (neighbor_id, _) in neigh.iter() {
-                        mean += densities[*neighbor_id][k];
-                    }
-                    mean /= neigh.len() as f64;
-
-                    let mut variance = 0.0_f64;
-                    for (neighbor_id, _) in neigh.iter() {
-                        let dval = densities[*neighbor_id][k];
-                        variance += (dval - mean).powi(2);
-                    }
-
-                    let stddev = if neigh.len() > 1 {
-                        (variance / ((neigh.len() - 1) as f64)).sqrt()
-                    } else {
-                        0.0_f64
-                    };
-
-                    if stddev > 0.0_f64 {
-                        score_sum += (mean - densities[i][k]) / stddev;
-                    }
+    let scores: Vec<F> = (0..size).par_map(|i| {
+        let neigh = &neighborhoods[i];
+        let score: f64 = if neigh.is_empty() {
+            1.0
+        } else {
+            let mut score_sum = 0.0_f64;
+            // Include self and neighbors as in ELKI KDEOS score calculation:
+            // query has been kept in neigh in position 0 from kNN(k_effective+1).
+            for (k, _) in densities.iter().take(knum).enumerate() {
+                let mut mean = 0.0_f64;
+                for (neighbor_id, _) in neigh.iter() {
+                    mean += densities[*neighbor_id][k];
                 }
-                if knum > 0 {
-                    score_sum /= knum as f64;
-                }
-                normal.cdf(score_sum).unwrap_or(0.0)
-            };
-            F::from_f64(score).unwrap_or(F::zero())
-        });
+                mean /= neigh.len() as f64;
 
-    make_outlier_result(scores, "KDEOS", false, F::zero(), F::zero(), F::infinity())
+                let mut variance = 0.0_f64;
+                for (neighbor_id, _) in neigh.iter() {
+                    let dval = densities[*neighbor_id][k];
+                    variance += (dval - mean).powi(2);
+                }
+
+                let stddev = if neigh.len() > 1 {
+                    (variance / ((neigh.len() - 1) as f64)).sqrt()
+                } else {
+                    0.0_f64
+                };
+
+                if stddev > 0.0_f64 {
+                    score_sum += (mean - densities[i][k]) / stddev;
+                }
+            }
+            if knum > 0 {
+                score_sum /= knum as f64;
+            }
+            normal.cdf(score_sum).unwrap_or(0.0)
+        };
+        F::from_f64(score).unwrap_or(F::zero())
+    });
+
+    Ok(make_outlier_result(scores, "KDEOS", false, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -154,7 +153,8 @@ mod tests {
             crate::search::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
 
         let results =
-            kdeos(&tree, &data, 1, 2, KernelDensityFunction::Gaussian, 1e-6, 0.25, Some(1));
+            kdeos(&tree, &data, 1, 2, KernelDensityFunction::Gaussian, 1e-6, 0.25, Some(1))
+                .unwrap();
         let (best_index, _) = results
             .scores
             .iter()
@@ -181,7 +181,8 @@ mod tests {
             0.0,
             0.5 * KernelDensityFunction::Gaussian.canonical_bandwidth(),
             Some(2),
-        );
+        )
+        .unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("KDEOS-10").expect("No reference for KDEOS-10");
         let labels: Vec<u8> = label_from_reference(&reference);

@@ -21,7 +21,7 @@ use crate::{Float, VectorData as Dataset, math};
 /// nearest center.
 pub fn tkmeans<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N, alpha: f32,
-) -> KMeansResult<N>
+) -> Result<KMeansResult<N>, String>
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
@@ -36,6 +36,7 @@ where
 
     // Initialize cluster centers
     init.init::<A>(data, &mut cent, k);
+    crate::check_interrupted()?;
 
     // pre-allocate scratch space
     let mut assign = vec![0_usize; n];
@@ -151,7 +152,7 @@ where
     for &d in &dist {
         inertia += d;
     }
-    KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, inertia)
+    Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, inertia))
 }
 
 /// Select the smallest `keep` distances in `dist` and mark them as kept.
@@ -195,8 +196,8 @@ mod tests {
         let mut init2 = crate::cluster::kmeans::init::RandomSample::new(Pcg32::seed_from_u64(42));
 
         let res_lloyd =
-            crate::cluster::kmeans::lloyd::lloyd::<f64, _, _>(&dataset, 5, &mut init1, 100, 0.0);
-        let res_tkmeans = tkmeans(&dataset, 5, &mut init2, 100, 0.0, 0.0);
+            crate::cluster::kmeans::lloyd::lloyd::<f64, _, _>(&dataset, 5, &mut init1, 100, 0.0).unwrap();
+        let res_tkmeans = tkmeans(&dataset, 5, &mut init2, 100, 0.0, 0.0).unwrap();
 
         assert_eq!(res_lloyd.iterations, res_tkmeans.iterations);
         assert_eq!(res_lloyd.assignments, res_tkmeans.assignments);
@@ -209,7 +210,7 @@ mod tests {
         let dataset = NdArrayDataset::new(&mat);
         let mut init = crate::cluster::kmeans::init::RandomSample::new(Pcg32::seed_from_u64(42));
 
-        let res = tkmeans(&dataset, 5, &mut init, 100, 0.0, 0.1);
+        let res = tkmeans(&dataset, 5, &mut init, 100, 0.0, 0.1).unwrap();
         // With trimming, the reported inertia should be <= full inertia
         let full_loss = compute_loss(&dataset, &res.centers, &res.assignments);
         assert!(res.inertia.unwrap() <= full_loss);

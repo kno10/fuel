@@ -50,7 +50,7 @@ where
 /// Manhattan (L1).
 pub fn kmedians<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
-) -> KMeansResult<N>
+) -> Result<KMeansResult<N>, String>
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
@@ -61,6 +61,7 @@ where
     let mut cent = Centers::<N>::new(k, d);
     let (mut assign, mut csize, mut lastsum) =
         kmedians_initial_assignment::<N, I, A>(data, k, init, &mut cent, &mut scratch);
+    crate::check_interrupted()?;
 
     let mut iter = 1; // initial iteration done above
     while iter < maxiter {
@@ -143,7 +144,7 @@ where
             break;
         }
     }
-    KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum)
+    Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum))
 }
 
 #[cfg(test)]
@@ -182,7 +183,7 @@ mod tests {
         let mat = gen_test_data((100, 2), Box::new(Pcg32::seed_from_u64(42)));
         let dataset = NdArrayDataset::new(&mat);
         let mut init = RandomSample::new(Box::new(Pcg32::seed_from_u64(42)));
-        let res = kmedians(&dataset, 5, &mut init, 100, 0.0);
+        let res = kmedians(&dataset, 5, &mut init, 100, 0.0).unwrap();
         let (cent, assign, niter, los) =
             (res.centers, res.assignments, res.iterations, res.inertia.unwrap_or_default());
         let loss: f64 = euclidean_loss(&dataset, &cent, &assign);
@@ -198,12 +199,12 @@ mod tests {
         let mat = gen_test_data((100, 2), Box::new(Pcg32::seed_from_u64(42)));
         let dataset = NdArrayDataset::new(&mat);
         let mut init1 = RandomSample::new(Box::new(Pcg32::seed_from_u64(42)));
-        let res1 = kmedians(&dataset, 5, &mut init1, 100, 0.0);
+        let res1 = kmedians(&dataset, 5, &mut init1, 100, 0.0).unwrap();
         let (_c1, _a1, n1, _) =
             (res1.centers, res1.assignments, res1.iterations, res1.inertia.unwrap_or_default());
         let tol: f64 = 1e-3;
         let mut init2 = RandomSample::new(Box::new(Pcg32::seed_from_u64(42)));
-        let res2 = kmedians(&dataset, 5, &mut init2, 100, tol);
+        let res2 = kmedians(&dataset, 5, &mut init2, 100, tol).unwrap();
         let (_c2, _a2, n2, _) =
             (res2.centers, res2.assignments, res2.iterations, res2.inertia.unwrap_or_default());
         assert!(n2 <= n1, "tolerance should not increase iteration count");

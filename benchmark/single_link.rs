@@ -82,13 +82,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let label = algorithm.label();
         let baseline = distance.count();
         let start = Instant::now();
-        let history = run_single_link_algorithm(
-            algorithm,
-            config.tree_kind,
-            config.seed,
-            sample_size,
-            &data,
-        );
+        let history =
+            run_single_link_algorithm(algorithm, config.tree_kind, config.seed, sample_size, &data)?;
         let elapsed = start.elapsed();
         let after = distance.count();
         let dist_count = after.saturating_sub(baseline);
@@ -168,8 +163,7 @@ fn print_run_information(config: &Config, used_rows: usize, dimension: usize, sa
 }
 
 fn build_algorithm_list(
-    alg_arg: Option<&str>,
-    buffered_slack: usize,
+    alg_arg: Option<&str>, buffered_slack: usize,
 ) -> Result<Vec<SingleLinkAlgorithm>, Box<dyn Error>> {
     let all = vec![
         SingleLinkAlgorithm::Boruvka,
@@ -216,39 +210,36 @@ fn build_algorithm_list(
 }
 
 fn run_single_link_algorithm(
-    algorithm: SingleLinkAlgorithm,
-    tree_kind: TreeKind,
-    seed: u64,
-    sample_size: usize,
+    algorithm: SingleLinkAlgorithm, tree_kind: TreeKind, seed: u64, sample_size: usize,
     data: &TableWithDistance<f64, Vec<f64>, CountingDistance<Euclidean>, f64>,
-) -> MergeHistory<f64> {
-    match algorithm {
+) -> Result<MergeHistory<f64>, Box<dyn Error>> {
+    Ok(match algorithm {
         SingleLinkAlgorithm::Agnes => {
             let condensed = CondensedDistanceMatrix::new_from_data(data);
-            agnes(&condensed, SingleLinkage)
+            agnes(&condensed, SingleLinkage)?
         }
         SingleLinkAlgorithm::Anderberg => {
             let condensed = CondensedDistanceMatrix::new_from_data(data);
-            anderberg(&condensed, SingleLinkage)
+            anderberg(&condensed, SingleLinkage)?
         }
         SingleLinkAlgorithm::Muellner => {
             let condensed = CondensedDistanceMatrix::new_from_data(data);
-            muellner(&condensed, SingleLinkage)
+            muellner(&condensed, SingleLinkage)?
         }
         SingleLinkAlgorithm::NNChain => {
             let condensed = CondensedDistanceMatrix::new_from_data(data);
-            nn_chain(&condensed, SingleLinkage)
+            nn_chain(&condensed, SingleLinkage)?
         }
         SingleLinkAlgorithm::Boruvka => {
             let mut rng = StdRng::seed_from_u64(seed);
             match tree_kind {
                 TreeKind::Vp => {
                     let tree = VPTree::new(data, sample_size, &mut rng);
-                    boruvka_searchers_single_link(&tree, data)
+                    boruvka_searchers_single_link(&tree, data)?
                 }
                 TreeKind::Kd => {
                     let tree = KdTree::new(data, MaxVarianceSplit);
-                    boruvka_searchers_single_link(&tree, data)
+                    boruvka_searchers_single_link(&tree, data)?
                 }
             }
         }
@@ -257,11 +248,11 @@ fn run_single_link_algorithm(
             match tree_kind {
                 TreeKind::Vp => {
                     let tree = VPTree::new(data, sample_size, &mut rng);
-                    heap_of_searchers_single_link(&tree, data)
+                    heap_of_searchers_single_link(&tree, data)?
                 }
                 TreeKind::Kd => {
                     let tree = KdTree::new(data, MaxVarianceSplit);
-                    heap_of_searchers_single_link(&tree, data)
+                    heap_of_searchers_single_link(&tree, data)?
                 }
             }
         }
@@ -270,11 +261,11 @@ fn run_single_link_algorithm(
             match tree_kind {
                 TreeKind::Vp => {
                     let tree = VPTree::new(data, sample_size, &mut rng);
-                    restarting_search_single_link(&tree, data)
+                    restarting_search_single_link(&tree, data)?
                 }
                 TreeKind::Kd => {
                     let tree = KdTree::new(data, MaxVarianceSplit);
-                    restarting_search_single_link(&tree, data)
+                    restarting_search_single_link(&tree, data)?
                 }
             }
         }
@@ -283,11 +274,11 @@ fn run_single_link_algorithm(
             match tree_kind {
                 TreeKind::Vp => {
                     let tree = VPTree::new(data, sample_size, &mut rng);
-                    buffered_search_single_link(&tree, data, slack)
+                    buffered_search_single_link(&tree, data, slack)?
                 }
                 TreeKind::Kd => {
                     let tree = KdTree::new(data, MaxVarianceSplit);
-                    buffered_search_single_link(&tree, data, slack)
+                    buffered_search_single_link(&tree, data, slack)?
                 }
             }
         }
@@ -296,16 +287,16 @@ fn run_single_link_algorithm(
             match tree_kind {
                 TreeKind::Vp => {
                     let tree = VPTree::new(data, sample_size, &mut rng);
-                    lazy_buffered_search_single_link(&tree, data, slack)
+                    lazy_buffered_search_single_link(&tree, data, slack)?
                 }
                 TreeKind::Kd => {
                     let tree = KdTree::new(data, MaxVarianceSplit);
-                    lazy_buffered_search_single_link(&tree, data, slack)
+                    lazy_buffered_search_single_link(&tree, data, slack)?
                 }
             }
         }
-        SingleLinkAlgorithm::Slink => slink(data),
-    }
+        SingleLinkAlgorithm::Slink => slink(data)?,
+    })
 }
 
 fn summarize_cluster_sizes(labels: &[usize]) -> (BTreeMap<usize, usize>, usize) {

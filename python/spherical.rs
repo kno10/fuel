@@ -24,14 +24,17 @@ macro_rules! variant_call {
                 params.seed,
             )?;
             let tol = <$dtype as crate::Float>::cast(params.tol);
-            let res = cluster::kmeans::$variant::<$dtype, _, _>(
-                &dataset,
-                k,
-                &mut init,
-                params.max_iter,
-                tol,
-            )
-            .into();
+            let res = py
+                .detach(|| {
+                    cluster::kmeans::$variant::<$dtype, _, _>(
+                        &dataset,
+                        k,
+                        &mut init,
+                        params.max_iter,
+                        tol,
+                    )
+                })
+                .into();
             $result_fn(py, res)
         }
     };
@@ -41,9 +44,7 @@ macro_rules! variant_call_sparse {
     ($name:ident, $variant:ident, $dtype:ty, $result_fn:ident) => {
         #[pyfunction]
         #[pyo3(signature = (data, params))]
-        fn $name(
-            py: Python<'_>, data: Py<PyAny>, params: &KMeansParams,
-        ) -> PyResult<Py<PyAny>> {
+        fn $name(py: Python<'_>, data: Py<PyAny>, params: &KMeansParams) -> PyResult<Py<PyAny>> {
             let dataset = parse_csr_dataset::<$dtype>(py, data)?;
             let k = params.k;
             let mut init = InitMethod::<$dtype>::parse(
@@ -54,14 +55,17 @@ macro_rules! variant_call_sparse {
                 params.seed,
             )?;
             let tol = <$dtype as crate::Float>::cast(params.tol);
-            let res = cluster::kmeans::$variant::<$dtype, _, _>(
-                &dataset,
-                k,
-                &mut init,
-                params.max_iter,
-                tol,
-            )
-            .into();
+            let res = py
+                .detach(|| {
+                    cluster::kmeans::$variant::<$dtype, _, _>(
+                        &dataset,
+                        k,
+                        &mut init,
+                        params.max_iter,
+                        tol,
+                    )
+                })
+                .into();
             $result_fn(py, res)
         }
     };

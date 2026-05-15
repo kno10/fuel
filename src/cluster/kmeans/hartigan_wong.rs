@@ -12,7 +12,7 @@ use crate::{Float, VectorData as Dataset, math};
 #[inline(always)]
 pub fn hartigan_wong<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
-) -> KMeansResult<N>
+) -> Result<KMeansResult<N>, String>
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
@@ -24,11 +24,10 @@ where
     let mut sums = Centers::<N>::new(k, d);
 
     // Initial assignment (IC1) and center computation.
-    let (mut assign, mut csize, _) = crate::cluster::kmeans::lloyd::lloyd_initial_assignment::<
-        N,
-        A,
-        I,
-    >(data, None, k, init, &mut cent, &mut sums);
+    let (mut assign, mut csize, _) =
+        crate::cluster::kmeans::lloyd::lloyd_initial_assignment::<N, A, I>(
+            data, None, k, init, &mut cent, &mut sums,
+        );
 
     // Data structures needed by AS 136.
     let mut second = vec![0_usize; n]; // IC2
@@ -81,6 +80,7 @@ where
 
     let mut iter = 1;
     while iter < maxiter {
+        crate::check_interrupted()?;
         iter += 1;
         let old_cent = if tol > N::zero() { Some(cent.clone()) } else { None };
 
@@ -258,7 +258,7 @@ where
         sum += math::sqdist(cent.center(cluster), &scratch, d);
     }
 
-    KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, sum)
+    Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, sum))
 }
 
 /// Hartigan-Wong k-means (Algorithm AS 136) with quick-transfer heuristic.
@@ -269,7 +269,7 @@ where
 #[inline(always)]
 pub fn hartigan_wong_quick<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
-) -> KMeansResult<N>
+) -> Result<KMeansResult<N>, String>
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
@@ -279,11 +279,10 @@ where
     let mut scratch = vec![N::zero(); d];
     let mut cent = Centers::<N>::new(k, d);
     let mut sums = Centers::<N>::new(k, d);
-    let (mut assign, mut csize, _) = crate::cluster::kmeans::lloyd::lloyd_initial_assignment::<
-        N,
-        A,
-        I,
-    >(data, None, k, init, &mut cent, &mut sums);
+    let (mut assign, mut csize, _) =
+        crate::cluster::kmeans::lloyd::lloyd_initial_assignment::<N, A, I>(
+            data, None, k, init, &mut cent, &mut sums,
+        );
 
     let mut best2_idx = vec![0_usize; n];
     let mut best2_dist = vec![N::infinity(); n];
@@ -421,12 +420,13 @@ where
         sum += math::sqdist(cent.center(cluster), &scratch, d);
     }
 
-    KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, sum)
+    Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, sum))
 }
 
 /// Hartigan-Wong k-means (Algorithm AS 136).
 /// Hartigan-Wong k-means with quick transfer heuristic (fast path when the
 /// second-closest centroid yields improvement).
+
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;
@@ -441,7 +441,7 @@ mod tests {
         let mat = gen_test_data((100, 2), Box::new(Pcg32::seed_from_u64(42)));
         let dataset = NdArrayDataset::new(&mat);
         let mut init = RandomSample::new(Box::new(Pcg32::seed_from_u64(42)));
-        let res = hartigan_wong(&dataset, 5, &mut init, 100, 0.0);
+        let res = hartigan_wong(&dataset, 5, &mut init, 100, 0.0).unwrap();
         let loss = compute_loss(&dataset, &res.centers, &res.assignments);
         assert!(res.inertia.is_some() && (loss - res.inertia.unwrap()).abs() < 1e-12);
         assert!(res.iterations <= 100);
@@ -452,7 +452,7 @@ mod tests {
         let mat = gen_test_data((100, 2), Box::new(Pcg32::seed_from_u64(42)));
         let dataset = NdArrayDataset::new(&mat);
         let mut init = RandomSample::new(Box::new(Pcg32::seed_from_u64(42)));
-        let res = hartigan_wong_quick(&dataset, 5, &mut init, 100, 0.0);
+        let res = hartigan_wong_quick(&dataset, 5, &mut init, 100, 0.0).unwrap();
         let loss = compute_loss(&dataset, &res.centers, &res.assignments);
         assert!(res.inertia.is_some() && (loss - res.inertia.unwrap()).abs() < 1e-12);
         assert!(res.iterations <= 100);
@@ -516,8 +516,8 @@ mod tests {
         let mut init = FixedInit { centers: vec![[0.0, 0.0], [10.0, 0.0]] };
         let mut init2 = FixedInit { centers: vec![[0.0, 0.0], [10.0, 0.0]] };
 
-        let res_lloyd = crate::cluster::kmeans::lloyd::lloyd(&dataset, 2, &mut init, 100, 0.0);
-        let res_hw = hartigan_wong(&dataset, 2, &mut init2, 100, 0.0);
+        let res_lloyd = crate::cluster::kmeans::lloyd::lloyd(&dataset, 2, &mut init, 100, 0.0).unwrap();
+        let res_hw = hartigan_wong(&dataset, 2, &mut init2, 100, 0.0).unwrap();
 
         let _loss_lloyd = compute_loss(&dataset, &res_lloyd.centers, &res_lloyd.assignments);
         let _loss_hw = compute_loss(&dataset, &res_hw.centers, &res_hw.assignments);

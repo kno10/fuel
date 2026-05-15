@@ -16,14 +16,16 @@ use crate::{CandidateHeap, DistPair, DistanceData, Float};
 /// Perform hierarchical clustering using Müllner's generic-linkage approach
 /// with an Anderberg nearest-neighbor cache and a heap for candidate retrieval.
 #[must_use]
-pub fn muellner<D, F: Float, L: Linkage<F> + Copy + Sync>(data: &D, linkage: L) -> MergeHistory<F>
+pub fn muellner<D, F: Float, L: Linkage<F> + Copy + Sync>(
+    data: &D, linkage: L,
+) -> Result<MergeHistory<F>, String>
 where
     D: DistanceData<F> + Sync,
 {
     let n = data.len();
     assert!(n > 0, "number of points must be positive");
     let squared = data.is_squared_distance();
-    let mat = build_condensed_linkage_matrix(data, linkage);
+    let mat = build_condensed_linkage_matrix(data, linkage)?;
     let mut state = AnderbergState::new(mat, n);
 
     let mut heap = CandidateHeap::<F>::with_capacity(n);
@@ -32,6 +34,7 @@ where
     }
 
     for _ in 1..n {
+        crate::poll_interrupted()?;
         let (mindist, x, y) = pop_valid_merge(&mut heap, &state.best, &state.clustermap);
         let (x, y) = (x as usize, y as usize);
         let restored = linkage.restore(mindist, squared);
@@ -45,7 +48,7 @@ where
         push_candidate(&mut heap, &state.best, y as idsize);
     }
 
-    state.builder.into_merges()
+    Ok(state.builder.into_merges())
 }
 
 fn push_candidate<F: Float>(heap: &mut CandidateHeap<F>, best: &[(F, idsize)], x: idsize) {
@@ -92,7 +95,7 @@ mod tests {
     #[test]
     fn muellner_average_regression() {
         test_clustering_condensed("Muellner", "average", Euclidean, |condensed, min_clusters| {
-            let history = muellner(condensed, GroupAverageLinkage);
+            let history = muellner(condensed, GroupAverageLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -103,7 +106,7 @@ mod tests {
     #[test]
     fn muellner_complete_regression() {
         test_clustering_condensed("Muellner", "complete", Euclidean, |condensed, min_clusters| {
-            let history = muellner(condensed, CompleteLinkage);
+            let history = muellner(condensed, CompleteLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -114,7 +117,7 @@ mod tests {
     #[test]
     fn muellner_single_regression() {
         test_clustering_condensed("Muellner", "single", Euclidean, |condensed, min_clusters| {
-            let history = muellner(condensed, SingleLinkage);
+            let history = muellner(condensed, SingleLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -129,7 +132,7 @@ mod tests {
             "ward",
             SquaredEuclidean,
             |condensed, min_clusters| {
-                let history = muellner(condensed, WardLinkage);
+                let history = muellner(condensed, WardLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -145,7 +148,7 @@ mod tests {
             "weighted_average",
             Euclidean,
             |condensed, min_clusters| {
-                let history = muellner(condensed, WeightedAverageLinkage);
+                let history = muellner(condensed, WeightedAverageLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -161,7 +164,7 @@ mod tests {
             "centroid",
             SquaredEuclidean,
             |condensed, min_clusters| {
-                let history = muellner(condensed, CentroidLinkage);
+                let history = muellner(condensed, CentroidLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -177,7 +180,7 @@ mod tests {
             "median",
             SquaredEuclidean,
             |condensed, min_clusters| {
-                let history = muellner(condensed, MedianLinkage);
+                let history = muellner(condensed, MedianLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -189,7 +192,7 @@ mod tests {
     #[test]
     fn muellner_minimum_variance_increase_regression() {
         test_clustering_condensed("Muellner", "mivar", Euclidean, |condensed, min_clusters| {
-            let history = muellner(condensed, MinimumVarianceIncreaseLinkage);
+            let history = muellner(condensed, MinimumVarianceIncreaseLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -200,7 +203,7 @@ mod tests {
     #[test]
     fn muellner_minimum_sum_squares_regression() {
         test_clustering_condensed("Muellner", "mnssq", Euclidean, |condensed, min_clusters| {
-            let history = muellner(condensed, MinimumSumSquaresLinkage);
+            let history = muellner(condensed, MinimumSumSquaresLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -211,7 +214,7 @@ mod tests {
     #[test]
     fn muellner_minimum_variance_regression() {
         test_clustering_condensed("Muellner", "mnvar", Euclidean, |condensed, min_clusters| {
-            let history = muellner(condensed, MinimumVarianceLinkage);
+            let history = muellner(condensed, MinimumVarianceLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)

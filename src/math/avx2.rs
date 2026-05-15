@@ -885,7 +885,6 @@ pub fn dot_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
     sum
 }
 
-
 // ----- pairwise-sqdist micro-kernels -----------------------------------------
 //
 // Layout convention (shared by both):

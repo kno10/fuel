@@ -12,10 +12,9 @@ use crate::{
 /// with a witness cache for skip_node pruning.  `slack` controls how many extra
 /// candidates are explored beyond the current lower-bound threshold before
 /// stopping each refill phase.
-#[must_use]
 pub fn lazy_buffered_search_single_link<'a, S, D, F>(
     tree: &'a S, data: &'a D, slack: usize,
-) -> MergeHistory<F>
+) -> Result<MergeHistory<F>, String>
 where
     F: Float + 'a,
     D: DistanceData<F> + ?Sized + 'a,
@@ -57,6 +56,7 @@ where
     }
 
     while builder.merge_count() < n - 1 {
+        crate::poll_interrupted()?;
         let Some(top) = primary.pop() else {
             break;
         };
@@ -104,7 +104,7 @@ where
         }
     }
 
-    builder.into_history()
+    Ok(builder.into_history())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -174,7 +174,7 @@ mod tests {
             |access, min_clusters| {
                 let mut rng = StdRng::seed_from_u64(42);
                 let tree = VPTree::new(access, 3, &mut rng);
-                let history = lazy_buffered_search_single_link(&tree, access, 1);
+                let history = lazy_buffered_search_single_link(&tree, access, 1).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)

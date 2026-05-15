@@ -169,7 +169,12 @@ macro_rules! hdbscan_brute_force_wrapper {
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_dataset::<$dtype>(&array, distance)?;
-            let inner = $algo(&dataset, min_points);
+            let inner = py
+                .detach(|| {
+                    crate::reset_interrupted();
+                    $algo(&dataset, min_points)
+                })
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
             Py::new(py, $wrapper { inner })?.into_py_any(py)
         }
     };
@@ -193,7 +198,12 @@ macro_rules! hdbscan_tree_wrapper {
             let array = data.as_array();
             let dataset = build_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, sample_size, seed);
-            let inner = $algo(&tree, &dataset, min_points);
+            let inner = py
+                .detach(|| {
+                    crate::reset_interrupted();
+                    $algo(&tree, &dataset, min_points)
+                })
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
             Py::new(py, $wrapper { inner })?.into_py_any(py)
         }
     };
@@ -249,7 +259,12 @@ macro_rules! hdbscan_tree_slack_wrapper {
             let array = data.as_array();
             let dataset = build_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, sample_size, seed);
-            let inner = $algo(&tree, &dataset, min_points, slack);
+            let inner = py
+                .detach(|| {
+                    crate::reset_interrupted();
+                    $algo(&tree, &dataset, min_points, slack)
+                })
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
             Py::new(py, $wrapper { inner })?.into_py_any(py)
         }
     };

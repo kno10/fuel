@@ -35,23 +35,30 @@ use crate::{DistanceData, Float};
 #[cfg(feature = "parallel")]
 pub(crate) fn build_condensed_linkage_matrix<D, F: Float, L: Linkage<F> + Copy + Sync>(
     data: &D, linkage: L,
-) -> Vec<F>
+) -> Result<Vec<F>, String>
 where
     D: DistanceData<F> + Sync,
 {
+    use std::sync::atomic::Ordering::Relaxed;
     let n = data.len();
     let squared = data.is_squared_distance();
 
-    (1..n)
+    let rows = (1..n)
         .into_par_iter()
-        .flat_map_iter(|x| (0..x).map(move |y| linkage.initial(data.distance(x, y), squared)))
-        .collect()
+        .map(|x| {
+            if crate::SHUTDOWN_REQUESTED.load(Relaxed) {
+                return Err("interrupted".to_string());
+            }
+            Ok((0..x).map(|y| linkage.initial(data.distance(x, y), squared)).collect::<Vec<_>>())
+        })
+        .collect::<Result<Vec<Vec<F>>, String>>()?;
+    Ok(rows.into_iter().flatten().collect())
 }
 
 #[cfg(not(feature = "parallel"))]
 pub(crate) fn build_condensed_linkage_matrix<D, F: Float, L: Linkage<F> + Copy>(
     data: &D, linkage: L,
-) -> Vec<F>
+) -> Result<Vec<F>, String>
 where
     D: DistanceData<F>,
 {
@@ -59,11 +66,12 @@ where
     let squared = data.is_squared_distance();
     let mut mat = Vec::with_capacity(n * (n - 1) / 2);
     for x in 1..n {
+        crate::poll_interrupted()?;
         for y in 0..x {
             mat.push(linkage.initial(data.distance(x, y), squared));
         }
     }
-    mat
+    Ok(mat)
 }
 
 /// Perform the AGNES algorithm on a condensed lower-triangular distance
@@ -84,7 +92,9 @@ where
 ///
 /// The function converts the provided condensed matrix into an agglomerative
 /// merge history and will `panic!` when the preconditions above are violated.
-pub fn agnes<D, F: Float, L: Linkage<F> + Copy + Sync>(data: &D, linkage: L) -> MergeHistory<F>
+pub fn agnes<D, F: Float, L: Linkage<F> + Copy + Sync>(
+    data: &D, linkage: L,
+) -> Result<MergeHistory<F>, String>
 where
     D: DistanceData<F> + Sync,
 {
@@ -93,13 +103,14 @@ where
 
     let mut builder = Builder::<F>::new(n);
     let squared = data.is_squared_distance();
-    let mut mat = build_condensed_linkage_matrix(data, linkage);
+    let mut mat = build_condensed_linkage_matrix(data, linkage)?;
     let mut clustermap: Vec<idsize> = (0..(n as idsize)).collect();
     let mut heights = vec![F::zero(); n];
     let mut end = n; // active end, we use shrinking
 
     // repeatedly merge until one cluster remains
     for _step in 1..n {
+        crate::poll_interrupted()?;
         // find the closest pair among active objects
         let (mut mindist, mut x, mut y) = (F::infinity(), 0, 0);
 
@@ -190,7 +201,7 @@ where
         }
     }
 
-    builder.into_merges()
+    Ok(builder.into_merges())
 }
 
 #[cfg(test)]
@@ -209,7 +220,7 @@ mod tests {
     #[test]
     fn agnes_group_average_regression() {
         test_clustering_condensed("AGNES", "average", Euclidean, |condensed, min_clusters| {
-            let history = agnes(condensed, GroupAverageLinkage);
+            let history = agnes(condensed, GroupAverageLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -224,7 +235,7 @@ mod tests {
             "weighted_average",
             Euclidean,
             |condensed, min_clusters| {
-                let history = agnes(condensed, WeightedAverageLinkage);
+                let history = agnes(condensed, WeightedAverageLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -240,7 +251,7 @@ mod tests {
             "centroid",
             SquaredEuclidean,
             |condensed, min_clusters| {
-                let history = agnes(condensed, CentroidLinkage);
+                let history = agnes(condensed, CentroidLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -256,7 +267,7 @@ mod tests {
             "median",
             SquaredEuclidean,
             |condensed, min_clusters| {
-                let history = agnes(condensed, MedianLinkage);
+                let history = agnes(condensed, MedianLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -268,7 +279,7 @@ mod tests {
     #[test]
     fn agnes_complete_regression() {
         test_clustering_condensed("AGNES", "complete", Euclidean, |condensed, min_clusters| {
-            let history = agnes(condensed, CompleteLinkage);
+            let history = agnes(condensed, CompleteLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -279,7 +290,7 @@ mod tests {
     #[test]
     fn agnes_single_regression() {
         test_clustering_condensed("AGNES", "single", Euclidean, |condensed, min_clusters| {
-            let history = agnes(condensed, SingleLinkage);
+            let history = agnes(condensed, SingleLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -290,7 +301,7 @@ mod tests {
     #[test]
     fn agnes_flexible_beta_regression() {
         test_clustering_condensed("AGNES", "flexible", Euclidean, |condensed, min_clusters| {
-            let history = agnes(condensed, FlexibleBetaLinkage::new(-0.25));
+            let history = agnes(condensed, FlexibleBetaLinkage::new(-0.25)).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -301,7 +312,7 @@ mod tests {
     #[test]
     fn agnes_ward_regression() {
         test_clustering_condensed("AGNES", "ward", SquaredEuclidean, |condensed, min_clusters| {
-            let history = agnes(condensed, WardLinkage);
+            let history = agnes(condensed, WardLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -312,7 +323,7 @@ mod tests {
     #[test]
     fn agnes_minimum_variance_increase_regression() {
         test_clustering_condensed("AGNES", "mivar", Euclidean, |condensed, min_clusters| {
-            let history = agnes(condensed, MinimumVarianceIncreaseLinkage);
+            let history = agnes(condensed, MinimumVarianceIncreaseLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -323,7 +334,7 @@ mod tests {
     #[test]
     fn agnes_minimum_sum_squares_regression() {
         test_clustering_condensed("AGNES", "mnssq", Euclidean, |condensed, min_clusters| {
-            let history = agnes(condensed, MinimumSumSquaresLinkage);
+            let history = agnes(condensed, MinimumSumSquaresLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -334,7 +345,7 @@ mod tests {
     #[test]
     fn agnes_minimum_variance_regression() {
         test_clustering_condensed("AGNES", "mnvar", Euclidean, |condensed, min_clusters| {
-            let history = agnes(condensed, MinimumVarianceLinkage);
+            let history = agnes(condensed, MinimumVarianceLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)

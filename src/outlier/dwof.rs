@@ -9,7 +9,7 @@ use crate::{DistanceData, Float, IndexQuery, KnnSearch, RangeSearch};
 /// points that remain isolated for longer.
 pub fn dynamic_window_outlier_factor<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize, delta: f64,
-) -> OutlierResult<F>
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -17,14 +17,21 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(Vec::new(), "DWOF", false, F::zero(), F::zero(), F::infinity());
+        return Ok(make_outlier_result(
+            Vec::new(),
+            "DWOF",
+            false,
+            F::zero(),
+            F::zero(),
+            F::infinity(),
+        ));
     }
 
     let k_effective = k.min(size.saturating_sub(1));
 
     // initial radii based on k-nearest neighbors
     let neighborhoods =
-        crate::outlier::common::for_each_knn(tree, data, k_effective, false, |_, neigh| neigh);
+        crate::outlier::common::for_each_knn(tree, data, k_effective, false, |_, neigh| neigh)?;
 
     let mut radii = vec![F::zero(); size];
     let mut absolute_min_dist = F::infinity();
@@ -160,7 +167,7 @@ where
         }
     }
 
-    make_outlier_result(score, "DWOF", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(score, "DWOF", false, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -187,7 +194,7 @@ mod tests {
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
 
-        let results = dynamic_window_outlier_factor(&tree, &data, 2, 1.1);
+        let results = dynamic_window_outlier_factor(&tree, &data, 2, 1.1).unwrap();
         assert!(results.scores.iter().all(|v| v.is_finite() && *v >= 0.0));
 
         let outlier_idx = points.len() - 1;
@@ -202,7 +209,7 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: crate::search::vptree::VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let result = dynamic_window_outlier_factor(&tree, &data, 10, 1.1);
+        let result = dynamic_window_outlier_factor(&tree, &data, 10, 1.1).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("DWOF-10").expect("No reference for DWOF-10");
         let labels: Vec<u8> = label_from_reference(&reference);

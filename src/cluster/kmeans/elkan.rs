@@ -10,8 +10,7 @@ use crate::{Float, VectorData as Dataset, math, par_zip_chunks_map_mut};
 // Otherwise, CPU properties such as fma/avx2 may get lost and this will severely harm performance.
 #[inline(always)]
 fn elkan_initial_assignment<N, A, I>(
-    data: &A, k: usize, init: &mut I, cent: &mut Centers<N>, sums: &mut Centers<N>,
-    cdist: &mut [N],
+    data: &A, k: usize, init: &mut I, cent: &mut Centers<N>, sums: &mut Centers<N>, cdist: &mut [N],
 ) -> (Vec<usize>, Vec<usize>, Vec<N>)
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy,
@@ -35,8 +34,11 @@ where
                 },
             ),
         );
-        let deltas: Vec<(Vec<usize>, Vec<N>)> =
-            par_zip_chunks_map_mut(&mut assign, &mut bounds, k, |i0, assign_chunk, bounds_chunk| {
+        let deltas: Vec<(Vec<usize>, Vec<N>)> = par_zip_chunks_map_mut(
+            &mut assign,
+            &mut bounds,
+            k,
+            |i0, assign_chunk, bounds_chunk| {
                 let mut delta_csize = vec![0usize; k];
                 let mut delta_sums = vec![N::zero(); k * d];
                 let mut point = vec![N::zero(); d];
@@ -55,7 +57,8 @@ where
                     math::add_assign(&mut delta_sums[b * d..b * d + d], &point, d);
                 }
                 (delta_csize, delta_sums)
-            });
+            },
+        );
         for (dc, ds) in deltas {
             for j in 0..k {
                 csize[j] += dc[j];
@@ -78,8 +81,11 @@ where
         let centers = cent.as_ndarray();
         let mut matrix = vec![N::zero(); k.checked_mul(n).expect("point count overflow")];
         N::vec_pairwise_sqdist(centers, rows.view(), d, &mut matrix, k, n);
-        let deltas: Vec<(Vec<usize>, Vec<N>)> =
-            par_zip_chunks_map_mut(&mut assign, &mut bounds, k, |i0, assign_chunk, bounds_chunk| {
+        let deltas: Vec<(Vec<usize>, Vec<N>)> = par_zip_chunks_map_mut(
+            &mut assign,
+            &mut bounds,
+            k,
+            |i0, assign_chunk, bounds_chunk| {
                 let mut delta_csize = vec![0usize; k];
                 let mut delta_sums = vec![N::zero(); k * d];
                 for (ci, aa) in assign_chunk.iter_mut().enumerate() {
@@ -102,7 +108,8 @@ where
                     );
                 }
                 (delta_csize, delta_sums)
-            });
+            },
+        );
         for (dc, ds) in deltas {
             for j in 0..k {
                 csize[j] += dc[j];
@@ -117,7 +124,9 @@ where
 // Inline always to allow CPU optimization!
 // Otherwise, CPU properties such as fma/avx2 may get lost and this will severely harm performance.
 #[inline(always)]
-pub fn elkan<N, I, A>(data: &A, k: usize, init: &mut I, maxiter: usize, tol: N) -> KMeansResult<N>
+pub fn elkan<N, I, A>(
+    data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
+) -> Result<KMeansResult<N>, String>
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
@@ -130,14 +139,9 @@ where
     let mut cmov = vec![N::zero(); k];
     let mut cdist = vec![N::zero(); (k * (k - 1)) >> 1];
     let mut cnear = vec![N::zero(); k];
-    let (mut assign, mut csize, mut bounds) = elkan_initial_assignment::<N, A, I>(
-        data,
-        k,
-        init,
-        &mut cent,
-        &mut sums,
-        &mut cdist,
-    );
+    let (mut assign, mut csize, mut bounds) =
+        elkan_initial_assignment::<N, A, I>(data, k, init, &mut cent, &mut sums, &mut cdist);
+    crate::check_interrupted()?;
     let mut iter = 1; // Initial iteration above!
     while iter < maxiter {
         iter += 1;
@@ -191,8 +195,11 @@ where
                 idx += 1;
             }
         }
-        let deltas: Vec<(usize, Vec<N>, Vec<i64>)> =
-            par_zip_chunks_map_mut(&mut assign, &mut bounds, k, |i0, assign_chunk, bounds_chunk| {
+        let deltas: Vec<(usize, Vec<N>, Vec<i64>)> = par_zip_chunks_map_mut(
+            &mut assign,
+            &mut bounds,
+            k,
+            |i0, assign_chunk, bounds_chunk| {
                 let mut scratch = vec![N::zero(); d];
                 let mut delta_sums = vec![N::zero(); k * d];
                 let mut delta_csize = vec![0i64; k];
@@ -209,10 +216,7 @@ where
                     }
                     let (mut loaded, mut upper_tight, mut a) = (false, false, aa);
                     for j in 0..k {
-                        if j == aa
-                            || upper_i <= bounds_i[j]
-                            || upper_i <= cdist[triindex(a, j)]
-                        {
+                        if j == aa || upper_i <= bounds_i[j] || upper_i <= cdist[triindex(a, j)] {
                             continue;
                         }
                         if !upper_tight {
@@ -244,7 +248,8 @@ where
                     }
                 }
                 (local_changed, delta_sums, delta_csize)
-            });
+            },
+        );
         let mut changed = 0;
         for (c, ds, dc) in deltas {
             changed += c;
@@ -253,12 +258,13 @@ where
                 csize[j] = (csize[j] as i64 + dc[j]) as usize;
             }
         }
+        crate::check_interrupted()?;
         if changed == 0 {
             break;
         }
     }
     // elkan does not compute inertia directly, return without it
-    KMeansResult::without_inertia(cent.into_ndarray(), assign, iter)
+    Ok(KMeansResult::without_inertia(cent.into_ndarray(), assign, iter))
 }
 
 #[cfg(test)]
@@ -275,7 +281,7 @@ mod tests {
         let mat = gen_test_data((100, 2), Pcg32::seed_from_u64(42));
         let dataset = NdArrayDataset::new(&mat);
         let mut init = RandomSample::new(Pcg32::seed_from_u64(42));
-        let result = elkan::<_, _, _>(&dataset, 5, &mut init, 100, 0.0);
+        let result = elkan::<_, _, _>(&dataset, 5, &mut init, 100, 0.0).unwrap();
         let loss = compute_loss(&dataset, &result.centers, &result.assignments);
         assert!((loss - 50.82715291533402).abs() < 1e-12, "loss not as expected: {}", loss);
         assert_eq!(result.iterations, 11, "niter not as expected");
@@ -287,11 +293,11 @@ mod tests {
         let dataset = NdArrayDataset::new(&mat);
 
         let mut init1 = RandomSample::new(Pcg32::seed_from_u64(42));
-        let _res1 = elkan::<_, _, _>(&dataset, 5, &mut init1, 100, 0.0);
+        let _res1 = elkan::<_, _, _>(&dataset, 5, &mut init1, 100, 0.0).unwrap();
         let n1 = _res1.iterations;
         let tol: f64 = 1e-3;
         let mut init2 = RandomSample::new(Pcg32::seed_from_u64(42));
-        let _res2 = elkan::<_, _, _>(&dataset, 5, &mut init2, 100, tol);
+        let _res2 = elkan::<_, _, _>(&dataset, 5, &mut init2, 100, tol).unwrap();
         let n2 = _res2.iterations;
         assert!(n2 <= n1, "tolerance should not increase iteration count");
     }

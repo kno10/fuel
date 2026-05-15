@@ -7,7 +7,7 @@ use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 /// neighborhood and subspace selection process.
 pub fn subspace_outlier_degree<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize, alpha: f64,
-) -> OutlierResult<F>
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
@@ -15,110 +15,114 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(Vec::new(), "SOD", false, F::zero(), F::zero(), F::infinity());
+        return Ok(make_outlier_result(
+            Vec::new(),
+            "SOD",
+            false,
+            F::zero(),
+            F::zero(),
+            F::infinity(),
+        ));
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             vec![F::zero(); size],
             "SOD",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
     // Precompute Euclidean kNN neighborhoods (with self), in parallel.
     let euclidean_neighborhoods = for_each_knn(tree, data, k_effective, true, |_, neigh| {
         neigh.iter().map(|(idx, _)| *idx).collect::<Vec<usize>>()
-    });
+    })?;
 
     let dim = data.dims();
 
-    let scores: Vec<F> = (0..size)
-        .par_map(|idx| {
-            let query_neighbors = &euclidean_neighborhoods[idx];
+    let scores: Vec<F> = (0..size).par_map(|idx| {
+        let query_neighbors = &euclidean_neighborhoods[idx];
 
-            let mut similarities = Vec::with_capacity(size - 1);
-            for (j, neighbor_list) in euclidean_neighborhoods.iter().enumerate().take(size) {
-                if j == idx {
-                    continue;
-                }
-                let shared =
-                    query_neighbors.iter().filter(|&&v| neighbor_list.contains(&v)).count();
-                similarities.push((j, shared));
+        let mut similarities = Vec::with_capacity(size - 1);
+        for (j, neighbor_list) in euclidean_neighborhoods.iter().enumerate().take(size) {
+            if j == idx {
+                continue;
             }
+            let shared = query_neighbors.iter().filter(|&&v| neighbor_list.contains(&v)).count();
+            similarities.push((j, shared));
+        }
 
-            similarities.sort_unstable_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        similarities.sort_unstable_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
-            let neighborhood = if similarities.len() <= k_effective {
-                similarities.into_iter().map(|(j, _)| j).collect::<Vec<usize>>()
-            } else {
-                let threshold = similarities[k_effective - 1].1;
-                similarities
-                    .into_iter()
-                    .filter(|&(_, shared)| shared >= threshold)
-                    .map(|(j, _)| j)
-                    .collect::<Vec<usize>>()
-            };
+        let neighborhood = if similarities.len() <= k_effective {
+            similarities.into_iter().map(|(j, _)| j).collect::<Vec<usize>>()
+        } else {
+            let threshold = similarities[k_effective - 1].1;
+            similarities
+                .into_iter()
+                .filter(|&(_, shared)| shared >= threshold)
+                .map(|(j, _)| j)
+                .collect::<Vec<usize>>()
+        };
 
-            if neighborhood.is_empty() {
-                return F::zero();
+        if neighborhood.is_empty() {
+            return F::zero();
+        }
+
+        let mut centroid = vec![0.0_f64; dim];
+        for &nb_idx in &neighborhood {
+            let point = data.point(nb_idx);
+            for d in 0..dim {
+                centroid[d] += point[d].to_f64().unwrap_or(0.0);
             }
+        }
+        let n = neighborhood.len() as f64;
+        centroid.iter_mut().for_each(|v| *v /= n);
 
-            let mut centroid = vec![0.0_f64; dim];
-            for &nb_idx in &neighborhood {
-                let point = data.point(nb_idx);
-                for d in 0..dim {
-                    centroid[d] += point[d].to_f64().unwrap_or(0.0);
-                }
+        let mut variances = vec![0.0_f64; dim];
+        for &nb_idx in &neighborhood {
+            let point = data.point(nb_idx);
+            for d in 0..dim {
+                let v = point[d].to_f64().unwrap_or(0.0);
+                let diff = v - centroid[d];
+                variances[d] += diff * diff;
             }
-            let n = neighborhood.len() as f64;
-            centroid.iter_mut().for_each(|v| *v /= n);
+        }
+        variances.iter_mut().for_each(|v| *v /= n);
 
-            let mut variances = vec![0.0_f64; dim];
-            for &nb_idx in &neighborhood {
-                let point = data.point(nb_idx);
-                for d in 0..dim {
-                    let v = point[d].to_f64().unwrap_or(0.0);
-                    let diff = v - centroid[d];
-                    variances[d] += diff * diff;
-                }
-            }
-            variances.iter_mut().for_each(|v| *v /= n);
+        let mean_variance = if dim > 0 { variances.iter().sum::<f64>() / dim as f64 } else { 0.0 };
+        let cutoff = alpha * mean_variance;
 
-            let mean_variance =
-                if dim > 0 { variances.iter().sum::<f64>() / dim as f64 } else { 0.0 };
-            let cutoff = alpha * mean_variance;
+        let selected: Vec<usize> = variances
+            .iter()
+            .enumerate()
+            .filter_map(|(d, v)| if *v < cutoff { Some(d) } else { None })
+            .collect();
 
-            let selected: Vec<usize> = variances
-                .iter()
-                .enumerate()
-                .filter_map(|(d, v)| if *v < cutoff { Some(d) } else { None })
-                .collect();
+        if selected.is_empty() {
+            return F::zero();
+        }
 
-            if selected.is_empty() {
-                return F::zero();
-            }
+        let center_point = data.point(idx);
+        let sqr_dist = selected
+            .iter()
+            .map(|&d| {
+                let v = center_point[d].to_f64().unwrap_or(0.0);
+                let diff = v - centroid[d];
+                diff * diff
+            })
+            .sum::<f64>();
 
-            let center_point = data.point(idx);
-            let sqr_dist = selected
-                .iter()
-                .map(|&d| {
-                    let v = center_point[d].to_f64().unwrap_or(0.0);
-                    let diff = v - centroid[d];
-                    diff * diff
-                })
-                .sum::<f64>();
+        let sod = if sqr_dist > 0.0 { sqr_dist.sqrt() / (selected.len() as f64) } else { 0.0 };
 
-            let sod = if sqr_dist > 0.0 { sqr_dist.sqrt() / (selected.len() as f64) } else { 0.0 };
+        F::from_f64(sod).unwrap_or(F::zero())
+    });
 
-            F::from_f64(sod).unwrap_or(F::zero())
-        });
-
-    make_outlier_result(scores, "SOD", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(scores, "SOD", false, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -137,7 +141,7 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let results = subspace_outlier_degree(&tree, &data, 2, 1.1);
+        let results = subspace_outlier_degree(&tree, &data, 2, 1.1).unwrap();
         let (best_idx, _) = results
             .scores
             .iter()
@@ -155,7 +159,7 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let result = subspace_outlier_degree(&tree, &data, 10, 1.1);
+        let result = subspace_outlier_degree(&tree, &data, 10, 1.1).unwrap();
         let reference = crate::outlier::common::load_reference_scores();
         let expected = reference.get("SOD-10").expect("No reference for SOD-10");
         let labels: Vec<u8> = crate::outlier::common::label_from_reference(&reference);

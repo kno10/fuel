@@ -1,7 +1,9 @@
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
 use crate::{DistanceData, Float, KnnSearch, ParMap};
 
-pub fn simplified_lof<'a, S, D, F>(tree: &S, data: &'a D, k: usize) -> OutlierResult<F>
+pub fn simplified_lof<'a, S, D, F>(
+    tree: &S, data: &'a D, k: usize,
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -9,29 +11,29 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             Vec::new(),
             "SimplifiedLOF",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             vec![F::one(); size],
             "SimplifiedLOF",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
-    let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh);
+    let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh)?;
 
     let lrd: Vec<F> = (0..size).par_map(|i| {
         let neigh = &neighborhoods[i];
@@ -43,18 +45,17 @@ where
         if sum > F::zero() { count / sum } else { F::infinity() }
     });
 
-    let scores: Vec<F> = (0..size)
-        .par_map(|i| {
-            let neigh = &neighborhoods[i];
-            if neigh.is_empty() || lrd[i].is_infinite() {
-                return F::one();
-            }
-            let sum_neighbors: F = neigh.iter().map(|(idx, _)| lrd[*idx]).sum();
-            let count = F::from_usize(neigh.len()).unwrap_or(F::zero());
-            if count > F::zero() { sum_neighbors / (lrd[i] * count) } else { F::one() }
-        });
+    let scores: Vec<F> = (0..size).par_map(|i| {
+        let neigh = &neighborhoods[i];
+        if neigh.is_empty() || lrd[i].is_infinite() {
+            return F::one();
+        }
+        let sum_neighbors: F = neigh.iter().map(|(idx, _)| lrd[*idx]).sum();
+        let count = F::from_usize(neigh.len()).unwrap_or(F::zero());
+        if count > F::zero() { sum_neighbors / (lrd[i] * count) } else { F::one() }
+    });
 
-    make_outlier_result(scores, "SimplifiedLOF", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(scores, "SimplifiedLOF", false, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -75,7 +76,7 @@ mod tests {
         let tree: crate::search::vptree::VPTree<f64> =
             crate::search::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
 
-        let results = simplified_lof(&tree, &data, 2);
+        let results = simplified_lof(&tree, &data, 2).unwrap();
         let (best_index, _) = results
             .scores
             .iter()
@@ -93,7 +94,7 @@ mod tests {
         let tree: crate::search::vptree::VPTree<f64> =
             crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
-        let result = simplified_lof(&tree, &data, 10);
+        let result = simplified_lof(&tree, &data, 10).unwrap();
         let reference = load_reference_scores();
         let expected =
             reference.get("SimplifiedLOF-10").expect("No reference for SimplifiedLOF-10");

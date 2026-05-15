@@ -13,7 +13,9 @@ use crate::{Float, IndexQuery};
 /// connecting every pair of neighboring cores. After the union-find has merged
 /// connected components, every point is assigned either the cluster label of a
 /// nearby core point or `NOISE`.
-pub fn parallel_dbscan<'a, S, D, F>(tree: &S, data: &'a D, eps: F, min_points: usize) -> Vec<isize>
+pub fn parallel_dbscan<'a, S, D, F>(
+    tree: &S, data: &'a D, eps: F, min_points: usize,
+) -> Result<Vec<isize>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -25,7 +27,7 @@ where
 
     let size = data.len();
     if size == 0 {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
     // Identify core points in parallel.
@@ -54,7 +56,7 @@ where
     }
 
     if cores.is_empty() {
-        return vec![NOISE; size];
+        return Ok(vec![NOISE; size]);
     }
 
     let num_cores = cores.len();
@@ -63,6 +65,7 @@ where
 
     let mut query = data.query();
     for (core_idx, &point_idx) in cores.iter().enumerate() {
+        crate::poll_interrupted()?;
         query.set_index(point_idx);
         for pair in tree.search_range(&query, eps) {
             if let Some(neighbor_core_idx) = core_id_by_point[pair.index] {
@@ -84,8 +87,10 @@ where
         *slot = label;
     }
 
+    crate::poll_interrupted()?;
+
     // Assign every point to its cluster label (or noise).
-    (0..size)
+    let labels = (0..size)
         .into_par_iter()
         .map_init(
             || data.query(),
@@ -106,7 +111,9 @@ where
                 assigned
             },
         )
-        .collect()
+        .collect();
+    crate::poll_interrupted()?;
+    Ok(labels)
 }
 
 #[derive(Debug)]
@@ -196,7 +203,7 @@ mod tests {
             (4, vec![NOISE, NOISE, NOISE, NOISE, NOISE, NOISE, NOISE]),
         ];
         for (min_points, expected) in expected_cases {
-            let parallel_labels = parallel_dbscan(&tree, &data, 1.0, min_points);
+            let parallel_labels = parallel_dbscan(&tree, &data, 1.0, min_points).unwrap();
             assert_eq!(parallel_labels, expected);
         }
     }

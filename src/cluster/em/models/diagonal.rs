@@ -277,7 +277,7 @@ mod tests {
             return_soft: true,
             ..Default::default()
         };
-        let result = expectation_maximization(&ds, 2, models, cfg);
+        let result = expectation_maximization(&ds, 2, models, cfg).unwrap();
         assert!(result.n_iter > 0);
         assert!(result.log_likelihood.is_finite());
         let means = result.models.iter().map(|m| m.mean()[0]).collect::<Vec<_>>();

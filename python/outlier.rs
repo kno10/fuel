@@ -122,7 +122,7 @@ macro_rules! data_outlier_no_args {
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let result = outlier::$variant::<_, $dtype>(&dataset);
+            let result = crate::py_interruptible(py, || Ok(outlier::$variant::<_, $dtype>(&dataset)))?;
             result_to_py_outlier(py, result)
         }
     };
@@ -139,7 +139,8 @@ macro_rules! tree_outlier_p {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
-            let result = outlier::$variant::<_, _, $dtype>(&tree, &dataset, perplexity);
+            let result =
+                crate::py_interruptible(py, || Ok(outlier::$variant::<_, _, $dtype>(&tree, &dataset, perplexity)))?;
             result_to_py_outlier(py, result)
         }
     };
@@ -155,7 +156,7 @@ macro_rules! data_outlier_k_l {
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let result = outlier::$variant::<_, $dtype>(&dataset, k, l);
+            let result = crate::py_interruptible(py, || Ok(outlier::$variant::<_, $dtype>(&dataset, k, l)))?;
             result_to_py_outlier(py, result)
         }
     };
@@ -171,8 +172,9 @@ macro_rules! data_outlier_n {
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let result =
-                outlier::$variant::<_, $dtype>(&dataset, nmin, alpha, g, seed.unwrap_or(0));
+            let result = crate::py_interruptible(py, || Ok(outlier::$variant::<_, $dtype>(
+                &dataset, nmin, alpha, g, seed.unwrap_or(0),
+            )))?;
             result_to_py_outlier(py, result)
         }
     };
@@ -189,7 +191,9 @@ macro_rules! tree_outlier_k {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
-            let result = outlier::$variant::<_, _, $dtype>(&tree, &dataset, k);
+            let result = crate::py_interruptible(py, || {
+                outlier::$variant::<_, _, $dtype>(&tree, &dataset, k)
+            })?;
             result_to_py_outlier(py, result)
         }
     };
@@ -206,7 +210,9 @@ macro_rules! tree_outlier_k_m {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
-            let result = outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, m);
+            let result = crate::py_interruptible(py, || {
+                outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, m)
+            })?;
             result_to_py_outlier(py, result)
         }
     };
@@ -223,7 +229,9 @@ macro_rules! tree_outlier_k_alpha {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
-            let result = outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, alpha);
+            let result = crate::py_interruptible(py, || {
+                outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, alpha)
+            })?;
             result_to_py_outlier(py, result)
         }
     };
@@ -240,7 +248,9 @@ macro_rules! tree_outlier_d {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
-            let result = outlier::$variant::<_, _, $dtype>(&tree, &dataset, d);
+            let result = crate::py_interruptible(py, || {
+                outlier::$variant::<_, _, $dtype>(&tree, &dataset, d)
+            })?;
             result_to_py_outlier(py, result)
         }
     };
@@ -257,7 +267,9 @@ macro_rules! tree_outlier_d_p {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
-            let result = outlier::$variant::<_, _, $dtype>(&tree, &dataset, d, p);
+            let result = crate::py_interruptible(py, || {
+                outlier::$variant::<_, _, $dtype>(&tree, &dataset, d, p)
+            })?;
             result_to_py_outlier(py, result)
         }
     };
@@ -274,7 +286,9 @@ macro_rules! tree_outlier_k_delta {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
-            let result = outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, delta);
+            let result = crate::py_interruptible(py, || {
+                outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, delta)
+            })?;
             result_to_py_outlier(py, result)
         }
     };
@@ -292,7 +306,9 @@ macro_rules! tree_outlier_k_expect_dist {
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
             let dist = parse_cop_distance_dist(dist)?;
-            let result = outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, expect, dist);
+            let result = crate::py_interruptible(py, || {
+                outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, expect, dist)
+            })?;
             result_to_py_outlier(py, result)
         }
     };
@@ -321,7 +337,9 @@ macro_rules! tree_outlier_k_h_kernel {
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
             let kernel = parse_kernel_density_function(kernel)?;
-            let result = outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, h, kernel);
+            let result = crate::py_interruptible(py, || {
+                outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, h, kernel)
+            })?;
             result_to_py_outlier(py, result)
         }
     };
@@ -363,6 +381,7 @@ macro_rules! dispatch_id_estimator {
 macro_rules! apply_idos {
     ($E:ty, $tree:expr, $dataset:expr, $kc:expr, $kr:expr) => {
         outlier::intrinsic_dimensionality_outlier_score::<_, _, _, $E>($tree, $dataset, $kc, $kr)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?
     };
 }
 
@@ -440,7 +459,7 @@ fn isolation_forest_f64<'py>(
 fn zero_f32<'py>(py: Python<'py>, data: PyReadonlyArray2<'py, f32>) -> PyResult<Py<PyAny>> {
     let array = data.as_array();
     let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
-    let result = outlier::zero::<_, f32>(dataset);
+    let result = crate::py_interruptible(py, || Ok(outlier::zero::<_, f32>(dataset)))?;
     result_to_py_outlier(py, result)
 }
 
@@ -448,7 +467,7 @@ fn zero_f32<'py>(py: Python<'py>, data: PyReadonlyArray2<'py, f32>) -> PyResult<
 fn zero_f64<'py>(py: Python<'py>, data: PyReadonlyArray2<'py, f64>) -> PyResult<Py<PyAny>> {
     let array = data.as_array();
     let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
-    let result = outlier::zero::<_, f64>(dataset);
+    let result = crate::py_interruptible(py, || Ok(outlier::zero::<_, f64>(dataset)))?;
     result_to_py_outlier(py, result)
 }
 
@@ -458,7 +477,7 @@ fn random_f32<'py>(
 ) -> PyResult<Py<PyAny>> {
     let array = data.as_array();
     let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
-    let result = outlier::random::<_, f32>(dataset, seed.unwrap_or(0));
+    let result = crate::py_interruptible(py, || Ok(outlier::random::<_, f32>(dataset, seed.unwrap_or(0))))?;
     result_to_py_outlier(py, result)
 }
 
@@ -468,7 +487,7 @@ fn random_f64<'py>(
 ) -> PyResult<Py<PyAny>> {
     let array = data.as_array();
     let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
-    let result = outlier::random::<_, f64>(dataset, seed.unwrap_or(0));
+    let result = crate::py_interruptible(py, || Ok(outlier::random::<_, f64>(dataset, seed.unwrap_or(0))))?;
     result_to_py_outlier(py, result)
 }
 
@@ -483,7 +502,9 @@ macro_rules! tree_outlier_rmax_nmin_alpha {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
-            let result = outlier::$variant::<_, _, $dtype>(&tree, &dataset, rmax, nmin, alpha);
+            let result = crate::py_interruptible(py, || {
+                outlier::$variant::<_, _, $dtype>(&tree, &dataset, rmax, nmin, alpha)
+            })?;
             result_to_py_outlier(py, result)
         }
     };
@@ -520,7 +541,8 @@ fn fast_angle_based_outlier_detection_f32<'py>(
     let tree = build_vptree(&dataset, seed);
     let kfn = parse_abod_kernel::<f32>(kernel)?;
     let result =
-        outlier::fast_angle_based_outlier_detection::<_, _, f32, _>(&tree, &dataset, k, kfn);
+        outlier::fast_angle_based_outlier_detection::<_, _, f32, _>(&tree, &dataset, k, kfn)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
     result_to_py_outlier(py, result)
 }
 
@@ -535,7 +557,8 @@ fn fast_angle_based_outlier_detection_f64<'py>(
     let tree = build_vptree(&dataset, seed);
     let kfn = parse_abod_kernel::<f64>(kernel)?;
     let result =
-        outlier::fast_angle_based_outlier_detection::<_, _, f64, _>(&tree, &dataset, k, kfn);
+        outlier::fast_angle_based_outlier_detection::<_, _, f64, _>(&tree, &dataset, k, kfn)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
     result_to_py_outlier(py, result)
 }
 tree_outlier_k_m!(influence_outlier_f32, influence_outlier, f32);
@@ -553,7 +576,8 @@ macro_rules! tree_outlier_k_h_c_kernel {
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
             let kernel = parse_kernel_density_function(kernel)?;
-            let result = outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, h, c, kernel);
+            let result = outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, h, c, kernel)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
             result_to_py_outlier(py, result)
         }
     };
@@ -599,7 +623,9 @@ macro_rules! tree_outlier_krefer_kreach {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
-            let result = outlier::$variant::<_, _, $dtype>(&tree, &dataset, krefer, kreach);
+            let result = crate::py_interruptible(py, || {
+                outlier::$variant::<_, _, $dtype>(&tree, &dataset, krefer, kreach)
+            })?;
             result_to_py_outlier(py, result)
         }
     };
@@ -697,8 +723,9 @@ macro_rules! tree_outlier_kdeos {
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
             let kernel = parse_kernel_density_function(kernel)?;
-            let result =
-                outlier::kdeos::kdeos::<_, _, $dtype>(&tree, &dataset, kmin, kmax, kernel, min_bandwidth, scale, idim);
+            let result = crate::py_interruptible(py, || {
+                outlier::kdeos::kdeos::<_, _, $dtype>(&tree, &dataset, kmin, kmax, kernel, min_bandwidth, scale, idim)
+            })?;
             result_to_py_outlier(py, result)
         }
     };
@@ -710,8 +737,10 @@ tree_outlier_kdeos!(kdeos_f64, f64);
 // ---- ISOS ------------------------------------------------------------------
 
 macro_rules! apply_isos {
-    ($E:ty, $tree:expr, $dataset:expr, $k:expr) => {
-        outlier::intrinsic_stochastic_outlier_selection::<_, _, _, $E>($tree, $dataset, $k)
+    ($E:ty, $py:ident, $tree:expr, $dataset:expr, $k:expr) => {
+        crate::py_interruptible($py, || {
+            outlier::intrinsic_stochastic_outlier_selection::<_, _, _, $E>($tree, $dataset, $k)
+        })
     };
 }
 
@@ -726,7 +755,7 @@ macro_rules! tree_outlier_isos {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
-            let result = dispatch_id_estimator!(estimator, apply_isos!(&tree, &dataset, k));
+            let result = dispatch_id_estimator!(estimator, apply_isos!(py, &tree, &dataset, k))?;
             result_to_py_outlier(py, result)
         }
     };

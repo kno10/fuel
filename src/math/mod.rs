@@ -41,9 +41,7 @@ impl<T> RawSendPtr<T> {
     /// # Safety
     /// Caller must ensure the resulting reference does not alias with any other reference.
     #[inline(always)]
-    unsafe fn offset_ptr(self, offset: usize) -> *mut T {
-        unsafe { self.0.add(offset) }
-    }
+    unsafe fn offset_ptr(self, offset: usize) -> *mut T { unsafe { self.0.add(offset) } }
 }
 #[cfg(feature = "parallel")]
 unsafe impl<T> Send for RawSendPtr<T> {}
@@ -127,7 +125,10 @@ impl VecOps for f32 {
                         let src = &tmp[j * chunk_n..(j + 1) * chunk_n];
                         // Safety: thread ci owns [i0..i0+chunk_n] for each row j; ranges non-overlapping.
                         let dst = unsafe {
-                            std::slice::from_raw_parts_mut(out_ptr.offset_ptr(j * ncols + i0), chunk_n)
+                            std::slice::from_raw_parts_mut(
+                                out_ptr.offset_ptr(j * ncols + i0),
+                                chunk_n,
+                            )
                         };
                         dst.copy_from_slice(src);
                     }
@@ -372,7 +373,10 @@ impl VecOps for f64 {
                     for j in 0..nrows {
                         let src = &tmp[j * chunk_n..(j + 1) * chunk_n];
                         let dst = unsafe {
-                            std::slice::from_raw_parts_mut(out_ptr.offset_ptr(j * ncols + i0), chunk_n)
+                            std::slice::from_raw_parts_mut(
+                                out_ptr.offset_ptr(j * ncols + i0),
+                                chunk_n,
+                            )
                         };
                         dst.copy_from_slice(src);
                     }

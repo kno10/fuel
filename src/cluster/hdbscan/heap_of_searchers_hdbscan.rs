@@ -7,7 +7,7 @@ use crate::{CandidateHeap, DistPair, DistanceSearch, Float, IndexQuery, KnnSearc
 #[must_use]
 pub fn heap_of_searchers_hdbscan<'a, S, D, F>(
     tree: &'a S, data: &'a D, min_points: usize,
-) -> HdbscanHierarchy<F>
+) -> Result<HdbscanHierarchy<F>, String>
 where
     F: Float + 'a,
     D: DistanceData<F> + ?Sized + 'a,
@@ -18,7 +18,7 @@ where
     assert!(n > 0, "number of points must be positive");
     assert!(min_points > 0, "min_points must be greater than 0");
 
-    let core_distances = compute_core_distances_tree(tree, data, min_points);
+    let core_distances = compute_core_distances_tree(tree, data, min_points)?;
 
     let mut builder = ClusterBuilder::new(n);
     let mut primary = CandidateHeap::<F>::new();
@@ -50,6 +50,7 @@ where
     }
 
     while builder.merge_count() < n - 1 {
+        crate::poll_interrupted()?;
         let Some(top) = primary.pop() else {
             break;
         };
@@ -98,7 +99,7 @@ where
         }
     }
 
-    HdbscanHierarchy::new(builder.into_history(), core_distances)
+    Ok(HdbscanHierarchy::new(builder.into_history(), core_distances))
 }
 
 fn initialize_neighbors<F: Float, Q, S>(
@@ -189,8 +190,8 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(17);
         let tree = VPTree::<f64>::new(&data, 3, &mut rng);
 
-        let expected = hdbscan_prim(&data, 2);
-        let got = heap_of_searchers_hdbscan(&tree, &data, 2);
+        let expected = hdbscan_prim(&data, 2).unwrap();
+        let got = heap_of_searchers_hdbscan(&tree, &data, 2).unwrap();
         assert_eq!(got, expected);
     }
 
@@ -209,8 +210,8 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(17);
         let tree = VPTree::<f64>::new(&data, 3, &mut rng);
 
-        let expected = hdbscan_prim(&data, 2);
-        let got = heap_of_searchers_hdbscan(&tree, &data, 2);
+        let expected = hdbscan_prim(&data, 2).unwrap();
+        let got = heap_of_searchers_hdbscan(&tree, &data, 2).unwrap();
         let expected_weight: f64 = expected.merges.iter().map(|m| m.distance).sum();
         let got_weight: f64 = got.merges.iter().map(|m| m.distance).sum();
         assert!(

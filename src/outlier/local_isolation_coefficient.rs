@@ -6,7 +6,9 @@ use crate::{DistanceData, Float, KnnSearch, ParMap};
 /// score = kNN-distance + average distance to k nearest neighbors
 ///
 /// Reference: B. Yu, M. Song, L. Wang (2009).
-pub fn local_isolation_coefficient<'a, S, D, F>(tree: &S, data: &'a D, k: usize) -> OutlierResult<F>
+pub fn local_isolation_coefficient<'a, S, D, F>(
+    tree: &S, data: &'a D, k: usize,
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -14,35 +16,34 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(vec![], "LIC", false, F::zero(), F::zero(), F::infinity());
+        return Ok(make_outlier_result(vec![], "LIC", false, F::zero(), F::zero(), F::infinity()));
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             vec![F::zero(); size],
             "LIC",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
     let neighborhoods: Vec<Vec<(usize, F)>> =
-        for_each_knn(tree, data, k_effective, false, |_idx, neighbors| neighbors);
+        for_each_knn(tree, data, k_effective, false, |_idx, neighbors| neighbors)?;
 
-    let scores: Vec<F> = (0..size)
-        .par_map(|i| {
-            let neigh = &neighborhoods[i];
-            let knn_distance = neigh.last().map(|(_, d)| *d).unwrap_or(F::zero());
-            let sum: F = neigh.iter().map(|(_, d)| *d).sum();
-            let n = F::from_usize(neigh.len()).unwrap_or(F::zero());
-            let mean = if n > F::zero() { sum / n } else { F::zero() };
-            knn_distance + mean
-        });
+    let scores: Vec<F> = (0..size).par_map(|i| {
+        let neigh = &neighborhoods[i];
+        let knn_distance = neigh.last().map(|(_, d)| *d).unwrap_or(F::zero());
+        let sum: F = neigh.iter().map(|(_, d)| *d).sum();
+        let n = F::from_usize(neigh.len()).unwrap_or(F::zero());
+        let mean = if n > F::zero() { sum / n } else { F::zero() };
+        knn_distance + mean
+    });
 
-    make_outlier_result(scores, "LIC", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(scores, "LIC", false, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -64,7 +65,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let result = local_isolation_coefficient(&tree, &data, 10);
+        let result = local_isolation_coefficient(&tree, &data, 10).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("LIC-10").expect("No reference for LIC-10");
         let labels: Vec<u8> = label_from_reference(&reference);

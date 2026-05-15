@@ -62,8 +62,8 @@ pub struct SearchIndex {
 }
 
 enum SearchIndexInner {
-    LinearScanF32(LinearScanSearcherF32),
-    LinearScanF64(LinearScanSearcherF64),
+    LinearScanF32(LinearScanSearcher<f32>),
+    LinearScanF64(LinearScanSearcher<f64>),
     VpTreeF32(VPTree<f32>),
     VpTreeF64(VPTree<f64>),
     CoverTreeF32(CoverTree<f32>),
@@ -80,7 +80,7 @@ enum LinearScanDistanceFn<N> {
 /// Run a linear-scan kNN over all rows of `queries`.
 fn linear_scan_knn_batch<N, D, Q, F>(
     dataset: &D, queries: ArrayView2<N>, k: usize, exclude_self: bool, make_query: F,
-) -> Vec<Vec<DistPair<N>>>
+) -> Result<Vec<Vec<DistPair<N>>>, String>
 where
     N: Float,
     D: crate::DistanceData<N> + Sync,
@@ -88,7 +88,7 @@ where
     F: Fn(usize, &[N]) -> Q + Sync,
 {
     let searcher = RustLinearScanSearcher::new(dataset);
-    (0..queries.nrows()).par_map(|i| {
+    (0..queries.nrows()).par_try_map(|i| {
         let query_row = queries.row(i);
         let coords = query_row.as_slice().expect("query rows must be contiguous");
         let q = make_query(i, coords);
@@ -96,14 +96,14 @@ where
         if exclude_self {
             results.retain(|pair| pair.index != i);
         }
-        results
+        Ok(results)
     })
 }
 
 /// Run a linear-scan range search over all rows of `queries`.
 fn linear_scan_range_batch<N, D, Q, F>(
     dataset: &D, queries: ArrayView2<N>, radius: N, exclude_self: bool, make_query: F,
-) -> Vec<Vec<DistPair<N>>>
+) -> Result<Vec<Vec<DistPair<N>>>, String>
 where
     N: Float,
     D: crate::DistanceData<N> + Sync,
@@ -111,7 +111,7 @@ where
     F: Fn(usize, &[N]) -> Q + Sync,
 {
     let searcher = RustLinearScanSearcher::new(dataset);
-    (0..queries.nrows()).par_map(|i| {
+    (0..queries.nrows()).par_try_map(|i| {
         let query_row = queries.row(i);
         let coords = query_row.as_slice().expect("query rows must be contiguous");
         let q = make_query(i, coords);
@@ -119,27 +119,26 @@ where
         if exclude_self {
             results.retain(|pair| pair.index != i);
         }
-        results
+        Ok(results)
     })
 }
 
-struct LinearScanSearcherF32 {
-    dist_fn: LinearScanDistanceFn<f32>,
+struct LinearScanSearcher<N: Float> {
+    dist_fn: LinearScanDistanceFn<N>,
 }
 
-struct LinearScanSearcherF64 {
-    dist_fn: LinearScanDistanceFn<f64>,
-}
-
-impl LinearScanSearcherF32 {
+impl<N> LinearScanSearcher<N>
+where
+    N: Float + Element,
+{
     fn query_search_knn(
-        &self, py: Python<'_>, data: Py<PyAny>, query: ArrayView2<f32>, k: usize,
+        &self, py: Python<'_>, data: Py<PyAny>, query: ArrayView2<N>, k: usize,
         exclude_self: bool,
     ) -> PyResult<Py<PyAny>> {
-        let data = data.extract::<PyReadonlyArray2<'_, f32>>(py)?;
+        let data = data.extract::<PyReadonlyArray2<'_, N>>(py)?;
         let data_view = data.as_array();
         let rows = query.nrows();
-        let all_results = match &self.dist_fn {
+        let all_results = crate::py_interruptible(py, move || match &self.dist_fn {
             LinearScanDistanceFn::Euclidean => {
                 let dataset = NdArrayDatasetWithDistance::with_distance(&data_view, Euclidean);
                 linear_scan_knn_batch(&dataset, query, k, exclude_self, |_i, coords| {
@@ -147,8 +146,9 @@ impl LinearScanSearcherF32 {
                 })
             }
             LinearScanDistanceFn::Other(dist_fn) => {
-                let dataset = NdArrayDatasetWithDistance::with_distance(&data_view, &**dist_fn);
-                (0..rows).par_map(|i| {
+                let dataset =
+                    NdArrayDatasetWithDistance::with_distance(&data_view, &**dist_fn);
+                (0..rows).par_try_map(|i| {
                     let query_row = query.row(i);
                     let coords = query_row.as_slice().expect("query rows must be contiguous");
                     let q = ExternalQuery::new(&dataset, coords, &**dist_fn);
@@ -156,30 +156,32 @@ impl LinearScanSearcherF32 {
                     if exclude_self {
                         results.retain(|pair| pair.index != i);
                     }
-                    results
+                    Ok(results)
                 })
             }
-        };
+        })?;
         knn_results_to_arrays(py, all_results, rows, k)
     }
 
     fn query_search_range(
-        &self, py: Python<'_>, data: Py<PyAny>, query: ArrayView2<f32>, radius: f32,
+        &self, py: Python<'_>, data: Py<PyAny>, query: ArrayView2<N>, radius: N,
         exclude_self: bool,
-    ) -> PyResult<Vec<Vec<DistPair<f32>>>> {
-        let data = data.extract::<PyReadonlyArray2<'_, f32>>(py)?;
+    ) -> PyResult<Vec<Vec<DistPair<N>>>> {
+        let data = data.extract::<PyReadonlyArray2<'_, N>>(py)?;
         let data_view = data.as_array();
         let rows = query.nrows();
-        let results = match &self.dist_fn {
+        let results = crate::py_interruptible(py, move || match &self.dist_fn {
             LinearScanDistanceFn::Euclidean => {
                 let dataset = NdArrayDatasetWithDistance::with_distance(&data_view, Euclidean);
-                linear_scan_range_batch(&dataset, query, radius, exclude_self, |_i, coords| {
-                    dataset.query().with_coordinates(coords)
-                })
+                linear_scan_range_batch(
+                    &dataset, query, radius, exclude_self,
+                    |_i, coords| dataset.query().with_coordinates(coords),
+                )
             }
             LinearScanDistanceFn::Other(dist_fn) => {
-                let dataset = NdArrayDatasetWithDistance::with_distance(&data_view, &**dist_fn);
-                (0..rows).par_map(|i| {
+                let dataset =
+                    NdArrayDatasetWithDistance::with_distance(&data_view, &**dist_fn);
+                (0..rows).par_try_map(|i| {
                     let query_row = query.row(i);
                     let coords = query_row.as_slice().expect("query rows must be contiguous");
                     let q = ExternalQuery::new(&dataset, coords, &**dist_fn);
@@ -187,74 +189,10 @@ impl LinearScanSearcherF32 {
                     if exclude_self {
                         results.retain(|pair| pair.index != i);
                     }
-                    results
+                    Ok(results)
                 })
             }
-        };
-        Ok(results)
-    }
-}
-
-impl LinearScanSearcherF64 {
-    fn query_search_knn(
-        &self, py: Python<'_>, data: Py<PyAny>, query: ArrayView2<f64>, k: usize,
-        exclude_self: bool,
-    ) -> PyResult<Py<PyAny>> {
-        let data = data.extract::<PyReadonlyArray2<'_, f64>>(py)?;
-        let data_view = data.as_array();
-        let rows = query.nrows();
-        let all_results = match &self.dist_fn {
-            LinearScanDistanceFn::Euclidean => {
-                let dataset = NdArrayDatasetWithDistance::with_distance(&data_view, Euclidean);
-                linear_scan_knn_batch(&dataset, query, k, exclude_self, |_i, coords| {
-                    dataset.query().with_coordinates(coords)
-                })
-            }
-            LinearScanDistanceFn::Other(dist_fn) => {
-                let dataset = NdArrayDatasetWithDistance::with_distance(&data_view, &**dist_fn);
-                (0..rows).par_map(|i| {
-                    let query_row = query.row(i);
-                    let coords = query_row.as_slice().expect("query rows must be contiguous");
-                    let q = ExternalQuery::new(&dataset, coords, &**dist_fn);
-                    let mut results = linear_scan_knn(&dataset, &q, k);
-                    if exclude_self {
-                        results.retain(|pair| pair.index != i);
-                    }
-                    results
-                })
-            }
-        };
-        knn_results_to_arrays(py, all_results, rows, k)
-    }
-
-    fn query_search_range(
-        &self, py: Python<'_>, data: Py<PyAny>, query: ArrayView2<f64>, radius: f64,
-        exclude_self: bool,
-    ) -> PyResult<Vec<Vec<DistPair<f64>>>> {
-        let data = data.extract::<PyReadonlyArray2<'_, f64>>(py)?;
-        let data_view = data.as_array();
-        let rows = query.nrows();
-        let results = match &self.dist_fn {
-            LinearScanDistanceFn::Euclidean => {
-                let dataset = NdArrayDatasetWithDistance::with_distance(&data_view, Euclidean);
-                linear_scan_range_batch(&dataset, query, radius, exclude_self, |_i, coords| {
-                    dataset.query().with_coordinates(coords)
-                })
-            }
-            LinearScanDistanceFn::Other(dist_fn) => {
-                let dataset = NdArrayDatasetWithDistance::with_distance(&data_view, &**dist_fn);
-                (0..rows).par_map(|i| {
-                    let query_row = query.row(i);
-                    let coords = query_row.as_slice().expect("query rows must be contiguous");
-                    let q = ExternalQuery::new(&dataset, coords, &**dist_fn);
-                    let mut results = linear_scan_range(&dataset, &q, radius);
-                    if exclude_self {
-                        results.retain(|pair| pair.index != i);
-                    }
-                    results
-                })
-            }
-        };
+        })?;
         Ok(results)
     }
 }
@@ -280,7 +218,9 @@ impl SearchIndex {
                 let data_view = data.as_array();
                 let query_view = query.as_array();
                 let dist_fn = super::parse_distance_fn::<f32>(distance)?;
-                let results = vp_knn_query(inner, data_view, query_view, &dist_fn, k, exclude_self);
+                let results = crate::py_interruptible(py, || {
+                    vp_knn_query(inner, data_view, query_view, &dist_fn, k, exclude_self)
+                })?;
                 knn_results_to_arrays(py, results, query_view.nrows(), k)
             }
             SearchIndexInner::VpTreeF64(inner) => {
@@ -289,7 +229,9 @@ impl SearchIndex {
                 let data_view = data.as_array();
                 let query_view = query.as_array();
                 let dist_fn = super::parse_distance_fn::<f64>(distance)?;
-                let results = vp_knn_query(inner, data_view, query_view, &dist_fn, k, exclude_self);
+                let results = crate::py_interruptible(py, || {
+                    vp_knn_query(inner, data_view, query_view, &dist_fn, k, exclude_self)
+                })?;
                 knn_results_to_arrays(py, results, query_view.nrows(), k)
             }
             SearchIndexInner::CoverTreeF32(inner) => {
@@ -298,8 +240,9 @@ impl SearchIndex {
                 let data_view = data.as_array();
                 let query_view = query.as_array();
                 let dist_fn = super::parse_distance_fn::<f32>(distance)?;
-                let results =
-                    cover_knn_query(inner, data_view, query_view, &dist_fn, k, exclude_self);
+                let results = crate::py_interruptible(py, || {
+                    cover_knn_query(inner, data_view, query_view, &dist_fn, k, exclude_self)
+                })?;
                 knn_results_to_arrays(py, results, query_view.nrows(), k)
             }
             SearchIndexInner::CoverTreeF64(inner) => {
@@ -308,8 +251,9 @@ impl SearchIndex {
                 let data_view = data.as_array();
                 let query_view = query.as_array();
                 let dist_fn = super::parse_distance_fn::<f64>(distance)?;
-                let results =
-                    cover_knn_query(inner, data_view, query_view, &dist_fn, k, exclude_self);
+                let results = crate::py_interruptible(py, || {
+                    cover_knn_query(inner, data_view, query_view, &dist_fn, k, exclude_self)
+                })?;
                 knn_results_to_arrays(py, results, query_view.nrows(), k)
             }
             SearchIndexInner::KdTreeF32(inner) => {
@@ -318,7 +262,9 @@ impl SearchIndex {
                 let data_view = data.as_array();
                 let query_view = query.as_array();
                 let dist_fn = super::parse_kd_distance_fn::<f32>(distance)?;
-                let results = kd_knn_query(inner, data_view, query_view, &dist_fn, k, exclude_self);
+                let results = crate::py_interruptible(py, || {
+                    kd_knn_query(inner, data_view, query_view, &dist_fn, k, exclude_self)
+                })?;
                 knn_results_to_arrays(py, results, query_view.nrows(), k)
             }
             SearchIndexInner::KdTreeF64(inner) => {
@@ -327,7 +273,9 @@ impl SearchIndex {
                 let data_view = data.as_array();
                 let query_view = query.as_array();
                 let dist_fn = super::parse_kd_distance_fn::<f64>(distance)?;
-                let results = kd_knn_query(inner, data_view, query_view, &dist_fn, k, exclude_self);
+                let results = crate::py_interruptible(py, || {
+                    kd_knn_query(inner, data_view, query_view, &dist_fn, k, exclude_self)
+                })?;
                 knn_results_to_arrays(py, results, query_view.nrows(), k)
             }
         }
@@ -361,14 +309,16 @@ impl SearchIndex {
                 let data_view = data.as_array();
                 let query_view = query.as_array();
                 let dist_fn = super::parse_distance_fn::<f32>(distance)?;
-                let results = vp_radius_search_query(
-                    inner,
-                    data_view,
-                    query_view,
-                    &dist_fn,
-                    <f32 as Float>::cast(radius),
-                    exclude_self,
-                );
+                let results = crate::py_interruptible(py, || {
+                    vp_radius_search_query(
+                        inner,
+                        data_view,
+                        query_view,
+                        &dist_fn,
+                        <f32 as Float>::cast(radius),
+                        exclude_self,
+                    )
+                })?;
                 range_results_to_py(py, results)
             }
             SearchIndexInner::VpTreeF64(inner) => {
@@ -377,14 +327,16 @@ impl SearchIndex {
                 let data_view = data.as_array();
                 let query_view = query.as_array();
                 let dist_fn = super::parse_distance_fn::<f64>(distance)?;
-                let results = vp_radius_search_query(
-                    inner,
-                    data_view,
-                    query_view,
-                    &dist_fn,
-                    <f64 as Float>::cast(radius),
-                    exclude_self,
-                );
+                let results = crate::py_interruptible(py, || {
+                    vp_radius_search_query(
+                        inner,
+                        data_view,
+                        query_view,
+                        &dist_fn,
+                        <f64 as Float>::cast(radius),
+                        exclude_self,
+                    )
+                })?;
                 range_results_to_py(py, results)
             }
             SearchIndexInner::CoverTreeF32(inner) => {
@@ -393,14 +345,16 @@ impl SearchIndex {
                 let data_view = data.as_array();
                 let query_view = query.as_array();
                 let dist_fn = super::parse_distance_fn::<f32>(distance)?;
-                let results = cover_radius_search_query(
-                    inner,
-                    data_view,
-                    query_view,
-                    &dist_fn,
-                    <f32 as Float>::cast(radius),
-                    exclude_self,
-                );
+                let results = crate::py_interruptible(py, || {
+                    cover_radius_search_query(
+                        inner,
+                        data_view,
+                        query_view,
+                        &dist_fn,
+                        <f32 as Float>::cast(radius),
+                        exclude_self,
+                    )
+                })?;
                 range_results_to_py(py, results)
             }
             SearchIndexInner::CoverTreeF64(inner) => {
@@ -409,14 +363,16 @@ impl SearchIndex {
                 let data_view = data.as_array();
                 let query_view = query.as_array();
                 let dist_fn = super::parse_distance_fn::<f64>(distance)?;
-                let results = cover_radius_search_query(
-                    inner,
-                    data_view,
-                    query_view,
-                    &dist_fn,
-                    <f64 as Float>::cast(radius),
-                    exclude_self,
-                );
+                let results = crate::py_interruptible(py, || {
+                    cover_radius_search_query(
+                        inner,
+                        data_view,
+                        query_view,
+                        &dist_fn,
+                        <f64 as Float>::cast(radius),
+                        exclude_self,
+                    )
+                })?;
                 range_results_to_py(py, results)
             }
             SearchIndexInner::KdTreeF32(inner) => {
@@ -425,14 +381,16 @@ impl SearchIndex {
                 let data_view = data.as_array();
                 let query_view = query.as_array();
                 let dist_fn = super::parse_kd_distance_fn::<f32>(distance)?;
-                let results = kd_radius_search_query(
-                    inner,
-                    data_view,
-                    query_view,
-                    &dist_fn,
-                    <f32 as Float>::cast(radius),
-                    exclude_self,
-                );
+                let results = crate::py_interruptible(py, || {
+                    kd_radius_search_query(
+                        inner,
+                        data_view,
+                        query_view,
+                        &dist_fn,
+                        <f32 as Float>::cast(radius),
+                        exclude_self,
+                    )
+                })?;
                 range_results_to_py(py, results)
             }
             SearchIndexInner::KdTreeF64(inner) => {
@@ -441,14 +399,16 @@ impl SearchIndex {
                 let data_view = data.as_array();
                 let query_view = query.as_array();
                 let dist_fn = super::parse_kd_distance_fn::<f64>(distance)?;
-                let results = kd_radius_search_query(
-                    inner,
-                    data_view,
-                    query_view,
-                    &dist_fn,
-                    <f64 as Float>::cast(radius),
-                    exclude_self,
-                );
+                let results = crate::py_interruptible(py, || {
+                    kd_radius_search_query(
+                        inner,
+                        data_view,
+                        query_view,
+                        &dist_fn,
+                        <f64 as Float>::cast(radius),
+                        exclude_self,
+                    )
+                })?;
                 range_results_to_py(py, results)
             }
         }
@@ -458,13 +418,13 @@ impl SearchIndex {
 fn vp_knn_query<N>(
     tree: &VPTree<N>, data: ArrayView2<N>, queries: ArrayView2<N>, distance_fn: &DistanceFn<N>,
     k: usize, exclude_self: bool,
-) -> Vec<Vec<DistPair<N>>>
+) -> Result<Vec<Vec<DistPair<N>>>, String>
 where
     N: Float,
 {
     let dataset = NdArrayDatasetWithDistance::with_distance(&data, &**distance_fn);
     let query_k = if exclude_self { k.saturating_add(1) } else { k };
-    (0..queries.nrows()).par_map(|i| {
+    (0..queries.nrows()).par_try_map(|i| {
         let query_row = queries.row(i);
         let coords = query_row.as_slice().expect("query rows must be contiguous");
         let query = ExternalQuery::new(&dataset, coords, &**distance_fn);
@@ -472,19 +432,19 @@ where
         if exclude_self {
             results.retain(|pair| pair.index != i);
         }
-        results
+        Ok(results)
     })
 }
 
 fn vp_radius_search_query<N>(
     tree: &VPTree<N>, data: ArrayView2<N>, queries: ArrayView2<N>, distance_fn: &DistanceFn<N>,
     radius: N, exclude_self: bool,
-) -> Vec<Vec<DistPair<N>>>
+) -> Result<Vec<Vec<DistPair<N>>>, String>
 where
     N: Float,
 {
     let dataset = NdArrayDatasetWithDistance::with_distance(&data, &**distance_fn);
-    (0..queries.nrows()).par_map(|i| {
+    (0..queries.nrows()).par_try_map(|i| {
         let query_row = queries.row(i);
         let coords = query_row.as_slice().expect("query rows must be contiguous");
         let query = ExternalQuery::new(&dataset, coords, &**distance_fn);
@@ -493,20 +453,20 @@ where
         if exclude_self {
             results.retain(|pair| pair.index != i);
         }
-        results
+        Ok(results)
     })
 }
 
 fn cover_knn_query<N>(
     tree: &CoverTree<N>, data: ArrayView2<N>, queries: ArrayView2<N>, distance_fn: &DistanceFn<N>,
     k: usize, exclude_self: bool,
-) -> Vec<Vec<DistPair<N>>>
+) -> Result<Vec<Vec<DistPair<N>>>, String>
 where
     N: Float,
 {
     let dataset = NdArrayDatasetWithDistance::with_distance(&data, &**distance_fn);
     let query_k = if exclude_self { k.saturating_add(1) } else { k };
-    (0..queries.nrows()).par_map(|i| {
+    (0..queries.nrows()).par_try_map(|i| {
         let query_row = queries.row(i);
         let coords = query_row.as_slice().expect("query rows must be contiguous");
         let query = ExternalQuery::new(&dataset, coords, &**distance_fn);
@@ -514,19 +474,19 @@ where
         if exclude_self {
             results.retain(|pair| pair.index != i);
         }
-        results
+        Ok(results)
     })
 }
 
 fn cover_radius_search_query<N>(
     tree: &CoverTree<N>, data: ArrayView2<N>, queries: ArrayView2<N>, distance_fn: &DistanceFn<N>,
     radius: N, exclude_self: bool,
-) -> Vec<Vec<DistPair<N>>>
+) -> Result<Vec<Vec<DistPair<N>>>, String>
 where
     N: Float,
 {
     let dataset = NdArrayDatasetWithDistance::with_distance(&data, &**distance_fn);
-    (0..queries.nrows()).par_map(|i| {
+    (0..queries.nrows()).par_try_map(|i| {
         let query_row = queries.row(i);
         let coords = query_row.as_slice().expect("query rows must be contiguous");
         let query = ExternalQuery::new(&dataset, coords, &**distance_fn);
@@ -534,46 +494,46 @@ where
         if exclude_self {
             results.retain(|pair| pair.index != i);
         }
-        results
+        Ok(results)
     })
 }
 
 fn kd_knn_query<N>(
     tree: &KdTree<N>, data: ArrayView2<N>, queries: ArrayView2<N>,
     distance_fn: &KdTreeDistanceFn<N>, k: usize, exclude_self: bool,
-) -> Vec<Vec<DistPair<N>>>
+) -> Result<Vec<Vec<DistPair<N>>>, String>
 where
     N: Float,
 {
     let dataset = NdArrayDatasetWithDistance::with_distance(&data, &**distance_fn);
     let query_k = if exclude_self { k.saturating_add(1) } else { k };
-    (0..queries.nrows()).par_map(|i| {
+    (0..queries.nrows()).par_try_map(|i| {
         let query_row = queries.row(i);
         let coords = query_row.as_slice().expect("query rows must be contiguous");
         let mut results = tree.search_knn(&dataset.query().with_coordinates(coords), query_k);
         if exclude_self {
             results.retain(|pair| pair.index != i);
         }
-        results
+        Ok(results)
     })
 }
 
 fn kd_radius_search_query<N>(
     tree: &KdTree<N>, data: ArrayView2<N>, queries: ArrayView2<N>,
     distance_fn: &KdTreeDistanceFn<N>, radius: N, exclude_self: bool,
-) -> Vec<Vec<DistPair<N>>>
+) -> Result<Vec<Vec<DistPair<N>>>, String>
 where
     N: Float,
 {
     let dataset = NdArrayDatasetWithDistance::with_distance(&data, &**distance_fn);
-    (0..queries.nrows()).par_map(|i| {
+    (0..queries.nrows()).par_try_map(|i| {
         let query_row = queries.row(i);
         let coords = query_row.as_slice().expect("query rows must be contiguous");
         let mut results = tree.search_range(&dataset.query().with_coordinates(coords), radius);
         if exclude_self {
             results.retain(|pair| pair.index != i);
         }
-        results
+        Ok(results)
     })
 }
 
@@ -622,92 +582,85 @@ where
 #[pyfunction]
 #[pyo3(signature = (data, distance=None))]
 fn build_kd_tree_f32<'py>(
-    _py: Python<'py>, data: PyReadonlyArray2<'py, f32>, distance: Option<&str>,
+    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, distance: Option<&str>,
 ) -> PyResult<SearchIndex> {
     let array = data.as_array();
     let dist_fn = super::parse_kd_distance_fn::<f32>(distance.unwrap_or("euclidean"))?;
     let dataset = NdArrayDatasetWithDistance::with_distance(&array, &*dist_fn);
-    let inner = KdTree::new(&dataset, MaxVarianceSplit);
+    let inner = py.detach(|| KdTree::new(&dataset, MaxVarianceSplit));
     Ok(SearchIndex { inner: SearchIndexInner::KdTreeF32(inner) })
 }
 
 #[pyfunction]
 #[pyo3(signature = (data, distance=None))]
 fn build_kd_tree_f64<'py>(
-    _py: Python<'py>, data: PyReadonlyArray2<'py, f64>, distance: Option<&str>,
+    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, distance: Option<&str>,
 ) -> PyResult<SearchIndex> {
     let array = data.as_array();
     let dist_fn = super::parse_kd_distance_fn::<f64>(distance.unwrap_or("euclidean"))?;
     let dataset = NdArrayDatasetWithDistance::with_distance(&array, &*dist_fn);
-    let inner = KdTree::new(&dataset, MaxVarianceSplit);
+    let inner = py.detach(|| KdTree::new(&dataset, MaxVarianceSplit));
     Ok(SearchIndex { inner: SearchIndexInner::KdTreeF64(inner) })
 }
 
 #[pyfunction]
 #[pyo3(signature = (data, distance=None, seed=None))]
 fn build_vp_tree_f32<'py>(
-    _py: Python<'py>, data: PyReadonlyArray2<'py, f32>, distance: Option<&str>, seed: Option<u64>,
+    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, distance: Option<&str>, seed: Option<u64>,
 ) -> PyResult<SearchIndex> {
     let array = data.as_array();
     let dist_fn = super::parse_distance_fn::<f32>(distance.unwrap_or("euclidean"))?;
     let dataset = NdArrayDatasetWithDistance::with_distance(&array, &*dist_fn);
     let mut rng = Pcg32::seed_from_u64(seed.unwrap_or(0));
-    let inner = VPTree::new(&dataset, 5, &mut rng);
+    let inner = py.detach(|| VPTree::new(&dataset, 5, &mut rng));
     Ok(SearchIndex { inner: SearchIndexInner::VpTreeF32(inner) })
 }
 
 #[pyfunction]
 #[pyo3(signature = (data, distance=None, seed=None))]
 fn build_vp_tree_f64<'py>(
-    _py: Python<'py>, data: PyReadonlyArray2<'py, f64>, distance: Option<&str>, seed: Option<u64>,
+    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, distance: Option<&str>, seed: Option<u64>,
 ) -> PyResult<SearchIndex> {
     let array = data.as_array();
     let dist_fn = super::parse_distance_fn::<f64>(distance.unwrap_or("euclidean"))?;
     let dataset = NdArrayDatasetWithDistance::with_distance(&array, &*dist_fn);
     let mut rng = Pcg32::seed_from_u64(seed.unwrap_or(0));
-    let inner = VPTree::new(&dataset, 5, &mut rng);
+    let inner = py.detach(|| VPTree::new(&dataset, 5, &mut rng));
     Ok(SearchIndex { inner: SearchIndexInner::VpTreeF64(inner) })
 }
 
 #[pyfunction]
 #[pyo3(signature = (data, distance=None, seed=None))]
 fn build_cover_tree_f32<'py>(
-    _py: Python<'py>, data: PyReadonlyArray2<'py, f32>, distance: Option<&str>, seed: Option<u64>,
+    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, distance: Option<&str>, seed: Option<u64>,
 ) -> PyResult<SearchIndex> {
     let array = data.as_array();
     let dist_fn = super::parse_distance_fn::<f32>(distance.unwrap_or("euclidean"))?;
     let dataset = NdArrayDatasetWithDistance::with_distance(&array, &*dist_fn);
     let mut rng = Pcg32::seed_from_u64(seed.unwrap_or(0));
     let expansion = expansion_heuristic_from_id(array.ncols() as f64);
-    let inner = CoverTree::new_with_sampling(&dataset, expansion, 0, &mut rng);
+    let inner = py.detach(|| CoverTree::new_with_sampling(&dataset, expansion, 0, &mut rng));
     Ok(SearchIndex { inner: SearchIndexInner::CoverTreeF32(inner) })
 }
 
 #[pyfunction]
 #[pyo3(signature = (data, distance=None, seed=None))]
 fn build_cover_tree_f64<'py>(
-    _py: Python<'py>, data: PyReadonlyArray2<'py, f64>, distance: Option<&str>, seed: Option<u64>,
+    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, distance: Option<&str>, seed: Option<u64>,
 ) -> PyResult<SearchIndex> {
     let array = data.as_array();
     let dist_fn = super::parse_distance_fn::<f64>(distance.unwrap_or("euclidean"))?;
     let dataset = NdArrayDatasetWithDistance::with_distance(&array, &*dist_fn);
     let mut rng = Pcg32::seed_from_u64(seed.unwrap_or(0));
     let expansion = expansion_heuristic_from_id(array.ncols() as f64);
-    let inner = CoverTree::new_with_sampling(&dataset, expansion, 0, &mut rng);
+    let inner = py.detach(|| CoverTree::new_with_sampling(&dataset, expansion, 0, &mut rng));
     Ok(SearchIndex { inner: SearchIndexInner::CoverTreeF64(inner) })
 }
 
-fn parse_linear_scan_distance_fn_f32(distance: &str) -> PyResult<LinearScanDistanceFn<f32>> {
+fn parse_linear_scan_distance_fn<N: Float>(distance: &str) -> PyResult<LinearScanDistanceFn<N>> {
     match distance.to_lowercase().as_str() {
         "euclidean" | "l2" => Ok(LinearScanDistanceFn::Euclidean),
-        other => Ok(LinearScanDistanceFn::Other(super::parse_distance_fn::<f32>(other)?)),
-    }
-}
-
-fn parse_linear_scan_distance_fn_f64(distance: &str) -> PyResult<LinearScanDistanceFn<f64>> {
-    match distance.to_lowercase().as_str() {
-        "euclidean" | "l2" => Ok(LinearScanDistanceFn::Euclidean),
-        other => Ok(LinearScanDistanceFn::Other(super::parse_distance_fn::<f64>(other)?)),
+        other => Ok(LinearScanDistanceFn::Other(super::parse_distance_fn::<N>(other)?)),
     }
 }
 
@@ -716,8 +669,8 @@ fn parse_linear_scan_distance_fn_f64(distance: &str) -> PyResult<LinearScanDista
 fn build_linear_scan_f32<'py>(
     _py: Python<'py>, _data: Py<PyAny>, distance: Option<&str>,
 ) -> PyResult<SearchIndex> {
-    let dist_fn = parse_linear_scan_distance_fn_f32(distance.unwrap_or("euclidean"))?;
-    Ok(SearchIndex { inner: SearchIndexInner::LinearScanF32(LinearScanSearcherF32 { dist_fn }) })
+    let dist_fn = parse_linear_scan_distance_fn::<f32>(distance.unwrap_or("euclidean"))?;
+    Ok(SearchIndex { inner: SearchIndexInner::LinearScanF32(LinearScanSearcher { dist_fn }) })
 }
 
 #[pyfunction]
@@ -725,8 +678,8 @@ fn build_linear_scan_f32<'py>(
 fn build_linear_scan_f64<'py>(
     _py: Python<'py>, _data: Py<PyAny>, distance: Option<&str>,
 ) -> PyResult<SearchIndex> {
-    let dist_fn = parse_linear_scan_distance_fn_f64(distance.unwrap_or("euclidean"))?;
-    Ok(SearchIndex { inner: SearchIndexInner::LinearScanF64(LinearScanSearcherF64 { dist_fn }) })
+    let dist_fn = parse_linear_scan_distance_fn::<f64>(distance.unwrap_or("euclidean"))?;
+    Ok(SearchIndex { inner: SearchIndexInner::LinearScanF64(LinearScanSearcher { dist_fn }) })
 }
 
 // ---- registration ----------------------------------------------------------

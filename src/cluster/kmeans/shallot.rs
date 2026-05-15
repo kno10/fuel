@@ -10,7 +10,9 @@ use crate::{Float, VectorData as Dataset, math};
 // Inline always to allow CPU optimization!
 // Otherwise, CPU properties such as fma/avx2 may get lost and this will severely harm performance.
 #[inline(always)]
-pub fn shallot<N, I, A>(data: &A, k: usize, init: &mut I, maxiter: usize, tol: N) -> KMeansResult<N>
+pub fn shallot<N, I, A>(
+    data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
+) -> Result<KMeansResult<N>, String>
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
@@ -33,14 +35,9 @@ where
             csort[i * (k - 1) + j - 1] = j;
         }
     }
-    let (mut assign, mut csize, mut bounds, mut assign2) = hamerly_initial_assignment::<N, A, I>(
-        data,
-        k,
-        init,
-        &mut cent,
-        &mut sums,
-        &mut cdist,
-    );
+    let (mut assign, mut csize, mut bounds, mut assign2) =
+        hamerly_initial_assignment::<N, A, I>(data, k, init, &mut cent, &mut sums, &mut cdist);
+    crate::check_interrupted()?;
     let mut iter = 1; // Initial iteration above!
     while iter < maxiter {
         iter += 1;
@@ -297,7 +294,7 @@ where
             break;
         }
     }
-    KMeansResult::without_inertia(cent.into_ndarray(), assign, iter)
+    Ok(KMeansResult::without_inertia(cent.into_ndarray(), assign, iter))
 }
 
 #[cfg(test)]
@@ -314,7 +311,7 @@ mod tests {
         let mat = gen_test_data((100, 2), Pcg32::seed_from_u64(42));
         let dataset = NdArrayDataset::new(&mat);
         let mut init = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res = shallot::<_, _, _>(&dataset, 5, &mut init, 100, 0.0);
+        let res = shallot::<_, _, _>(&dataset, 5, &mut init, 100, 0.0).unwrap();
         let loss = compute_loss(&dataset, &res.centers, &res.assignments);
         assert_eq!(res.iterations, 11, "niter not as expected");
         assert!((loss - 50.82715291533402).abs() < 1e-12, "loss not as expected: {}", loss);
@@ -326,11 +323,11 @@ mod tests {
         let dataset = NdArrayDataset::new(&mat);
 
         let mut init1 = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res1 = shallot::<_, _, _>(&dataset, 5, &mut init1, 100, 0.0);
+        let res1 = shallot::<_, _, _>(&dataset, 5, &mut init1, 100, 0.0).unwrap();
         let n1 = res1.iterations;
         let tol: f64 = 1e-3;
         let mut init2 = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res2 = shallot::<_, _, _>(&dataset, 5, &mut init2, 100, tol);
+        let res2 = shallot::<_, _, _>(&dataset, 5, &mut init2, 100, tol).unwrap();
         let n2 = res2.iterations;
         assert!(n2 <= n1, "tolerance should not increase iteration count");
     }

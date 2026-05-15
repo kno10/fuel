@@ -2,8 +2,7 @@ use crate::cluster::hierarchical::{HausdorffLinkage, MergeHistory, set_agnes};
 use crate::{DistanceData, Float};
 
 /// Hierarchical clustering with Hausdorff linkage.
-#[must_use]
-pub fn hausdorff<D, F>(data: &D) -> MergeHistory<F>
+pub fn hausdorff<D, F>(data: &D) -> Result<MergeHistory<F>, String>
 where
     D: DistanceData<F>,
     F: Float,
@@ -24,7 +23,7 @@ mod tests {
             "hausdorff",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = hausdorff(access);
+                let history = hausdorff(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)

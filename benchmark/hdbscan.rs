@@ -194,24 +194,26 @@ impl Variant {
     ) -> HdbscanHierarchy<f64> {
         match self {
             Variant::Heap => {
-                heap_of_searchers_hdbscan(tree.expect("tree required"), data, min_points)
+                heap_of_searchers_hdbscan(tree.expect("tree required"), data, min_points).unwrap()
             }
             Variant::Boruvka => {
-                boruvka_searchers_hdbscan(tree.expect("tree required"), data, min_points)
+                boruvka_searchers_hdbscan(tree.expect("tree required"), data, min_points).unwrap()
             }
             Variant::Restarting => {
-                restarting_search_hdbscan(tree.expect("tree required"), data, min_points)
+                restarting_search_hdbscan(tree.expect("tree required"), data, min_points).unwrap()
             }
-            Variant::Prim => hdbscan_prim(data, min_points),
-            Variant::Slink => slink_hdbscan(data, min_points),
+            Variant::Prim => hdbscan_prim(data, min_points).unwrap(),
+            Variant::Slink => slink_hdbscan(data, min_points).unwrap(),
             Variant::Buffered => buffered_search_hdbscan(
                 tree.expect("tree required"),
                 data,
                 min_points,
                 BUFFERED_SLACK,
-            ),
+            )
+            .unwrap(),
             Variant::LazyBuffered => {
                 lazy_buffered_search_hdbscan(tree.expect("tree required"), data, min_points, 1)
+                    .unwrap()
             }
         }
     }

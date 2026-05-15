@@ -46,7 +46,7 @@ where
 /// The `E` estimator is used for local intrinsic dimensionality.
 pub fn intrinsic_stochastic_outlier_selection<'a, S, D, F, E>(
     tree: &S, data: &'a D, k: usize,
-) -> OutlierResult<F>
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -55,19 +55,26 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(Vec::new(), "ISOS", false, F::zero(), F::zero(), F::infinity());
+        return Ok(make_outlier_result(
+            Vec::new(),
+            "ISOS",
+            false,
+            F::zero(),
+            F::zero(),
+            F::infinity(),
+        ));
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             vec![F::zero(); size],
             "ISOS",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
     let perplexity = (k as f64) / 3.0;
@@ -75,7 +82,7 @@ where
 
     let mut scores = vec![1.0f64; size];
 
-    let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh);
+    let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh)?;
     for (idx, neighbors) in neighborhoods.iter().enumerate().take(size) {
         if neighbors.is_empty() {
             continue;
@@ -118,7 +125,7 @@ where
     let final_scores: Vec<F> =
         scores.into_iter().map(|v| F::from_f64(v).unwrap_or(F::zero())).collect();
 
-    make_outlier_result(final_scores, "ISOS", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(final_scores, "ISOS", false, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -140,7 +147,7 @@ mod tests {
         let tree: crate::search::vptree::VPTree<f64> =
             crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
-        let result = intrinsic_stochastic_outlier_selection::<_, _, _, HillID>(&tree, &data, 20);
+        let result = intrinsic_stochastic_outlier_selection::<_, _, _, HillID>(&tree, &data, 20).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("ISOS-20-Hill").expect("No reference for ISOS-20-Hill");
         let labels: Vec<u8> = label_from_reference(&reference);
@@ -167,7 +174,7 @@ mod tests {
             _,
             _,
             crate::intrinsicdimensionality::AggregatedHillID,
-        >(&tree, &data, 10);
+        >(&tree, &data, 10).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("ISOS-10").expect("No reference for ISOS-10");
         let labels: Vec<u8> = label_from_reference(&reference);

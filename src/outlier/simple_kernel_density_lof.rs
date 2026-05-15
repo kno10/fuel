@@ -4,7 +4,7 @@ use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 
 pub fn simple_kernel_density_lof<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize, _h: f64, kernel: KernelDensityFunction,
-) -> OutlierResult<F>
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
@@ -12,29 +12,29 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             Vec::new(),
             "SimpleKernelDensityLOF",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             vec![F::one(); size],
             "SimpleKernelDensityLOF",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
-    let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh);
+    let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh)?;
 
     let dim = data.dims() as f64;
     let kdistances: Vec<f64> = neighborhoods
@@ -61,33 +61,32 @@ where
         sum / (neigh.len() as f64)
     });
 
-    let scores: Vec<F> = (0..size)
-        .par_map(|i| {
-            let own = density[i];
-            let neigh = &neighborhoods[i];
-            let sum_neighbors: f64 = neigh.iter().map(|(idx, _)| density[*idx]).sum();
-            let mean_neighbors =
-                if !neigh.is_empty() { sum_neighbors / (neigh.len() as f64) } else { 0.0 };
+    let scores: Vec<F> = (0..size).par_map(|i| {
+        let own = density[i];
+        let neigh = &neighborhoods[i];
+        let sum_neighbors: f64 = neigh.iter().map(|(idx, _)| density[*idx]).sum();
+        let mean_neighbors =
+            if !neigh.is_empty() { sum_neighbors / (neigh.len() as f64) } else { 0.0 };
 
-            let score = if own.is_nan() || own <= 0.0 {
-                1.0
-            } else if own.is_infinite() {
-                if mean_neighbors.is_infinite() { 1.0 } else { 0.0 }
-            } else {
-                (mean_neighbors / own).max(0.0)
-            };
+        let score = if own.is_nan() || own <= 0.0 {
+            1.0
+        } else if own.is_infinite() {
+            if mean_neighbors.is_infinite() { 1.0 } else { 0.0 }
+        } else {
+            (mean_neighbors / own).max(0.0)
+        };
 
-            F::from_f64(score).unwrap_or(F::zero())
-        });
+        F::from_f64(score).unwrap_or(F::zero())
+    });
 
-    make_outlier_result(
+    Ok(make_outlier_result(
         scores,
         "SimpleKernelDensityLOF",
         false,
         F::zero(),
         F::zero(),
         F::infinity(),
-    )
+    ))
 }
 
 #[cfg(test)]
@@ -105,7 +104,8 @@ mod tests {
         let tree: crate::search::vptree::VPTree<f64> =
             crate::search::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
         let results =
-            simple_kernel_density_lof(&tree, &data, 2, 1.0, KernelDensityFunction::Epanechnikov);
+            simple_kernel_density_lof(&tree, &data, 2, 1.0, KernelDensityFunction::Epanechnikov)
+                .unwrap();
         let (best_index, _) = results
             .scores
             .iter()

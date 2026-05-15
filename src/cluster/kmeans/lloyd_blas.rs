@@ -27,7 +27,7 @@ use crate::{Float, VectorData as Dataset};
 #[inline(always)]
 pub fn lloyd_blas<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
-) -> KMeansResult<N>
+) -> Result<KMeansResult<N>, String>
 where
     N: Float
         + ndarray::LinalgScalar
@@ -46,6 +46,7 @@ where
 
     let mut cent = Centers::<N>::new(k, d);
     init.init::<A>(data, &mut cent, k);
+    crate::check_interrupted()?;
 
     let data = data.to_ndarray();
     let mut x_norms = Vec::with_capacity(n);
@@ -138,7 +139,7 @@ where
         }
     }
 
-    KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum)
+    Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum))
 }
 
 #[cfg(test)]
@@ -157,10 +158,10 @@ mod tests {
         let dataset = NdArrayDataset::new(&mat);
 
         let mut init1 = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res1 = lloyd::<_, _, _>(&dataset, 5, &mut init1, 100, 0.0);
+        let res1 = lloyd::<_, _, _>(&dataset, 5, &mut init1, 100, 0.0).unwrap();
 
         let mut init2 = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res2 = lloyd_blas::<_, _, _>(&dataset, 5, &mut init2, 100, 0.0);
+        let res2 = lloyd_blas::<_, _, _>(&dataset, 5, &mut init2, 100, 0.0).unwrap();
 
         assert_eq!(res1.iterations, res2.iterations);
         assert!((res1.inertia.unwrap() - res2.inertia.unwrap()).abs() < 1e-12);
@@ -177,7 +178,7 @@ mod tests {
 
         let tol: f64 = 1e-3;
         let mut init2 = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res2 = lloyd_blas::<_, _, _>(&dataset, 5, &mut init2, 100, tol);
+        let res2 = lloyd_blas::<_, _, _>(&dataset, 5, &mut init2, 100, tol).unwrap();
 
         assert!(res2.iterations <= 100);
     }

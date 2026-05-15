@@ -167,8 +167,11 @@ where
         update_bounds(&mut bounds, &assign, &msim);
         recompute_separation(&cent, k, d, &mut csim);
         let csim: &[N] = &csim;
-        let deltas: Vec<(usize, Vec<N>, Vec<i64>)> =
-            par_zip_chunks_map_mut(&mut assign, &mut bounds, 1, |i0, assign_chunk, bounds_chunk| {
+        let deltas: Vec<(usize, Vec<N>, Vec<i64>)> = par_zip_chunks_map_mut(
+            &mut assign,
+            &mut bounds,
+            1,
+            |i0, assign_chunk, bounds_chunk| {
                 let mut point = vec![N::zero(); d];
                 let mut delta_sums = vec![N::zero(); k * d];
                 let mut delta_csize = vec![0i64; k];
@@ -214,7 +217,8 @@ where
                     *bound = (ls, max2);
                 }
                 (local_changed, delta_sums, delta_csize)
-            });
+            },
+        );
         let mut changed = 0;
         for (c, ds, dc) in deltas {
             changed += c;

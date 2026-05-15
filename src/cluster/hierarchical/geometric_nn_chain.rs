@@ -23,10 +23,9 @@ use crate::{DistanceData, Float};
 /// This variant avoids the `O(n^2)` condensed matrix and instead keeps only
 /// current cluster representatives. Runtime is still `O(n^3)` in the worst
 /// case, but memory usage is `O(n * dim)`.
-#[must_use]
 pub fn geometric_nn_chain<F: Float, L: GeometricLinkage<F> + Copy, D>(
     data: &D, linkage: L,
-) -> MergeHistory<F>
+) -> Result<MergeHistory<F>, String>
 where
     D: crate::VectorData<F> + DistanceData<F>,
 {
@@ -45,6 +44,7 @@ where
     let mut merged = 0usize;
 
     while merged < n - 1 {
+        crate::poll_interrupted()?;
         let mut a;
         let mut b;
 
@@ -136,7 +136,7 @@ where
     }
 
     builder.optimize_order_in_place();
-    builder.into_merges()
+    Ok(builder.into_merges())
 }
 
 #[cfg(test)]
@@ -159,7 +159,7 @@ mod tests {
             "average",
             SquaredEuclidean,
             |access, min_clusters| {
-                let history = geometric_nn_chain(access, GroupAverageLinkage);
+                let history = geometric_nn_chain(access, GroupAverageLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -175,7 +175,7 @@ mod tests {
             "centroid",
             SquaredEuclidean,
             |access, min_clusters| {
-                let history = geometric_nn_chain(access, CentroidLinkage);
+                let history = geometric_nn_chain(access, CentroidLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -191,7 +191,7 @@ mod tests {
             "median",
             SquaredEuclidean,
             |access, min_clusters| {
-                let history = geometric_nn_chain(access, MedianLinkage);
+                let history = geometric_nn_chain(access, MedianLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -207,7 +207,7 @@ mod tests {
             "ward",
             SquaredEuclidean,
             |access, min_clusters| {
-                let history = geometric_nn_chain(access, WardLinkage);
+                let history = geometric_nn_chain(access, WardLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -223,7 +223,7 @@ mod tests {
             "mnssq",
             SquaredEuclidean,
             |access, min_clusters| {
-                let history = geometric_nn_chain(access, MinimumSumSquaresLinkage);
+                let history = geometric_nn_chain(access, MinimumSumSquaresLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -239,7 +239,7 @@ mod tests {
             "mnvar",
             SquaredEuclidean,
             |access, min_clusters| {
-                let history = geometric_nn_chain(access, MinimumVarianceLinkage);
+                let history = geometric_nn_chain(access, MinimumVarianceLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -255,7 +255,7 @@ mod tests {
             "mivar",
             SquaredEuclidean,
             |access, min_clusters| {
-                let history = geometric_nn_chain(access, MinimumVarianceIncreaseLinkage);
+                let history = geometric_nn_chain(access, MinimumVarianceIncreaseLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -271,8 +271,8 @@ mod tests {
             TableWithDistance::with_distance(&points, SquaredEuclidean);
         let condensed: CondensedDistanceMatrix<f64> = CondensedDistanceMatrix::new_from_data(&data);
 
-        let geometric_history = geometric_nn_chain(&data, GroupAverageLinkage);
-        let reference_history = nn_chain(&condensed, GroupAverageLinkage);
+        let geometric_history = geometric_nn_chain(&data, GroupAverageLinkage).unwrap();
+        let reference_history = nn_chain(&condensed, GroupAverageLinkage).unwrap();
 
         assert_eq!(geometric_history.len(), reference_history.len());
         for (geo_merge, ref_merge) in geometric_history.iter().zip(reference_history.iter()) {

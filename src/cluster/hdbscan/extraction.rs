@@ -639,7 +639,7 @@ mod tests {
             let history = match dataset.name {
                 "nested_clusters" => agnes(&condensed, WardLinkage),
                 _ => agnes(&condensed, GroupAverageLinkage),
-            };
+            }.unwrap();
             let labels = extract_clusters_with_noise(&history, dataset.clusters, 2);
             let (ari, nmi) =
                 evaluate_clustering_isize(&labels, &truth, Some(crate::cluster::dbscan::NOISE));

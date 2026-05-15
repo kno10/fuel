@@ -164,7 +164,12 @@ fn bench_math_axpy_avx2(c: &mut Criterion) {
                 b.iter_batched(
                     || v1_base.clone(),
                     |mut v| {
-                        math::avx2::axpy_f64(&mut v, black_box(3.15_f64), black_box(&v2), black_box(d));
+                        math::avx2::axpy_f64(
+                            &mut v,
+                            black_box(3.15_f64),
+                            black_box(&v2),
+                            black_box(d),
+                        );
                         black_box(v)
                     },
                     criterion::BatchSize::SmallInput,

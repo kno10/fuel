@@ -13,8 +13,7 @@ use crate::cluster::hierarchical::{MergeHistory, SetLinkage, idsize};
 use crate::{CandidateHeap, DistPair, DistanceData, Float};
 
 /// Perform set-based Müllner hierarchical clustering.
-#[must_use]
-pub fn set_muellner<D, L, F, S>(data: &D) -> MergeHistory<F>
+pub fn set_muellner<D, L, F, S>(data: &D) -> Result<MergeHistory<F>, String>
 where
     D: DistanceData<F>,
     F: Float,
@@ -23,10 +22,10 @@ where
     let n = data.len();
     assert!(n > 0, "number of points must be positive");
     if n == 1 {
-        return MergeHistory::new();
+        return Ok(MergeHistory::new());
     }
 
-    let (mut members, mut summaries, distances, _) = initialize_set_clusters::<D, L, F, S>(data);
+    let (mut members, mut summaries, distances, _) = initialize_set_clusters::<D, L, F, S>(data)?;
     let mut state = AnderbergState::new(distances, n);
     let mut heap = CandidateHeap::<F>::with_capacity(n);
     for x in 1..state.n() {
@@ -34,6 +33,7 @@ where
     }
 
     for _ in 1..n {
+        crate::poll_interrupted()?;
         let (mindist, x, y) = pop_valid_merge(&mut heap, &state.best, &state.clustermap);
         let x = x as usize;
         let y = y as usize;
@@ -49,7 +49,7 @@ where
         push_candidate(&mut heap, &state.best, y as idsize);
     }
 
-    state.builder.into_merges()
+    Ok(state.builder.into_merges())
 }
 
 fn push_candidate<F: Float>(heap: &mut CandidateHeap<F>, best: &[(F, idsize)], x: idsize) {
@@ -138,7 +138,7 @@ mod tests {
             "average",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_muellner::<_, GroupAverageLinkage, _, _>(access);
+                let history = set_muellner::<_, GroupAverageLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -154,7 +154,7 @@ mod tests {
             "minimax",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_muellner::<_, MinimaxLinkage, _, _>(access);
+                let history = set_muellner::<_, MinimaxLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -170,7 +170,7 @@ mod tests {
             "medoid",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_muellner::<_, MedoidLinkage, _, _>(access);
+                let history = set_muellner::<_, MedoidLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -186,7 +186,7 @@ mod tests {
             "single",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_muellner::<_, SingleLinkage, _, _>(access);
+                let history = set_muellner::<_, SingleLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -202,7 +202,7 @@ mod tests {
             "ward",
             crate::distance::SquaredEuclidean,
             |access, min_clusters| {
-                let history = set_muellner::<_, WardLinkage, _, _>(access);
+                let history = set_muellner::<_, WardLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -218,7 +218,7 @@ mod tests {
             "mnvar",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_muellner::<_, MinimumVarianceLinkage, _, _>(access);
+                let history = set_muellner::<_, MinimumVarianceLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -234,7 +234,7 @@ mod tests {
             "mnssq",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_muellner::<_, MinimumSumSquaresLinkage, _, _>(access);
+                let history = set_muellner::<_, MinimumSumSquaresLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)

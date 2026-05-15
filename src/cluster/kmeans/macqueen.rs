@@ -9,7 +9,7 @@ use crate::{Float, VectorData as Dataset, math};
 #[inline(always)]
 pub fn macqueen<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
-) -> KMeansResult<N>
+) -> Result<KMeansResult<N>, String>
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
@@ -22,13 +22,9 @@ where
 
     let (mut assign, mut csize, mut lastsum) =
         crate::cluster::kmeans::lloyd::lloyd_initial_assignment::<N, A, I>(
-            data,
-            None,
-            k,
-            init,
-            &mut cent,
-            &mut sums,
+            data, None, k, init, &mut cent, &mut sums,
         );
+    crate::check_interrupted()?;
 
     let mut iter = 1; // initial assignment counts as first iteration
 
@@ -104,10 +100,11 @@ where
         }
     }
 
-    KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum)
+    Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum))
 }
 
 /// Classic MacQueen k-means.
+
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;
@@ -122,7 +119,7 @@ mod tests {
         let mat = gen_test_data((100, 2), Pcg32::seed_from_u64(42));
         let dataset = NdArrayDataset::new(&mat);
         let mut init = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res = macqueen(&dataset, 5, &mut init, 100, 0.0);
+        let res = macqueen(&dataset, 5, &mut init, 100, 0.0).unwrap();
         let loss = compute_loss(&dataset, &res.centers, &res.assignments);
         assert!(res.inertia.is_some() && (loss - res.inertia.unwrap()).abs() < 1e-12);
         assert!(res.iterations <= 100);

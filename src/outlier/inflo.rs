@@ -4,7 +4,9 @@ use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
 use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 /// Influence Outlierness Factor.
-pub fn influence_outlier<'a, S, D, F>(tree: &S, data: &'a D, k: usize, m: f64) -> OutlierResult<F>
+pub fn influence_outlier<'a, S, D, F>(
+    tree: &S, data: &'a D, k: usize, m: f64,
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -12,13 +14,20 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(Vec::new(), "INFLO", false, F::one(), F::zero(), F::infinity());
+        return Ok(make_outlier_result(
+            Vec::new(),
+            "INFLO",
+            false,
+            F::one(),
+            F::zero(),
+            F::infinity(),
+        ));
     }
 
     let k_effective = k.min(size.saturating_sub(1));
 
     let neighborhoods: Vec<Vec<(usize, F)>> =
-        for_each_knn(tree, data, k_effective, false, |_idx, neighbors| neighbors);
+        for_each_knn(tree, data, k_effective, false, |_idx, neighbors| neighbors)?;
 
     let mut rknn = vec![Vec::<usize>::new(); size];
     for (i, neigh) in neighborhoods.iter().enumerate() {
@@ -46,42 +55,34 @@ where
         }
     }
 
-    let scores: Vec<F> = (0..size)
-        .par_map(|i| {
-            if pruned[i] {
-                F::one()
-            } else {
-                let valid_distance = |d: F| d.to_f64().filter(|v| v.is_finite() && *v > 0.0);
-                let union: HashSet<usize> = neighborhoods[i]
-                    .iter()
-                    .map(|(j, _)| *j)
-                    .chain(rknn[i].iter().copied())
-                    .collect();
+    let scores: Vec<F> = (0..size).par_map(|i| {
+        if pruned[i] {
+            F::one()
+        } else {
+            let valid_distance = |d: F| d.to_f64().filter(|v| v.is_finite() && *v > 0.0);
+            let union: HashSet<usize> =
+                neighborhoods[i].iter().map(|(j, _)| *j).chain(rknn[i].iter().copied()).collect();
 
-                let (sum, count) = union.iter().copied().filter(|&j| j != i).fold(
-                    (0.0_f64, 0usize),
-                    |(sum, count), j| match valid_distance(knn_distances[j]) {
-                        Some(d_j) => (sum + 1.0 / d_j, count + 1),
-                        None => (f64::INFINITY, count + 1),
-                    },
-                );
+            let (sum, count) = union.iter().copied().filter(|&j| j != i).fold(
+                (0.0_f64, 0usize),
+                |(sum, count), j| match valid_distance(knn_distances[j]) {
+                    Some(d_j) => (sum + 1.0 / d_j, count + 1),
+                    None => (f64::INFINITY, count + 1),
+                },
+            );
 
-                let inflo = valid_distance(knn_distances[i])
-                    .map(|kd| {
-                        let val = sum * kd;
-                        if val.is_nan() || val == 0.0 {
-                            1.0
-                        } else {
-                            val / (count as f64)
-                        }
-                    })
-                    .unwrap_or(1.0);
+            let inflo = valid_distance(knn_distances[i])
+                .map(|kd| {
+                    let val = sum * kd;
+                    if val.is_nan() || val == 0.0 { 1.0 } else { val / (count as f64) }
+                })
+                .unwrap_or(1.0);
 
-                F::from_f64(inflo).unwrap_or(F::zero())
-            }
-        });
+            F::from_f64(inflo).unwrap_or(F::zero())
+        }
+    });
 
-    make_outlier_result(scores, "INFLO", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(scores, "INFLO", false, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -101,7 +102,7 @@ mod tests {
         let tree: crate::search::vptree::VPTree<f64> =
             crate::search::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
 
-        let results = influence_outlier(&tree, &data, 2, 1.0);
+        let results = influence_outlier(&tree, &data, 2, 1.0).unwrap();
         assert_eq!(results.scores.len(), 4);
         assert!(results.scores[3] > results.scores[0]);
     }
@@ -113,7 +114,7 @@ mod tests {
         let tree: crate::search::vptree::VPTree<f64> =
             crate::search::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
 
-        let results = influence_outlier(&tree, &data, 2, 1.0);
+        let results = influence_outlier(&tree, &data, 2, 1.0).unwrap();
         assert_eq!(results.scores.len(), 3);
         assert!(results.scores.iter().all(|score| !score.is_nan()));
     }
@@ -126,7 +127,7 @@ mod tests {
         let tree: crate::search::vptree::VPTree<f64> =
             crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
-        let result = influence_outlier(&tree, &data, 10, 1.0);
+        let result = influence_outlier(&tree, &data, 10, 1.0).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("INFLO-10").expect("No reference for INFLO-10");
         let labels: Vec<u8> = label_from_reference(&reference);

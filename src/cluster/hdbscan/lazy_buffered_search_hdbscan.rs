@@ -16,7 +16,7 @@ use crate::{
 #[must_use]
 pub fn lazy_buffered_search_hdbscan<'a, S, D, F>(
     tree: &'a S, data: &'a D, min_points: usize, slack: usize,
-) -> HdbscanHierarchy<F>
+) -> Result<HdbscanHierarchy<F>, String>
 where
     F: Float + 'a,
     D: DistanceData<F> + ?Sized + 'a,
@@ -27,9 +27,9 @@ where
     assert!(n > 0, "number of points must be positive");
     assert!(min_points > 0, "min_points must be greater than 0");
 
-    let core_distances = compute_core_distances_tree(tree, data, min_points);
+    let core_distances = compute_core_distances_tree(tree, data, min_points)?;
     if n == 1 {
-        return HdbscanHierarchy::new(MergeHistory::new(), core_distances);
+        return Ok(HdbscanHierarchy::new(MergeHistory::new(), core_distances));
     }
 
     let mut builder = ClusterBuilder::new(n);
@@ -65,6 +65,7 @@ where
     }
 
     while builder.merge_count() < n - 1 {
+        crate::poll_interrupted()?;
         let Some(entry) = heap.pop() else {
             break;
         };
@@ -122,7 +123,7 @@ where
         }
     }
 
-    HdbscanHierarchy::new(builder.into_history(), core_distances)
+    Ok(HdbscanHierarchy::new(builder.into_history(), core_distances))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -194,8 +195,8 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(11);
         let tree = VPTree::<f64>::new(&data, 3, &mut rng);
 
-        let expected = hdbscan_prim(&data, 2);
-        let got = lazy_buffered_search_hdbscan(&tree, &data, 2, 1);
+        let expected = hdbscan_prim(&data, 2).unwrap();
+        let got = lazy_buffered_search_hdbscan(&tree, &data, 2, 1).unwrap();
         assert_eq!(got, expected);
     }
 }

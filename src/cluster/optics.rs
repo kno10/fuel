@@ -53,7 +53,9 @@ pub struct OpticsResult<F: Float> {
 /// # Panics
 ///
 /// Panics if `eps < 0.0` or if `min_points == 0`.
-pub fn optics<'a, S, D, F>(tree: &S, data: &'a D, eps: F, min_points: usize) -> OpticsResult<F>
+pub fn optics<'a, S, D, F>(
+    tree: &S, data: &'a D, eps: F, min_points: usize,
+) -> Result<OpticsResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + 'a,
@@ -72,6 +74,7 @@ where
 
     let mut query = data.query();
     for point_idx in 0..size {
+        crate::poll_interrupted()?;
         if processed[point_idx] {
             continue;
         }
@@ -127,7 +130,7 @@ where
 
     let labels = extract_dbscan_labels(&ordering, &reachability, &core_distance, eps);
 
-    OpticsResult { ordering, reachability, core_distance, predecessor, labels }
+    Ok(OpticsResult { ordering, reachability, core_distance, predecessor, labels })
 }
 
 /// Extract Xi-based cluster labels from an OPTICS run result.
@@ -465,7 +468,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(7);
         let tree = VPTree::new(&data, 2, &mut rng);
 
-        let result = optics(&tree, &data, 0.25, 3);
+        let result = optics(&tree, &data, 0.25, 3).unwrap();
         let labels = result.labels;
 
         assert_eq!(labels.len(), points.len());
@@ -494,7 +497,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(99);
         let tree = VPTree::new(&data, 2, &mut rng);
 
-        let result = optics(&tree, &data, 0.25, 2);
+        let result = optics(&tree, &data, 0.25, 2).unwrap();
 
         assert_eq!(result.ordering.len(), points.len());
 
@@ -556,7 +559,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(1234);
         let tree = VPTree::new(&data, 1, &mut rng);
 
-        let result = optics(&tree, &data, 15.0, 3);
+        let result = optics(&tree, &data, 15.0, 3).unwrap();
 
         assert_eq!(result.ordering, vec![0, 1, 2, 3]);
 
@@ -720,7 +723,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0);
         let tree = VPTree::new(&data, 4, &mut rng);
 
-        let result = optics(&tree, &data, f64::INFINITY, 5);
+        let result = optics(&tree, &data, f64::INFINITY, 5).unwrap();
 
         assert_eq!(result.ordering, expected_ordering);
 

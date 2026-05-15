@@ -18,7 +18,11 @@ where
 
     let scores: Vec<F> = (0..size).par_map(|i| {
         let estimate = E::estimate_from_knn(tree, data, i, k + 1);
-        if estimate.is_finite() && estimate > 0.0 { F::from_f64(estimate).unwrap_or(F::zero()) } else { F::zero() }
+        if estimate.is_finite() && estimate > 0.0 {
+            F::from_f64(estimate).unwrap_or(F::zero())
+        } else {
+            F::zero()
+        }
     });
 
     make_outlier_result(scores, "LID", false, F::zero(), F::zero(), F::infinity())

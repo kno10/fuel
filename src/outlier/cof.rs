@@ -4,7 +4,9 @@ use crate::{DistanceData, Float, KnnSearch, ParMap};
 /// Compute Connectivity-based Outlier Factor (COF) scores.
 ///
 /// Scores around 1.0 are expected for inliers; higher values indicate stronger outliers.
-pub fn connectivity_outlier_factor<'a, S, D, F>(tree: &S, data: &'a D, k: usize) -> OutlierResult<F>
+pub fn connectivity_outlier_factor<'a, S, D, F>(
+    tree: &S, data: &'a D, k: usize,
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -12,22 +14,29 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(Vec::new(), "COF", false, F::one(), F::zero(), F::infinity());
+        return Ok(make_outlier_result(
+            Vec::new(),
+            "COF",
+            false,
+            F::one(),
+            F::zero(),
+            F::infinity(),
+        ));
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             vec![F::one(); size],
             "COF",
             false,
             F::one(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
-    let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh);
+    let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh)?;
 
     let acd: Vec<F> = (0..size).par_map(|i| {
         let neighbors = &neighborhoods[i];
@@ -101,7 +110,7 @@ where
         }
     });
 
-    make_outlier_result(scores, "COF", false, F::one(), F::zero(), F::infinity())
+    Ok(make_outlier_result(scores, "COF", false, F::one(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -121,7 +130,7 @@ mod tests {
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
 
-        let results = connectivity_outlier_factor(&tree, &data, 2);
+        let results = connectivity_outlier_factor(&tree, &data, 2).unwrap();
         let (best_index, _) = results
             .scores
             .iter()
@@ -140,7 +149,7 @@ mod tests {
         let tree: crate::search::vptree::VPTree<f64> =
             crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
-        let result = connectivity_outlier_factor(&tree, &data, 10);
+        let result = connectivity_outlier_factor(&tree, &data, 10).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("COF-10").expect("No reference for COF-10");
         let labels: Vec<u8> = label_from_reference(&reference);

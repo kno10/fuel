@@ -24,7 +24,9 @@ use crate::{DistanceData, Float};
 /// Input and output conventions are the same as [`crate::cluster::hierarchical::agnes`].
 /// The input matrix uses lower-triangular condensed indexing.
 #[must_use]
-pub fn nn_chain<D, F: Float, L: Linkage<F> + Copy + Sync>(data: &D, linkage: L) -> MergeHistory<F>
+pub fn nn_chain<D, F: Float, L: Linkage<F> + Copy + Sync>(
+    data: &D, linkage: L,
+) -> Result<MergeHistory<F>, String>
 where
     D: DistanceData<F> + Sync,
 {
@@ -33,7 +35,7 @@ where
 
     let mut builder = Builder::<F>::new(n);
     let squared = data.is_squared_distance();
-    let mut mat = build_condensed_linkage_matrix(data, linkage);
+    let mut mat = build_condensed_linkage_matrix(data, linkage)?;
     let mut clustermap: Vec<idsize> = (0..(n as idsize)).collect();
     let mut heights = vec![F::zero(); n];
     let mut end = n;
@@ -42,6 +44,7 @@ where
     let mut warned_inversion = false;
 
     while merged < n - 1 {
+        crate::poll_interrupted()?;
         let mut a;
         let mut b;
 
@@ -128,7 +131,7 @@ where
     }
 
     builder.optimize_order_in_place();
-    builder.into_merges()
+    Ok(builder.into_merges())
 }
 
 #[cfg(test)]
@@ -146,7 +149,7 @@ mod tests {
     #[test]
     fn nn_chain_average_regression() {
         test_clustering_condensed("NNChain", "average", Euclidean, |condensed, min_clusters| {
-            let history = nn_chain(condensed, GroupAverageLinkage);
+            let history = nn_chain(condensed, GroupAverageLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -157,7 +160,7 @@ mod tests {
     #[test]
     fn nn_chain_complete_regression() {
         test_clustering_condensed("NNChain", "complete", Euclidean, |condensed, min_clusters| {
-            let history = nn_chain(condensed, CompleteLinkage);
+            let history = nn_chain(condensed, CompleteLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -168,7 +171,7 @@ mod tests {
     #[test]
     fn nn_chain_single_regression() {
         test_clustering_condensed("NNChain", "single", Euclidean, |condensed, min_clusters| {
-            let history = nn_chain(condensed, SingleLinkage);
+            let history = nn_chain(condensed, SingleLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -183,7 +186,7 @@ mod tests {
             "ward",
             SquaredEuclidean,
             |condensed, min_clusters| {
-                let history = nn_chain(condensed, WardLinkage);
+                let history = nn_chain(condensed, WardLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -195,7 +198,7 @@ mod tests {
     #[test]
     fn nn_chain_minimum_variance_increase_regression() {
         test_clustering_condensed("NNChain", "mivar", Euclidean, |condensed, min_clusters| {
-            let history = nn_chain(condensed, MinimumVarianceIncreaseLinkage);
+            let history = nn_chain(condensed, MinimumVarianceIncreaseLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -206,7 +209,7 @@ mod tests {
     #[test]
     fn nn_chain_minimum_sum_squares_regression() {
         test_clustering_condensed("NNChain", "mnssq", Euclidean, |condensed, min_clusters| {
-            let history = nn_chain(condensed, MinimumSumSquaresLinkage);
+            let history = nn_chain(condensed, MinimumSumSquaresLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -217,7 +220,7 @@ mod tests {
     #[test]
     fn nn_chain_minimum_variance_regression() {
         test_clustering_condensed("NNChain", "mnvar", Euclidean, |condensed, min_clusters| {
-            let history = nn_chain(condensed, MinimumVarianceLinkage);
+            let history = nn_chain(condensed, MinimumVarianceLinkage).unwrap();
             {
                 let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                 (labels, history.last().unwrap().distance)
@@ -232,7 +235,7 @@ mod tests {
             "centroid",
             SquaredEuclidean,
             |condensed, min_clusters| {
-                let history = nn_chain(condensed, CentroidLinkage);
+                let history = nn_chain(condensed, CentroidLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -248,7 +251,7 @@ mod tests {
             "median",
             SquaredEuclidean,
             |condensed, min_clusters| {
-                let history = nn_chain(condensed, MedianLinkage);
+                let history = nn_chain(condensed, MedianLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -264,7 +267,7 @@ mod tests {
             "weighted_average",
             Euclidean,
             |condensed, min_clusters| {
-                let history = nn_chain(condensed, WeightedAverageLinkage);
+                let history = nn_chain(condensed, WeightedAverageLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)

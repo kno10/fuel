@@ -25,7 +25,7 @@ use crate::{Float, VectorData as Dataset, math};
 /// bindings and make the parameters easier to supply when using kwargs.
 pub fn kharmonic<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N, p: N,
-) -> KMeansResult<N>
+) -> Result<KMeansResult<N>, String>
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
@@ -40,6 +40,7 @@ where
 
     // use provided initializer to set initial centers
     init.init::<A>(data, &mut cent, k);
+    crate::check_interrupted()?;
 
     // storage for distances
     let mut dist = vec![N::zero(); n * k];
@@ -154,7 +155,7 @@ where
         }
         assignments[i] = best;
     }
-    KMeansResult::with_inertia(cent.into_ndarray(), assignments, iter, loss)
+    Ok(KMeansResult::with_inertia(cent.into_ndarray(), assignments, iter, loss))
 }
 
 #[cfg(test)]
@@ -171,7 +172,7 @@ mod tests {
         let mat = gen_test_data((100, 2), Box::new(Pcg32::seed_from_u64(42)));
         let dataset = NdArrayDataset::new(&mat);
         let mut init = RandomSample::new(Box::new(Pcg32::seed_from_u64(42)));
-        let res = kharmonic(&dataset, 5, &mut init, 100, 1e-6, 2.0);
+        let res = kharmonic(&dataset, 5, &mut init, 100, 1e-6, 2.0).unwrap();
         let (_cent, assign, niter, perf) =
             (res.centers, res.assignments, res.iterations, res.inertia.unwrap_or_default());
         assert_eq!(assign.len(), 100);

@@ -1,7 +1,9 @@
 use crate::outlier::common::{OutlierResult, for_each_range, make_outlier_result};
 use crate::{DistanceData, Float, RangeSearch};
 
-pub fn db_outlier_score<'a, S, D, F>(tree: &S, data: &'a D, d: F) -> OutlierResult<F>
+pub fn db_outlier_score<'a, S, D, F>(
+    tree: &S, data: &'a D, d: F,
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -13,9 +15,9 @@ where
         let n = (count as f64) / (size as f64);
         let score_val = 1.0 - n;
         F::from_f64(score_val).unwrap_or(F::zero())
-    });
+    })?;
 
-    make_outlier_result(scores, "DBOutlierScore", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(scores, "DBOutlierScore", false, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -41,7 +43,7 @@ mod tests {
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree =
             crate::search::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
-        let results = db_outlier_score(&tree, &data, 0.2);
+        let results = db_outlier_score(&tree, &data, 0.2).unwrap();
         let (best_index, _) = results
             .scores
             .iter()
@@ -58,7 +60,7 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree = crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
-        let result = db_outlier_score(&tree, &data, 0.25);
+        let result = db_outlier_score(&tree, &data, 0.25).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("DBOS-10").expect("No reference for DBOS-10");
         let labels: Vec<u8> = label_from_reference(&reference);

@@ -122,7 +122,7 @@ where
 #[inline(always)]
 pub fn kgeometric_sh<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N, steps: usize,
-) -> KMeansResult<N>
+) -> Result<KMeansResult<N>, String>
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
@@ -300,11 +300,12 @@ where
     let (assign, _final_csize, _final_lower, lastsum) =
         kgeo_sh_exact_reassignment::<N, A>(data, k, &cent, &mut scratch);
 
-    (cent.into_ndarray(), assign, iter, lastsum).into()
+    Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum))
 }
 
 /// Public entry point with backend dispatch just like the original kgeometric
 // basic smoke tests for the new algorithm
+
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;
@@ -321,9 +322,9 @@ mod tests {
         let dataset = NdArrayDataset::new(&mat);
         let mut init1 = RandomSample::new(Pcg32::seed_from_u64(1));
         let res1 =
-            crate::cluster::kmeans::kgeometric::kgeometric(&dataset, 5, &mut init1, 50, 1e-4, 1);
+            crate::cluster::kmeans::kgeometric::kgeometric(&dataset, 5, &mut init1, 50, 1e-4, 1).unwrap();
         let mut init2 = RandomSample::new(Pcg32::seed_from_u64(1));
-        let res2 = kgeometric_sh(&dataset, 5, &mut init2, 50, 1e-4, 1);
+        let res2 = kgeometric_sh(&dataset, 5, &mut init2, 50, 1e-4, 1).unwrap();
         // assignments may differ because of numerical rounding; recompute
         // Euclidean geometric loss from the returned centers/assignments
         // rather than trusting the `inertia` field which may be under‑

@@ -254,7 +254,7 @@ mod tests {
             2,
         );
         let cfg = EmConfig::<f64> { maxiter: 100, ..Default::default() };
-        let result = expectation_maximization(&ds, 2, models, cfg);
+        let result = expectation_maximization(&ds, 2, models, cfg).unwrap();
         assert!(result.n_iter > 0);
         assert!(result.log_likelihood.is_finite());
         assert!(result.models.iter().all(|m| m.variance() > 0.0));

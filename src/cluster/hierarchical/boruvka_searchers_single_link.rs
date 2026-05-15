@@ -37,8 +37,9 @@ impl<F: Float> Ord for Edge<F> {
 }
 
 /// Boruvka-style heap-of-searchers single-link with priority-search acceleration.
-#[must_use]
-pub fn boruvka_searchers_single_link<'a, S, D, F>(tree: &'a S, data: &'a D) -> MergeHistory<F>
+pub fn boruvka_searchers_single_link<'a, S, D, F>(
+    tree: &'a S, data: &'a D,
+) -> Result<MergeHistory<F>, String>
 where
     F: Float + 'a,
     D: DistanceData<F> + ?Sized + 'a,
@@ -82,6 +83,7 @@ where
     let mut edges = Vec::with_capacity(max_edges);
 
     while edges.len() < max_edges {
+        crate::poll_interrupted()?;
         let mut best_point = vec![None; n];
         let mut best_dist = vec![F::infinity(); n];
         for a in 0..n {
@@ -167,7 +169,7 @@ where
         }
     }
 
-    builder.into_history()
+    Ok(builder.into_history())
 }
 
 fn initialize_neighbors<F, Q, S>(
@@ -245,7 +247,7 @@ mod tests {
             |access, min_clusters| {
                 let mut rng = StdRng::seed_from_u64(42);
                 let tree = VPTree::new(access, 3, &mut rng);
-                let history = boruvka_searchers_single_link(&tree, access);
+                let history = boruvka_searchers_single_link(&tree, access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)

@@ -50,12 +50,7 @@ where
             })
         };
 
-        Self {
-            source,
-            precomputed,
-            max_k,
-            _marker: std::marker::PhantomData,
-        }
+        Self { source, precomputed, max_k, _marker: std::marker::PhantomData }
     }
 
     /// Returns the maximum k precomputed by this proxy.

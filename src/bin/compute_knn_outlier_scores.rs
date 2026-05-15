@@ -3,11 +3,15 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use std::{env, fs};
 
-use flate2::write::GzEncoder;
 use flate2::Compression;
+use flate2::write::GzEncoder;
 
 mod io;
 
+use fuel::distance::{
+    Arccosine, BrayCurtis, Canberra, Chebyshev, Cosine, DistanceFunction, Euclidean, Hellinger,
+    Manhattan, SquaredEuclidean,
+};
 use fuel::intrinsicdimensionality::{ABID, AggregatedHillID};
 use fuel::kernel::polynomial::PolynomialKernel;
 use fuel::outlier::cof::connectivity_outlier_factor;
@@ -33,10 +37,6 @@ use fuel::outlier::weighted_knn::weighted_knn;
 use fuel::outlier::{intrinsic_dimensionality_outlier_score, local_outlier_probabilities};
 use fuel::search::proxy::ProxyKnnSearcher;
 use fuel::{Data, DistanceData, KnnSearch, RangeSearch, VectorData};
-use fuel::distance::{
-    Arccosine, BrayCurtis, Canberra, Chebyshev, Cosine, DistanceFunction, Euclidean,
-    Hellinger, Manhattan, SquaredEuclidean,
-};
 use io::{FileFormat, ReadOptions, read_numeric_table};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -114,7 +114,9 @@ where
 
         eprintln!("{} k={} runtime={:.3}s", prefix, k, elapsed.as_secs_f64());
 
-        if let Some(limit) = options.time_limit && elapsed > limit {
+        if let Some(limit) = options.time_limit
+            && elapsed > limit
+        {
             break;
         }
     }
@@ -249,7 +251,11 @@ fn open_writer(output: Option<PathBuf>) -> Result<Box<dyn Write>, String> {
     if let Some(path) = output {
         let file = fs::File::create(&path)
             .map_err(|e| format!("Failed to open output file {}: {}", path.display(), e))?;
-        if path.extension().and_then(|ext| ext.to_str()).map_or(false, |ext| ext.eq_ignore_ascii_case("gz")) {
+        if path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map_or(false, |ext| ext.eq_ignore_ascii_case("gz"))
+        {
             let encoder = GzEncoder::new(BufWriter::new(file), Compression::default());
             Ok(Box::new(encoder))
         } else {
@@ -275,7 +281,9 @@ fn print_usage(program_name: &str) {
     eprintln!("      --no-header           Do not treat the first line as a header");
     eprintln!("      --disable <patterns>  Disable methods by substring or comma-separated list");
     eprintln!("      --ksquare-max <n>     Maximum k for quadratic-cost methods (default 1000)");
-    eprintln!("      --distance <name>     Distance function: euclidean, manhattan, chebyshev, cosine, arccosine, canberra, braycurtis, hellinger, squared_euclidean");
+    eprintln!(
+        "      --distance <name>     Distance function: euclidean, manhattan, chebyshev, cosine, arccosine, canberra, braycurtis, hellinger, squared_euclidean"
+    );
     eprintln!("      --time-limit <secs>   Per-method time limit in seconds");
 }
 
@@ -375,7 +383,9 @@ fn parse_args() -> Result<Config, String> {
         }
     }
 
-    if config.output.is_none() && let Some(path) = positional.get(1) {
+    if config.output.is_none()
+        && let Some(path) = positional.get(1)
+    {
         config.output = Some(path.clone());
     }
 
@@ -525,12 +535,8 @@ fn format_value(value: f64) -> String {
 }
 
 fn run_with_distance<W, DF>(
-    writer: &mut W,
-    points: &[Vec<f64>],
-    config: &Config,
-    options: ComputeKnnOutlierScoresOptions,
-    distance_name: &str,
-    distance_fn: DF,
+    writer: &mut W, points: &[Vec<f64>], config: &Config, options: ComputeKnnOutlierScoresOptions,
+    distance_name: &str, distance_fn: DF,
 ) -> Result<(), String>
 where
     W: Write,
@@ -546,8 +552,7 @@ where
     let index_time = index_start.elapsed();
     eprintln!("Data indexing time ({}): {:.3}s", distance_name, index_time.as_secs_f64());
 
-    compute_knn_outlier_scores(writer, &proxy, &data, ks, options)
-        .map_err(|e| e.to_string())
+    compute_knn_outlier_scores(writer, &proxy, &data, ks, options).map_err(|e| e.to_string())
 }
 
 fn main() {
@@ -601,17 +606,36 @@ fn main() {
     };
 
     let result = match config.distance.as_str() {
-        "euclidean" => run_with_distance(&mut writer, &points, &config, options, "euclidean", Euclidean),
-        "squared_euclidean" => {
-            run_with_distance(&mut writer, &points, &config, options, "squared_euclidean", SquaredEuclidean)
+        "euclidean" => {
+            run_with_distance(&mut writer, &points, &config, options, "euclidean", Euclidean)
         }
-        "manhattan" => run_with_distance(&mut writer, &points, &config, options, "manhattan", Manhattan),
-        "chebyshev" => run_with_distance(&mut writer, &points, &config, options, "chebyshev", Chebyshev),
+        "squared_euclidean" => run_with_distance(
+            &mut writer,
+            &points,
+            &config,
+            options,
+            "squared_euclidean",
+            SquaredEuclidean,
+        ),
+        "manhattan" => {
+            run_with_distance(&mut writer, &points, &config, options, "manhattan", Manhattan)
+        }
+        "chebyshev" => {
+            run_with_distance(&mut writer, &points, &config, options, "chebyshev", Chebyshev)
+        }
         "cosine" => run_with_distance(&mut writer, &points, &config, options, "cosine", Cosine),
-        "arccosine" => run_with_distance(&mut writer, &points, &config, options, "arccosine", Arccosine),
-        "canberra" => run_with_distance(&mut writer, &points, &config, options, "canberra", Canberra),
-        "braycurtis" => run_with_distance(&mut writer, &points, &config, options, "braycurtis", BrayCurtis),
-        "hellinger" => run_with_distance(&mut writer, &points, &config, options, "hellinger", Hellinger),
+        "arccosine" => {
+            run_with_distance(&mut writer, &points, &config, options, "arccosine", Arccosine)
+        }
+        "canberra" => {
+            run_with_distance(&mut writer, &points, &config, options, "canberra", Canberra)
+        }
+        "braycurtis" => {
+            run_with_distance(&mut writer, &points, &config, options, "braycurtis", BrayCurtis)
+        }
+        "hellinger" => {
+            run_with_distance(&mut writer, &points, &config, options, "hellinger", Hellinger)
+        }
         _ => Err(format!("Unsupported distance: {}", config.distance)),
     };
 

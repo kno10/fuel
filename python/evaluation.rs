@@ -24,15 +24,19 @@ use crate::evaluation::cluster::internal::pbm_index::pbm_index;
 use crate::evaluation::cluster::internal::silhouette::{silhouette, simplified_silhouette};
 use crate::evaluation::cluster::internal::squared_errors::squared_errors;
 use crate::evaluation::cluster::internal::variance_ratio::variance_ratio_criterion;
-use crate::evaluation::outlier::average_precision::{average_precision, adjusted_average_precision};
-use crate::evaluation::outlier::discounted_cumulative_gain::{
-    dcg, normalized_discounted_cumulative_gain, adjusted_dcg,
+use crate::evaluation::outlier::average_precision::{
+    adjusted_average_precision, average_precision,
 };
-use crate::evaluation::outlier::maximum_f1::{maximum_f1, adjusted_maximum_f1};
-use crate::evaluation::outlier::precision_at_k::{precision_at_k, r_precision, adjusted_r_precision};
-use crate::evaluation::outlier::precision_recall_curve::{auprc, pr_curve, adjusted_auprc};
-use crate::evaluation::outlier::precision_recall_gain::{prg_auc, adjusted_auprgc};
-use crate::evaluation::outlier::receiver_operating_curve::{auroc, adjusted_auroc};
+use crate::evaluation::outlier::discounted_cumulative_gain::{
+    adjusted_dcg, dcg, normalized_discounted_cumulative_gain,
+};
+use crate::evaluation::outlier::maximum_f1::{adjusted_maximum_f1, maximum_f1};
+use crate::evaluation::outlier::precision_at_k::{
+    adjusted_r_precision, precision_at_k, r_precision,
+};
+use crate::evaluation::outlier::precision_recall_curve::{adjusted_auprc, auprc, pr_curve};
+use crate::evaluation::outlier::precision_recall_gain::{adjusted_auprgc, prg_auc};
+use crate::evaluation::outlier::receiver_operating_curve::{adjusted_auroc, auroc};
 
 // ---- helpers ---------------------------------------------------------------
 

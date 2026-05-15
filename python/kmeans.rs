@@ -202,13 +202,16 @@ macro_rules! variant_call {
                 params.seed,
             )?;
             let tol = <$dtype as Float>::cast(params.tol);
-            let res = cluster::kmeans::$variant::<$dtype, _, _>(
-                &dataset,
-                k,
-                &mut init,
-                params.max_iter,
-                tol,
-            );
+            let res = crate::py_interruptible(py, move || {
+                crate::cluster::kmeans::$variant::<$dtype, _, _>(
+                    &dataset,
+                    k,
+                    &mut init,
+                    params.max_iter,
+                    tol,
+                )
+                .map_err(|e| format!("{e:?}"))
+            })?;
             $result_fn(py, res)
         }
     };
@@ -232,14 +235,17 @@ macro_rules! variant_call_steps {
                 params.seed,
             )?;
             let tol = <$dtype as Float>::cast(params.tol);
-            let res = cluster::kmeans::$variant::<$dtype, _, _>(
-                &dataset,
-                k,
-                &mut init,
-                params.max_iter,
-                tol,
-                steps,
-            );
+            let res = crate::py_interruptible(py, move || {
+                crate::cluster::kmeans::$variant::<$dtype, _, _>(
+                    &dataset,
+                    k,
+                    &mut init,
+                    params.max_iter,
+                    tol,
+                    steps,
+                )
+                .map_err(|e| format!("{e:?}"))
+            })?;
             $result_fn(py, res)
         }
     };
@@ -262,14 +268,17 @@ macro_rules! variant_call_p {
                 params.seed,
             )?;
             let tol = <$dtype as Float>::cast(params.tol);
-            let res = cluster::kmeans::$variant::<$dtype, _, _>(
-                &dataset,
-                k,
-                &mut init,
-                params.max_iter,
-                tol,
-                p,
-            );
+            let res = crate::py_interruptible(py, move || {
+                crate::cluster::kmeans::$variant::<$dtype, _, _>(
+                    &dataset,
+                    k,
+                    &mut init,
+                    params.max_iter,
+                    tol,
+                    p,
+                )
+                .map_err(|e| format!("{e:?}"))
+            })?;
             $result_fn(py, res)
         }
     };
@@ -293,15 +302,18 @@ macro_rules! variant_call_pp {
                 params.seed,
             )?;
             let tol = <$dtype as Float>::cast(params.tol);
-            let res = cluster::kmeans::$variant::<$dtype, _, _>(
-                &dataset,
-                k,
-                &mut init,
-                params.max_iter,
-                tol,
-                gamma,
-                alpha,
-            );
+            let res = crate::py_interruptible(py, move || {
+                crate::cluster::kmeans::$variant::<$dtype, _, _>(
+                    &dataset,
+                    k,
+                    &mut init,
+                    params.max_iter,
+                    tol,
+                    gamma,
+                    alpha,
+                )
+                .map_err(|e| format!("{e:?}"))
+            })?;
             $result_fn(py, res)
         }
     };
@@ -324,14 +336,17 @@ macro_rules! variant_call_alpha {
                 params.seed,
             )?;
             let tol = <$dtype as Float>::cast(params.tol);
-            let res = cluster::kmeans::$variant::<$dtype, _, _>(
-                &dataset,
-                k,
-                &mut init,
-                params.max_iter,
-                tol,
-                alpha,
-            );
+            let res = crate::py_interruptible(py, move || {
+                crate::cluster::kmeans::$variant::<$dtype, _, _>(
+                    &dataset,
+                    k,
+                    &mut init,
+                    params.max_iter,
+                    tol,
+                    alpha,
+                )
+                .map_err(|e| format!("{e:?}"))
+            })?;
             $result_fn(py, res)
         }
     };
@@ -402,8 +417,9 @@ fn fuzzy_lloyd_f32<'py>(
         array.ncols(),
         params.seed,
     )?;
-    let (centers, membership, assignments, iterations, loss) =
-        cluster::kmeans::fuzzy_lloyd::<f32, _, _>(&dataset, k, &mut init, params.max_iter, m);
+    let (centers, membership, assignments, iterations, loss) = crate::py_interruptible(py, move || {
+        Ok(cluster::kmeans::fuzzy_lloyd::<f32, _, _>(&dataset, k, &mut init, params.max_iter, m))
+    })?;
     result_to_py_fuzzy(py, centers, membership, assignments, iterations, loss)
 }
 
@@ -421,8 +437,9 @@ fn fuzzy_lloyd_f64<'py>(
         array.ncols(),
         params.seed,
     )?;
-    let (centers, membership, assignments, iterations, loss) =
-        cluster::kmeans::fuzzy_lloyd::<f64, _, _>(&dataset, k, &mut init, params.max_iter, m);
+    let (centers, membership, assignments, iterations, loss) = crate::py_interruptible(py, move || {
+        Ok(cluster::kmeans::fuzzy_lloyd::<f64, _, _>(&dataset, k, &mut init, params.max_iter, m))
+    })?;
     result_to_py_fuzzy(py, centers, membership, assignments, iterations, loss)
 }
 

@@ -15,7 +15,7 @@ use crate::{DistanceData, Float, KnnSearch, ParMap};
 /// Panics if `k == 0`.
 pub fn local_outlier_probabilities<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize, n_lambda: f64,
-) -> OutlierResult<F>
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -27,49 +27,47 @@ where
     let k_effective = k.min(size.saturating_sub(1));
 
     if k_effective == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             vec![F::zero(); size],
             "LoOP",
             false,
             F::zero(),
             F::zero(),
             F::one(),
-        );
+        ));
     }
 
     let neighborhoods: Vec<Vec<(usize, F)>> =
         crate::outlier::common::for_each_knn(tree, data, k_effective, false, |_idx, neighbors| {
             neighbors
-        });
+        })?;
 
-    let pdists: Vec<F> = (0..size)
-        .par_map(|i| {
-            let neighbors = &neighborhoods[i];
-            if neighbors.is_empty() {
-                F::zero()
-            } else {
-                (neighbors.iter().map(|(_, distance)| *distance * *distance).sum::<F>()
-                    / F::from_usize(neighbors.len()).unwrap_or(F::zero()))
-                .sqrt()
-            }
-        });
+    let pdists: Vec<F> = (0..size).par_map(|i| {
+        let neighbors = &neighborhoods[i];
+        if neighbors.is_empty() {
+            F::zero()
+        } else {
+            (neighbors.iter().map(|(_, distance)| *distance * *distance).sum::<F>()
+                / F::from_usize(neighbors.len()).unwrap_or(F::zero()))
+            .sqrt()
+        }
+    });
 
-    let plofs: Vec<f64> = (0..size)
-        .par_map(|idx| {
-            let neighbors = &neighborhoods[idx];
-            if neighbors.is_empty() {
-                return 0.0;
-            }
-            let neighbor_pdists_mean =
-                neighbors.iter().map(|(neighbor_idx, _)| pdists[*neighbor_idx]).sum::<F>()
-                    / F::from_usize(neighbors.len()).unwrap_or(F::zero());
+    let plofs: Vec<f64> = (0..size).par_map(|idx| {
+        let neighbors = &neighborhoods[idx];
+        if neighbors.is_empty() {
+            return 0.0;
+        }
+        let neighbor_pdists_mean =
+            neighbors.iter().map(|(neighbor_idx, _)| pdists[*neighbor_idx]).sum::<F>()
+                / F::from_usize(neighbors.len()).unwrap_or(F::zero());
 
-            if neighbor_pdists_mean > F::zero() {
-                ((pdists[idx] / neighbor_pdists_mean).to_f64().unwrap_or(1.0) - 1.0).max(0.0)
-            } else {
-                0.0
-            }
-        });
+        if neighbor_pdists_mean > F::zero() {
+            ((pdists[idx] / neighbor_pdists_mean).to_f64().unwrap_or(1.0) - 1.0).max(0.0)
+        } else {
+            0.0
+        }
+    });
 
     let mut nplof = n_lambda
         * (plofs.iter().map(|value| value * value).sum::<f64>() / plofs.len() as f64).sqrt();
@@ -85,7 +83,7 @@ where
         F::from_f64(erf(z).unwrap_or(0.0).max(0.0)).unwrap_or(F::zero())
     });
 
-    make_outlier_result(scores, "LoOP", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(scores, "LoOP", false, F::zero(), F::zero(), F::infinity()))
 }
 #[cfg(test)]
 mod tests {
@@ -108,7 +106,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(123);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let results = local_outlier_probabilities(&tree, &data, 2, 2.0);
+        let results = local_outlier_probabilities(&tree, &data, 2, 2.0).unwrap();
 
         assert_eq!(results.scores.len(), points.len());
         let (best_index, best_score) = results
@@ -129,7 +127,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let result = local_outlier_probabilities(&tree, &data, 10, 1.0);
+        let result = local_outlier_probabilities(&tree, &data, 10, 1.0).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("LoOP-10").expect("No reference for LoOP-10");
         let labels: Vec<u8> = label_from_reference(&reference);

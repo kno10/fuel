@@ -13,8 +13,7 @@ use crate::cluster::hierarchical::{MergeHistory, SetLinkage, idsize};
 use crate::{DistanceData, Float};
 
 /// Perform set-based Anderberg hierarchical clustering.
-#[must_use]
-pub fn set_anderberg<D, L, F, S>(data: &D) -> MergeHistory<F>
+pub fn set_anderberg<D, L, F, S>(data: &D) -> Result<MergeHistory<F>, String>
 where
     D: DistanceData<F>,
     F: Float,
@@ -23,13 +22,14 @@ where
     let n = data.len();
     assert!(n > 0, "number of points must be positive");
     if n == 1 {
-        return MergeHistory::new();
+        return Ok(MergeHistory::new());
     }
 
-    let (mut members, mut summaries, distances, _) = initialize_set_clusters::<D, L, F, S>(data);
+    let (mut members, mut summaries, distances, _) = initialize_set_clusters::<D, L, F, S>(data)?;
     let mut state = AnderbergState::new(distances, n);
 
     for _ in 1..n {
+        crate::poll_interrupted()?;
         let (mindist, x, y) = state.find_merge();
         // Move members[x] out before the merge so we compute cluster_distance once.
         let cx = std::mem::take(&mut members[x]);
@@ -43,7 +43,7 @@ where
         state.refresh_best(y);
     }
 
-    state.builder.into_merges()
+    Ok(state.builder.into_merges())
 }
 
 fn update_matrices<D, L, F, S>(
@@ -101,7 +101,7 @@ mod tests {
             "minimax",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_anderberg::<_, MinimaxLinkage, _, _>(access);
+                let history = set_anderberg::<_, MinimaxLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -117,7 +117,7 @@ mod tests {
             "average",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_anderberg::<_, GroupAverageLinkage, _, _>(access);
+                let history = set_anderberg::<_, GroupAverageLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -133,7 +133,7 @@ mod tests {
             "complete",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_anderberg::<_, CompleteLinkage, _, _>(access);
+                let history = set_anderberg::<_, CompleteLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -149,7 +149,7 @@ mod tests {
             "single",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_anderberg::<_, SingleLinkage, _, _>(access);
+                let history = set_anderberg::<_, SingleLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -165,7 +165,7 @@ mod tests {
             "ward",
             crate::distance::SquaredEuclidean,
             |access, min_clusters| {
-                let history = set_anderberg::<_, WardLinkage, _, _>(access);
+                let history = set_anderberg::<_, WardLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -181,7 +181,7 @@ mod tests {
             "hausdorff",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_anderberg::<_, HausdorffLinkage, _, _>(access);
+                let history = set_anderberg::<_, HausdorffLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -197,7 +197,7 @@ mod tests {
             "medoid",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_anderberg::<_, MedoidLinkage, _, _>(access);
+                let history = set_anderberg::<_, MedoidLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -213,7 +213,7 @@ mod tests {
             "mivar",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_anderberg::<_, MinimumVarianceIncreaseLinkage, _, _>(access);
+                let history = set_anderberg::<_, MinimumVarianceIncreaseLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -229,7 +229,7 @@ mod tests {
             "mnssq",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_anderberg::<_, MinimumSumSquaresLinkage, _, _>(access);
+                let history = set_anderberg::<_, MinimumSumSquaresLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -245,7 +245,7 @@ mod tests {
             "mnvar",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_anderberg::<_, MinimumVarianceLinkage, _, _>(access);
+                let history = set_anderberg::<_, MinimumVarianceLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -261,7 +261,7 @@ mod tests {
             "minimum_sum",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_anderberg::<_, MinimumSumLinkage, _, _>(access);
+                let history = set_anderberg::<_, MinimumSumLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -277,7 +277,7 @@ mod tests {
             "minimum_sum_increase",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_anderberg::<_, MinimumSumIncreaseLinkage, _, _>(access);
+                let history = set_anderberg::<_, MinimumSumIncreaseLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)

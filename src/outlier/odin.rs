@@ -16,7 +16,7 @@ use crate::{DistanceData, Float, KnnSearch};
 /// Panics if `k == 0`.
 pub fn outlier_detection_independence_neighbor<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize,
-) -> OutlierResult<F>
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -28,20 +28,20 @@ where
     let k_effective = k.min(size.saturating_sub(1));
 
     if k_effective == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             vec![F::zero(); size],
             "ODIN",
             true,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
     let neighborhoods: Vec<Vec<(usize, F)>> =
         crate::outlier::common::for_each_knn(tree, data, k_effective, false, |_idx, neighbors| {
             neighbors
-        });
+        })?;
 
     let mut indegree = vec![0usize; size];
     for neighbors in neighborhoods {
@@ -56,7 +56,7 @@ where
     let scores: Vec<F> =
         indegree.into_iter().map(|d| F::from_f64((d as f64) * inc).unwrap_or(F::zero())).collect();
 
-    make_outlier_result(scores, "ODIN", true, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(scores, "ODIN", true, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -80,7 +80,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let results = outlier_detection_independence_neighbor(&tree, &data, 2);
+        let results = outlier_detection_independence_neighbor(&tree, &data, 2).unwrap();
         assert_eq!(results.scores.len(), points.len());
         assert!(results.scores[4] < results.scores[0]);
     }
@@ -92,7 +92,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(11);
         let tree: VPTree<f64> = VPTree::new(&data, 1, &mut rng);
 
-        let results = outlier_detection_independence_neighbor(&tree, &data, 1);
+        let results = outlier_detection_independence_neighbor(&tree, &data, 1).unwrap();
         assert_eq!(results.scores.len(), 1);
         assert_eq!(results.scores[0], 0.0);
         assert_eq!(results.metadata.label, "ODIN");
@@ -105,7 +105,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let result = outlier_detection_independence_neighbor(&tree, &data, 10);
+        let result = outlier_detection_independence_neighbor(&tree, &data, 10).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("ODIN-10").expect("No reference for ODIN-10");
         let labels: Vec<u8> = label_from_reference(&reference);

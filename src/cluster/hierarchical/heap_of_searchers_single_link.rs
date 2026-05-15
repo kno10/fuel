@@ -4,8 +4,9 @@ use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, Sa
 use crate::{CandidateHeap, DistPair, Float, IndexQuery};
 
 /// Heap-of-Searchers Single-Link (HSSL) with priority-search acceleration.
-#[must_use]
-pub fn heap_of_searchers_single_link<'a, S, D, F>(tree: &'a S, data: &'a D) -> MergeHistory<F>
+pub fn heap_of_searchers_single_link<'a, S, D, F>(
+    tree: &'a S, data: &'a D,
+) -> Result<MergeHistory<F>, String>
 where
     F: Float + 'a,
     D: DistanceData<F> + ?Sized + 'a,
@@ -44,6 +45,7 @@ where
     }
 
     while builder.merge_count() < n - 1 {
+        crate::poll_interrupted()?;
         let Some(top) = primary.pop() else {
             break;
         };
@@ -85,7 +87,7 @@ where
         }
     }
 
-    builder.into_history()
+    Ok(builder.into_history())
 }
 
 // `initialize_neighbors` performs an unfiltered priority search, pushing
@@ -178,7 +180,7 @@ mod tests {
             |access, min_clusters| {
                 let mut rng = StdRng::seed_from_u64(42);
                 let tree = VPTree::new(access, 3, &mut rng);
-                let history = heap_of_searchers_single_link(&tree, access);
+                let history = heap_of_searchers_single_link(&tree, access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -219,7 +221,7 @@ mod tests {
             TableWithDistance::with_distance(&points, CountingDist { counter: &counter1 });
         let mut rng = StdRng::seed_from_u64(42);
         let tree1: VPTree<f64> = VPTree::new(&data1, 3, &mut rng);
-        let _ = heap_of_searchers_single_link(&tree1, &data1);
+        let _ = heap_of_searchers_single_link(&tree1, &data1).unwrap();
         let dist_hssl = counter1.get();
 
         let counter2 = Cell::new(0);

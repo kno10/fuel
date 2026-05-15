@@ -9,9 +9,9 @@ use crate::{Float, VectorData as Dataset, math};
 // Inline always to allow CPU optimization!
 // Otherwise, CPU properties such as fma/avx2 may get lost and this will severely harm performance.
 #[inline(always)]
-fn lloyd_naive_impl<N, I, A>(
+pub fn lloyd_naive<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
-) -> KMeansResult<N>
+) -> Result<KMeansResult<N>, String>
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
@@ -21,11 +21,13 @@ where
     let mut scratch = vec![N::zero(); d];
     let mut cent = Centers::<N>::new(k, d);
     init.init::<A>(data, &mut cent, k);
+    crate::check_interrupted()?;
     let mut assign = vec![k; n];
     let mut iter = 0;
     let mut lastsum = N::infinity();
     while iter < maxiter {
         iter += 1;
+        crate::check_interrupted()?;
         // compute old centers copy for tolerance if needed
         let old_cent = if tol > N::zero() { Some(cent.clone()) } else { None };
         let (mut changed, mut sum) = (0, N::zero());
@@ -77,18 +79,7 @@ where
             }
         }
     }
-    KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum)
-}
-
-pub fn lloyd_naive<N, I, A>(
-    data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
-) -> KMeansResult<N>
-where
-    N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display + 'static,
-    I: Initialization<N>,
-    A: Dataset<N>,
-{
-    lloyd_naive_impl::<N, I, A>(data, k, init, maxiter, tol)
+    Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum))
 }
 
 #[cfg(test)]
@@ -105,7 +96,7 @@ mod tests {
         let mat = gen_test_data((100, 2), Pcg32::seed_from_u64(42));
         let dataset = NdArrayDataset::new(&mat);
         let mut init = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res = lloyd_naive_impl::<_, _, _>(&dataset, 5, &mut init, 100, 0.0);
+        let res = lloyd_naive(&dataset, 5, &mut init, 100, 0.0).unwrap();
         let loss = compute_loss(&dataset, &res.centers, &res.assignments);
         assert!(
             res.inertia.is_some() && (loss - res.inertia.unwrap()).abs() < 1e-12,
@@ -120,11 +111,11 @@ mod tests {
         let mat = gen_test_data((100, 2), Pcg32::seed_from_u64(42));
         let dataset = NdArrayDataset::new(&mat);
         let mut init1 = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res1 = lloyd_naive_impl::<_, _, _>(&dataset, 5, &mut init1, 100, 0.0);
+        let res1 = lloyd_naive(&dataset, 5, &mut init1, 100, 0.0).unwrap();
         let n1 = res1.iterations;
         let tol: f64 = 1e-3;
         let mut init2 = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res2 = lloyd_naive_impl::<_, _, _>(&dataset, 5, &mut init2, 100, tol);
+        let res2 = lloyd_naive(&dataset, 5, &mut init2, 100, tol).unwrap();
         let n2 = res2.iterations;
         assert!(n2 <= n1, "tolerance should not increase iteration count");
     }

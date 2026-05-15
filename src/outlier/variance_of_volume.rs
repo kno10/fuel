@@ -3,7 +3,9 @@ use rs_stats::utils::special_functions::gamma_fn;
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
 use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 
-pub fn variance_of_volume<'a, S, D, F>(tree: &S, data: &'a D, k: usize) -> OutlierResult<F>
+pub fn variance_of_volume<'a, S, D, F>(
+    tree: &S, data: &'a D, k: usize,
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
@@ -11,28 +13,28 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             Vec::new(),
             "VarianceOfVolume",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             vec![F::one(); size],
             "VarianceOfVolume",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
-    let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh);
+    let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh)?;
 
     let dim = data.dims() as f64;
     let scale_const = std::f64::consts::PI.sqrt() * gamma_fn(1.0 + dim * 0.5).powf(-1.0 / dim);
@@ -49,34 +51,33 @@ where
 
     let scaled_volumes: Vec<f64> = volumes.iter().map(|v| v * scaling).collect();
 
-    let scores: Vec<F> = (0..size)
-        .par_map(|i| {
-            let neigh = &neighborhoods[i];
-            let total_neighbors = neigh.len() + 1;
+    let scores: Vec<F> = (0..size).par_map(|i| {
+        let neigh = &neighborhoods[i];
+        let total_neighbors = neigh.len() + 1;
 
-            let mut vbar = scaled_volumes[i];
-            for (idx, _) in neigh.iter() {
-                vbar += scaled_volumes[*idx];
-            }
-            vbar /= total_neighbors as f64;
+        let mut vbar = scaled_volumes[i];
+        for (idx, _) in neigh.iter() {
+            vbar += scaled_volumes[*idx];
+        }
+        vbar /= total_neighbors as f64;
 
-            let mut vov_sum = (scaled_volumes[i] - vbar).powi(2);
-            for (idx, _) in neigh.iter() {
-                vov_sum += (scaled_volumes[*idx] - vbar).powi(2);
-            }
+        let mut vov_sum = (scaled_volumes[i] - vbar).powi(2);
+        for (idx, _) in neigh.iter() {
+            vov_sum += (scaled_volumes[*idx] - vbar).powi(2);
+        }
 
-            let vov = if vov_sum.is_finite() {
-                vov_sum / ((total_neighbors - 1) as f64)
-            } else {
-                f64::INFINITY
-            };
+        let vov = if vov_sum.is_finite() {
+            vov_sum / ((total_neighbors - 1) as f64)
+        } else {
+            f64::INFINITY
+        };
 
-            let score = if vov.is_nan() || vov.is_infinite() { 1.0 } else { vov };
+        let score = if vov.is_nan() || vov.is_infinite() { 1.0 } else { vov };
 
-            F::from_f64(score).unwrap_or(F::zero())
-        });
+        F::from_f64(score).unwrap_or(F::zero())
+    });
 
-    make_outlier_result(scores, "VarianceOfVolume", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(scores, "VarianceOfVolume", false, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -95,7 +96,7 @@ mod tests {
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree: crate::search::vptree::VPTree<f64> =
             crate::search::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
-        let results = variance_of_volume(&tree, &data, 2);
+        let results = variance_of_volume(&tree, &data, 2).unwrap();
         let (best_index, _) = results
             .scores
             .iter()
@@ -113,7 +114,7 @@ mod tests {
         let tree: crate::search::vptree::VPTree<f64> =
             crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
-        let result = variance_of_volume(&tree, &data, 10);
+        let result = variance_of_volume(&tree, &data, 10).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("VOV-10").expect("No reference for VOV-10");
         let labels: Vec<u8> = label_from_reference(&reference);

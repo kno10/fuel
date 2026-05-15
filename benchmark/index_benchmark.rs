@@ -355,7 +355,9 @@ where
 
     for &query_idx in queries {
         let mut searcher = <T as PrioritySearcherFactory<f64, _>>::priority_searcher(tree);
-        if let Some(dist) = kth_neighbor_distance_from_searcher(&mut searcher, &query.with_index(query_idx), kth) {
+        if let Some(dist) =
+            kth_neighbor_distance_from_searcher(&mut searcher, &query.with_index(query_idx), kth)
+        {
             sum += dist;
             found += 1;
         }

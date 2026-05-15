@@ -56,10 +56,8 @@ where
             let mut delta_csize = vec![0usize; k];
             let mut delta_sums = vec![N::zero(); k * d];
             let mut point = vec![N::zero(); d];
-            for (ci, (aa, bounds_i)) in assign_chunk
-                .iter_mut()
-                .zip(bounds_chunk.chunks_exact_mut(k))
-                .enumerate()
+            for (ci, (aa, bounds_i)) in
+                assign_chunk.iter_mut().zip(bounds_chunk.chunks_exact_mut(k)).enumerate()
             {
                 let i = i0 + ci;
                 data.load_into(i, &mut point, d);
@@ -153,16 +151,17 @@ where
         recompute_separation(&cent, k, d, &mut csim, &mut ccsim);
         let ccsim: &[N] = &ccsim;
         let csim: &[N] = &csim;
-        let deltas: Vec<(usize, Vec<N>, Vec<i64>)> =
-            par_zip_chunks_map_mut(&mut assign, &mut bounds, k, |i0, assign_chunk, bounds_chunk| {
+        let deltas: Vec<(usize, Vec<N>, Vec<i64>)> = par_zip_chunks_map_mut(
+            &mut assign,
+            &mut bounds,
+            k,
+            |i0, assign_chunk, bounds_chunk| {
                 let mut point = vec![N::zero(); d];
                 let mut delta_sums = vec![N::zero(); k * d];
                 let mut delta_csize = vec![0i64; k];
                 let mut local_changed = 0usize;
-                for (ci, (aa, bounds_i)) in assign_chunk
-                    .iter_mut()
-                    .zip(bounds_chunk.chunks_exact_mut(k))
-                    .enumerate()
+                for (ci, (aa, bounds_i)) in
+                    assign_chunk.iter_mut().zip(bounds_chunk.chunks_exact_mut(k)).enumerate()
                 {
                     let i = i0 + ci;
                     let orig = *aa;
@@ -203,7 +202,8 @@ where
                     }
                 }
                 (local_changed, delta_sums, delta_csize)
-            });
+            },
+        );
         let mut changed = 0;
         for (c, ds, dc) in deltas {
             changed += c;

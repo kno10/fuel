@@ -92,11 +92,7 @@ pub fn adjusted_dcg<F: Copy + Into<f64> + PartialOrd, L: Copy + Into<u8>>(
     let n = scores.len();
     let ndcg = normalized_discounted_cumulative_gain(scores, labels);
     let expected = expected_ndcg(labels.iter().filter(|&&l| l.into() != 0).count(), n);
-    if expected >= 1.0 {
-        0.0
-    } else {
-        ((ndcg - expected) / (1.0 - expected)).min(1.0)
-    }
+    if expected >= 1.0 { 0.0 } else { ((ndcg - expected) / (1.0 - expected)).min(1.0) }
 }
 
 #[cfg(test)]

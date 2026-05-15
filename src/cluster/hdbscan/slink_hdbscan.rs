@@ -11,18 +11,19 @@ use crate::{DistanceData, Float};
 #[must_use]
 pub fn slink_hdbscan_pointer<F: Float, D: DistanceData<F>>(
     data: &D, min_points: usize,
-) -> (PointerRepresentation<F>, Vec<F>) {
+) -> Result<(PointerRepresentation<F>, Vec<F>), String> {
     let n = data.len();
     assert!(n > 0, "number of points must be positive");
     assert!(min_points > 0, "min_points must be greater than 0");
 
-    let core_distances: Vec<F> = compute_core_distances(data, min_points);
+    let core_distances: Vec<F> = compute_core_distances(data, min_points)?;
 
     let mut pi: Vec<usize> = (0..n).collect();
     let mut lambda = vec![F::infinity(); n];
     let mut m = vec![F::infinity(); n];
 
     for cur in 1..n {
+        crate::poll_interrupted()?;
         m[cur] = F::infinity();
 
         for (i, slot) in m.iter_mut().enumerate().take(cur) {
@@ -54,15 +55,15 @@ pub fn slink_hdbscan_pointer<F: Float, D: DistanceData<F>>(
         }
     }
 
-    (PointerRepresentation::new(pi, lambda), core_distances)
+    Ok((PointerRepresentation::new(pi, lambda), core_distances))
 }
 
 #[must_use]
 pub fn slink_hdbscan<F: Float, D: DistanceData<F>>(
     data: &D, min_points: usize,
-) -> HdbscanHierarchy<F> {
-    let (pointer, core_distances) = slink_hdbscan_pointer::<F, _>(data, min_points);
-    HdbscanHierarchy::new(pointer_to_merge_history(&pointer), core_distances)
+) -> Result<HdbscanHierarchy<F>, String> {
+    let (pointer, core_distances) = slink_hdbscan_pointer::<F, _>(data, min_points)?;
+    Ok(HdbscanHierarchy::new(pointer_to_merge_history(&pointer), core_distances))
 }
 
 #[cfg(test)]
@@ -78,7 +79,7 @@ mod tests {
             vec![vec![0.0, 0.0], vec![0.1, 0.0], vec![3.0, 3.0], vec![3.2, 3.1], vec![10.0, 10.0]];
 
         let data = TableWithDistance::with_distance(&points, Euclidean);
-        let result: HdbscanHierarchy<f64> = slink_hdbscan(&data, 2);
+        let result: HdbscanHierarchy<f64> = slink_hdbscan(&data, 2).unwrap();
 
         assert_eq!(result.core_distances.len(), points.len());
         assert_eq!(result.merges.len(), points.len() - 1);

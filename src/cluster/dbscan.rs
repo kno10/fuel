@@ -11,7 +11,9 @@ pub const NOISE: isize = -1;
 /// Returns a label per point:
 /// - `NOISE` (-1) for noise points
 /// - `0..` for cluster ids
-pub fn dbscan<'a, S, D, F>(tree: &S, data: &'a D, eps: F, min_points: usize) -> Vec<isize>
+pub fn dbscan<'a, S, D, F>(
+    tree: &S, data: &'a D, eps: F, min_points: usize,
+) -> Result<Vec<isize>, String>
 where
     F: Float,
     D: DistanceData<F> + 'a,
@@ -27,6 +29,7 @@ where
 
     let mut query = data.query();
     for point_idx in 0..size {
+        crate::poll_interrupted()?;
         if labels[point_idx] != UNVISITED {
             continue;
         }
@@ -76,7 +79,7 @@ where
         cluster_id += 1;
     }
 
-    labels
+    Ok(labels)
 }
 
 #[cfg(test)]
@@ -107,7 +110,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(7);
         let tree = VPTree::new(&data, 2, &mut rng);
 
-        let labels = dbscan(&tree, &data, 0.25, 3);
+        let labels = dbscan(&tree, &data, 0.25, 3).unwrap();
 
         assert_eq!(labels.len(), points.len());
         assert_eq!(labels[6], NOISE);
@@ -144,7 +147,7 @@ mod tests {
             let mut rng = StdRng::seed_from_u64(7);
             let tree = VPTree::new(&data, 2, &mut rng);
 
-            let labels = dbscan(&tree, &data, 1.0, min_points);
+            let labels = dbscan(&tree, &data, 1.0, min_points).unwrap();
             assert_eq!(labels, expected_labels);
         }
     }

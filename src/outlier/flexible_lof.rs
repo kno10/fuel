@@ -3,7 +3,7 @@ use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 pub fn flexible_lof<'a, S, D, F>(
     tree: &S, data: &'a D, krefer: usize, kreach: usize,
-) -> OutlierResult<F>
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -11,14 +11,14 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             Vec::new(),
             "FlexibleLOF",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
     let krefer_effective = krefer.min(size.saturating_sub(1));
@@ -26,17 +26,17 @@ where
     let k_effective = krefer_effective.max(kreach_effective);
 
     if k_effective == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             vec![F::one(); size],
             "FlexibleLOF",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
-    let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh);
+    let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh)?;
 
     let neighbor_kreach_distance: Vec<F> = neighborhoods
         .iter()
@@ -67,31 +67,27 @@ where
         if sum > F::zero() { count / sum } else { F::infinity() }
     });
 
-    let scores: Vec<F> = (0..size)
-        .par_map(|i| {
-            let neigh = &neighborhoods[i];
+    let scores: Vec<F> = (0..size).par_map(|i| {
+        let neigh = &neighborhoods[i];
 
-            if neigh.is_empty() || lrd[i].is_infinite() {
-                return F::one();
-            }
+        if neigh.is_empty() || lrd[i].is_infinite() {
+            return F::one();
+        }
 
-            let neighbors_ref = if neigh.len() > krefer_effective {
-                &neigh[..krefer_effective]
-            } else {
-                &neigh[..]
-            };
+        let neighbors_ref =
+            if neigh.len() > krefer_effective { &neigh[..krefer_effective] } else { &neigh[..] };
 
-            let sum_neighbor_lrd: F = neighbors_ref.iter().map(|(idx, _)| lrd[*idx]).sum();
-            let count = F::from_usize(neighbors_ref.len()).unwrap_or(F::zero());
+        let sum_neighbor_lrd: F = neighbors_ref.iter().map(|(idx, _)| lrd[*idx]).sum();
+        let count = F::from_usize(neighbors_ref.len()).unwrap_or(F::zero());
 
-            if lrd[i].is_infinite() || count == F::zero() {
-                F::one()
-            } else {
-                sum_neighbor_lrd / (lrd[i] * count)
-            }
-        });
+        if lrd[i].is_infinite() || count == F::zero() {
+            F::one()
+        } else {
+            sum_neighbor_lrd / (lrd[i] * count)
+        }
+    });
 
-    make_outlier_result(scores, "FlexibleLOF", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(scores, "FlexibleLOF", false, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -116,7 +112,7 @@ mod tests {
         let tree: crate::search::vptree::VPTree<f64> =
             crate::search::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
 
-        let results = flexible_lof(&tree, &data, 2, 3);
+        let results = flexible_lof(&tree, &data, 2, 3).unwrap();
         let (best_index, _) = results
             .scores
             .iter()

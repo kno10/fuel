@@ -80,7 +80,7 @@ mod tests {
     fn cut_by_cluster_count_produces_expected_groups() {
         let d = vec![1.0, 2.0, 3.0, 1.5, 2.5, 1.0];
         let cm = crate::CondensedDistanceMatrix::new_from_condensed(d, 4, false);
-        let history = agnes(&cm, SingleLinkage);
+        let history = agnes(&cm, SingleLinkage).unwrap();
 
         let labels_one = cut_dendrogram_by_number_of_clusters(&history, 1);
         assert_eq!(labels_one, vec![0, 0, 0, 0]);

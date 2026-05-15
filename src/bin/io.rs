@@ -138,7 +138,8 @@ fn is_gzip_path(path: &Path) -> bool {
 }
 
 fn open_input_bytes(path: &Path) -> Result<Vec<u8>, String> {
-    let file = File::open(path).map_err(|e| format!("Failed to open file {}: {}", path.display(), e))?;
+    let file =
+        File::open(path).map_err(|e| format!("Failed to open file {}: {}", path.display(), e))?;
     if is_gzip_path(path) {
         let mut decoder = GzDecoder::new(file);
         let mut buffer = Vec::new();

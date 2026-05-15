@@ -31,7 +31,7 @@ impl<F: Float> WeightedEdge<F> {
 
 pub(crate) fn compute_core_distances<D: DistanceData<F>, F: Float>(
     data: &D, min_points: usize,
-) -> Vec<F> {
+) -> Result<Vec<F>, String> {
     // fallback brute-force version used by non-tree algorithms (prim, slink)
     assert!(min_points > 0, "min_points must be greater than 0");
 
@@ -39,7 +39,7 @@ pub(crate) fn compute_core_distances<D: DistanceData<F>, F: Float>(
     assert!(n > 0, "number of points must be positive");
 
     if min_points > n {
-        return vec![F::infinity(); n];
+        return Ok(vec![F::infinity(); n]);
     }
 
     let rank = min_points - 1;
@@ -47,6 +47,7 @@ pub(crate) fn compute_core_distances<D: DistanceData<F>, F: Float>(
     let mut core_distances = vec![F::infinity(); n];
 
     for (i, cd) in core_distances.iter_mut().enumerate().take(n) {
+        crate::poll_interrupted()?;
         for (j, slot) in scratch.iter_mut().enumerate() {
             *slot = data.distance(i, j);
         }
@@ -55,7 +56,7 @@ pub(crate) fn compute_core_distances<D: DistanceData<F>, F: Float>(
         *cd = *kth;
     }
 
-    core_distances
+    Ok(core_distances)
 }
 
 /// Compute core distances using a VP-tree for neighbourhood search.  This
@@ -63,7 +64,9 @@ pub(crate) fn compute_core_distances<D: DistanceData<F>, F: Float>(
 /// tree for the `min_points` nearest neighbours of each point.  The tree
 /// must have been built on the same dataset as `data`.
 #[must_use]
-pub fn compute_core_distances_tree<'a, S, D, F>(tree: &S, data: &'a D, min_points: usize) -> Vec<F>
+pub fn compute_core_distances_tree<'a, S, D, F>(
+    tree: &S, data: &'a D, min_points: usize,
+) -> Result<Vec<F>, String>
 where
     D: DistanceData<F> + ?Sized + 'a,
     F: Float,
@@ -75,13 +78,14 @@ where
     assert!(n > 0, "number of points must be positive");
 
     if min_points > n {
-        return vec![F::infinity(); n];
+        return Ok(vec![F::infinity(); n]);
     }
 
     let k = min_points; // search_knn returns self as first neighbour
     let mut core = vec![F::infinity(); n];
     let mut query = data.query();
     for (i, slot) in core.iter_mut().enumerate().take(n) {
+        crate::poll_interrupted()?;
         query.set_index(i);
         let neighbors = tree.search_knn(&query, k);
         if neighbors.len() >= k {
@@ -89,7 +93,7 @@ where
         }
     }
 
-    core
+    Ok(core)
 }
 
 #[inline]
@@ -230,8 +234,8 @@ mod tests {
         let tree = VPTree::<f64>::new(&data, 2, &mut rng);
 
         for min_points in 1..=5 {
-            let brute: Vec<f64> = compute_core_distances(&data, min_points);
-            let via_tree = compute_core_distances_tree(&tree, &data, min_points);
+            let brute: Vec<f64> = compute_core_distances(&data, min_points).unwrap();
+            let via_tree = compute_core_distances_tree(&tree, &data, min_points).unwrap();
             assert_eq!(brute, via_tree);
         }
     }

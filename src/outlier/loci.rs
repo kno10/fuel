@@ -61,7 +61,7 @@ fn find_last_le(cdist: &[(f64, usize)], value: f64) -> Option<usize> {
 
 pub fn local_correlation_integral<'a, S, D, F>(
     tree: &S, data: &'a D, rmax: F, nmin: usize, alpha: F,
-) -> OutlierResult<F>
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
@@ -69,10 +69,17 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(Vec::new(), "LOCI", false, F::zero(), F::zero(), F::infinity());
+        return Ok(make_outlier_result(
+            Vec::new(),
+            "LOCI",
+            false,
+            F::zero(),
+            F::zero(),
+            F::infinity(),
+        ));
     }
 
-    let neighs = for_each_range(tree, data, rmax, true, |_, neigh| neigh);
+    let neighs = for_each_range(tree, data, rmax, true, |_, neigh| neigh)?;
 
     let rmax_f = rmax.to_f64().unwrap_or(f64::INFINITY);
     let alpha_f = alpha.to_f64().unwrap_or(1.0);
@@ -127,8 +134,7 @@ where
                     continue;
                 }
 
-                let nhat =
-                    neighbor_n_alphas.iter().sum::<f64>() / (neighbor_n_alphas.len() as f64);
+                let nhat = neighbor_n_alphas.iter().sum::<f64>() / (neighbor_n_alphas.len() as f64);
                 let var = neighbor_n_alphas
                     .iter()
                     .map(|v| {
@@ -164,7 +170,7 @@ where
         })
         .collect();
 
-    make_outlier_result(result_f, "LOCI", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(result_f, "LOCI", false, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -192,7 +198,7 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let results = local_correlation_integral(&tree, &data, 10.0, 2, 0.5);
+        let results = local_correlation_integral(&tree, &data, 10.0, 2, 0.5).unwrap();
         assert!(results.scores.iter().all(|v| !v.is_nan() && *v >= 0.0));
 
         let outlier_idx = points.len() - 1;
@@ -214,7 +220,7 @@ mod tests {
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
-        let result = local_correlation_integral(&tree, &data, 0.2, 20, 0.5);
+        let result = local_correlation_integral(&tree, &data, 0.2, 20, 0.5).unwrap();
 
         let reference = load_reference_scores();
         let expected = reference.get("LOCI-r0.2").expect("No reference for LOCI-r0.2");

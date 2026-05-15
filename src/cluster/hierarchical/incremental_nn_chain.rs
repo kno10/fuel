@@ -195,7 +195,9 @@ where
 /// This variant uses incremental priority search to accelerate nearest
 /// neighbour discovery for geometric linkage criteria.
 #[must_use]
-pub fn incremental_nn_chain<'a, S, D, F, L>(tree: &'a S, data: &'a D, linkage: L) -> MergeHistory<F>
+pub fn incremental_nn_chain<'a, S, D, F, L>(
+    tree: &'a S, data: &'a D, linkage: L,
+) -> Result<MergeHistory<F>, String>
 where
     F: Float + 'a,
     D: crate::DistanceData<F> + crate::VectorData<F> + ?Sized + 'a,
@@ -230,6 +232,7 @@ where
     let mut merged = 0usize;
 
     while merged < n - 1 {
+        crate::poll_interrupted()?;
         if !grow_chain(
             data,
             linkage,
@@ -305,7 +308,7 @@ where
     }
 
     builder.optimize_order_in_place();
-    builder.into_merges()
+    Ok(builder.into_merges())
 }
 
 #[cfg(test)]
@@ -329,7 +332,7 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let tree = KdTree::new(access, MaxVarianceSplit);
-                let history = incremental_nn_chain(&tree, access, GroupAverageLinkage);
+                let history = incremental_nn_chain(&tree, access, GroupAverageLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -346,7 +349,7 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let tree = KdTree::new(access, MaxVarianceSplit);
-                let history = incremental_nn_chain(&tree, access, CentroidLinkage);
+                let history = incremental_nn_chain(&tree, access, CentroidLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -363,7 +366,7 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let tree = KdTree::new(access, MaxVarianceSplit);
-                let history = incremental_nn_chain(&tree, access, MedianLinkage);
+                let history = incremental_nn_chain(&tree, access, MedianLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -380,7 +383,7 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let tree = KdTree::new(access, MaxVarianceSplit);
-                let history = incremental_nn_chain(&tree, access, WardLinkage);
+                let history = incremental_nn_chain(&tree, access, WardLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -397,7 +400,7 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let tree = KdTree::new(access, MaxVarianceSplit);
-                let history = incremental_nn_chain(&tree, access, MinimumSumSquaresLinkage);
+                let history = incremental_nn_chain(&tree, access, MinimumSumSquaresLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -414,7 +417,7 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let tree = KdTree::new(access, MaxVarianceSplit);
-                let history = incremental_nn_chain(&tree, access, MinimumVarianceLinkage);
+                let history = incremental_nn_chain(&tree, access, MinimumVarianceLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -431,7 +434,7 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let tree = KdTree::new(access, MaxVarianceSplit);
-                let history = incremental_nn_chain(&tree, access, MinimumVarianceIncreaseLinkage);
+                let history = incremental_nn_chain(&tree, access, MinimumVarianceIncreaseLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)

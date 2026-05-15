@@ -10,7 +10,7 @@ use crate::{DistanceData, Float, KnnSearch};
 /// `k_c` neighbors, then scores each point by with a reference set of `k_r`.
 pub fn intrinsic_dimensionality_outlier_score<'a, S, D, F, E>(
     tree: &S, data: &'a D, k_c: usize, k_r: usize,
-) -> OutlierResult<f64>
+) -> Result<OutlierResult<f64>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -19,7 +19,7 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(Vec::new(), "IDOS", false, 0.0, 0.0, f64::INFINITY);
+        return Ok(make_outlier_result(Vec::new(), "IDOS", false, 0.0, 0.0, f64::INFINITY));
     }
 
     let mut ids = Vec::with_capacity(size);
@@ -43,9 +43,9 @@ where
 
         let id_q = ids[i];
         if id_q > 0.0 && cnt > 0 { id_q * sum / (cnt as f64) } else { 0.0 }
-    });
+    })?;
 
-    make_outlier_result(scores, "IDOS", false, 0.0, 0.0, f64::INFINITY)
+    Ok(make_outlier_result(scores, "IDOS", false, 0.0, 0.0, f64::INFINITY))
 }
 
 #[cfg(test)]
@@ -69,7 +69,8 @@ mod tests {
 
         let result = intrinsic_dimensionality_outlier_score::<_, _, _, AggregatedHillID>(
             &tree, &data, 10, 10,
-        );
+        )
+        .unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("IDOS-10").expect("No reference for IDOS-10");
         let labels: Vec<u8> = label_from_reference(&reference);
@@ -92,7 +93,7 @@ mod tests {
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
         let result =
-            intrinsic_dimensionality_outlier_score::<_, _, _, HillID>(&tree, &data, 20, 20);
+            intrinsic_dimensionality_outlier_score::<_, _, _, HillID>(&tree, &data, 20, 20).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("IDOS-20-Hill").expect("No reference for IDOS-20-Hill");
         let labels: Vec<u8> = label_from_reference(&reference);

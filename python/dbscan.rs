@@ -55,7 +55,9 @@ macro_rules! dbscan_fn {
             let dataset = build_dataset(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
             let eps = <$dtype as crate::Float>::cast(eps);
-            let labels = dbscan::dbscan(&tree, &dataset, eps, min_points);
+            let labels = crate::py_interruptible(py, || {
+                    dbscan::dbscan(&tree, &dataset, eps, min_points)
+                })?;
             labels_to_py(py, labels)
         }
     };
@@ -73,7 +75,9 @@ macro_rules! parallel_dbscan_fn {
             let dataset = build_dataset(&array, distance)?;
             let tree = build_vptree(&dataset, seed);
             let eps = <$dtype as crate::Float>::cast(eps);
-            let labels = parallel_dbscan::parallel_dbscan(&tree, &dataset, eps, min_points);
+            let labels = crate::py_interruptible(py, || {
+                    parallel_dbscan::parallel_dbscan(&tree, &dataset, eps, min_points)
+                })?;
             labels_to_py(py, labels)
         }
     };
@@ -161,27 +165,31 @@ optics_result_methods!(OpticsResultF64, f64);
 #[pyfunction]
 #[pyo3(signature = (data, eps, min_points, distance=None, seed=None))]
 fn optics_f32<'py>(
-    _py: Python<'py>, data: PyReadonlyArray2<'py, f32>, eps: f64, min_points: usize,
+    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, eps: f64, min_points: usize,
     distance: Option<&str>, seed: Option<u64>,
 ) -> PyResult<OpticsResultF32> {
     let array = data.as_array();
     let dataset = build_dataset(&array, distance)?;
     let tree = build_vptree(&dataset, seed);
     let eps = f32::cast(eps);
-    let inner = optics::optics(&tree, &dataset, eps, min_points);
+    let inner = crate::py_interruptible(py, || {
+        optics::optics(&tree, &dataset, eps, min_points)
+    })?;
     Ok(OpticsResultF32 { inner })
 }
 
 #[pyfunction]
 #[pyo3(signature = (data, eps, min_points, distance=None, seed=None))]
 fn optics_f64<'py>(
-    _py: Python<'py>, data: PyReadonlyArray2<'py, f64>, eps: f64, min_points: usize,
+    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, eps: f64, min_points: usize,
     distance: Option<&str>, seed: Option<u64>,
 ) -> PyResult<OpticsResultF64> {
     let array = data.as_array();
     let dataset = build_dataset(&array, distance)?;
     let tree = build_vptree(&dataset, seed);
-    let inner = optics::optics(&tree, &dataset, eps, min_points);
+    let inner = crate::py_interruptible(py, || {
+        optics::optics(&tree, &dataset, eps, min_points)
+    })?;
     Ok(OpticsResultF64 { inner })
 }
 

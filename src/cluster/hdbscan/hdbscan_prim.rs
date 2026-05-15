@@ -12,12 +12,12 @@ use crate::{DistanceData, Float};
 /// generic float version of prim-based HDBSCAN
 pub fn hdbscan_prim<F: Float, D: DistanceData<F>>(
     data: &D, min_points: usize,
-) -> HdbscanHierarchy<F> {
+) -> Result<HdbscanHierarchy<F>, String> {
     let n = data.len();
     assert!(n > 0, "number of points must be positive");
     assert!(min_points > 0, "min_points must be greater than 0");
 
-    let core_distances: Vec<F> = compute_core_distances(data, min_points);
+    let core_distances: Vec<F> = compute_core_distances(data, min_points)?;
 
     let mut in_tree = vec![false; n];
     let mut best = vec![F::infinity(); n];
@@ -31,6 +31,7 @@ pub fn hdbscan_prim<F: Float, D: DistanceData<F>>(
 
     let mut edges = Vec::with_capacity(n - 1);
     for _ in 1..n {
+        crate::poll_interrupted()?;
         let mut next = usize::MAX;
         let mut next_weight = F::infinity();
 
@@ -61,7 +62,7 @@ pub fn hdbscan_prim<F: Float, D: DistanceData<F>>(
         }
     }
 
-    HdbscanHierarchy::new(edges_to_merge_history::<F>(n, &mut edges), core_distances)
+    Ok(HdbscanHierarchy::new(edges_to_merge_history::<F>(n, &mut edges), core_distances))
 }
 
 #[cfg(test)]
@@ -83,8 +84,8 @@ mod tests {
         ];
 
         let data = TableWithDistance::with_distance(&points, Euclidean);
-        let mst: HdbscanHierarchy<f64> = hdbscan_prim(&data, 2);
-        let slink: HdbscanHierarchy<f64> = slink_hdbscan(&data, 2);
+        let mst: HdbscanHierarchy<f64> = hdbscan_prim(&data, 2).unwrap();
+        let slink: HdbscanHierarchy<f64> = slink_hdbscan(&data, 2).unwrap();
 
         assert_eq!(mst.core_distances, slink.core_distances);
         assert_eq!(mst.merges, slink.merges);

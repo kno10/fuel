@@ -58,19 +58,18 @@ pub fn distance_from_center<D: VectorData<F> + Sync, F: Float>(data: D) -> Outli
         *x /= F::from_usize(size).unwrap_or(F::one());
     }
 
-    let scores: Vec<F> = (0..size)
-        .par_map(|idx| {
-            let coords = data.point(idx);
-            let sq: F = coords
-                .iter()
-                .enumerate()
-                .map(|(i, &x)| {
-                    let d = x - centre[i];
-                    d * d
-                })
-                .sum();
-            sq.sqrt()
-        });
+    let scores: Vec<F> = (0..size).par_map(|idx| {
+        let coords = data.point(idx);
+        let sq: F = coords
+            .iter()
+            .enumerate()
+            .map(|(i, &x)| {
+                let d = x - centre[i];
+                d * d
+            })
+            .sum();
+        sq.sqrt()
+    });
 
     make_outlier_result(scores, "Distance from center", false, F::zero(), F::zero(), F::infinity())
 }

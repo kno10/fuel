@@ -103,7 +103,7 @@ where
 #[inline(always)]
 pub fn kgmedians<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N, gamma: N, alpha: N,
-) -> KMeansResult<N>
+) -> Result<KMeansResult<N>, String>
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
@@ -150,7 +150,7 @@ where
         }
     }
 
-    KMeansResult::with_inertia(centers.into_ndarray(), assign_best, iter, loss)
+    Ok(KMeansResult::with_inertia(centers.into_ndarray(), assign_best, iter, loss))
 }
 
 /// kGmedian -- stochastic k-medians clustering.
@@ -164,6 +164,7 @@ where
 /// # Parameters
 /// - `gamma`: Constant controlling the magnitude of the descent steps.
 /// - `alpha`: Rate of decrease of the descent steps as cluster sizes grow.
+
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;
@@ -178,7 +179,7 @@ mod tests {
         let mat = gen_test_data((100, 2), Box::new(Pcg32::seed_from_u64(42)));
         let dataset = NdArrayDataset::new(&mat);
         let mut init = RandomSample::new(Box::new(Pcg32::seed_from_u64(42)));
-        let res = kgmedians(&dataset, 5, &mut init, 100, 0.0, 1.0, 0.75);
+        let res = kgmedians(&dataset, 5, &mut init, 100, 0.0, 1.0, 0.75).unwrap();
         let (cent, assign, _niter, loss) =
             (res.centers, res.assignments, res.iterations, res.inertia.unwrap_or_default());
 

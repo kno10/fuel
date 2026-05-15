@@ -4,8 +4,9 @@ use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, Sa
 use crate::{CandidateHeap, DistPair, Float, IndexQuery};
 
 /// Restarting-Search Single-Link (RSSL) with per-point continuing priority search.
-#[must_use]
-pub fn restarting_search_single_link<'a, S, D, F>(tree: &'a S, data: &'a D) -> MergeHistory<F>
+pub fn restarting_search_single_link<'a, S, D, F>(
+    tree: &'a S, data: &'a D,
+) -> Result<MergeHistory<F>, String>
 where
     F: Float + 'a,
     D: DistanceData<F> + ?Sized + 'a,
@@ -36,6 +37,7 @@ where
     }
 
     while builder.merge_count() < n - 1 {
+        crate::poll_interrupted()?;
         let Some(top) = primary.pop() else {
             break;
         };
@@ -87,7 +89,7 @@ where
         }
     }
 
-    builder.into_history()
+    Ok(builder.into_history())
 }
 
 pub(crate) fn refill_neighbors<F: Float, Q, S>(
@@ -144,7 +146,7 @@ mod tests {
             |access, min_clusters| {
                 let mut rng = StdRng::seed_from_u64(42);
                 let tree = VPTree::new(access, 3, &mut rng);
-                let history = restarting_search_single_link(&tree, access);
+                let history = restarting_search_single_link(&tree, access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -162,8 +164,8 @@ mod tests {
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree = VPTree::<f64>::new(&data, 3, &mut rng);
 
-        let hist_r = restarting_search_single_link(&tree, &data);
-        let hist_b = buffered_search_single_link(&tree, &data, 1);
+        let hist_r = restarting_search_single_link(&tree, &data).unwrap();
+        let hist_b = buffered_search_single_link(&tree, &data, 1).unwrap();
         assert_eq!(hist_r.len(), hist_b.len());
         // sort both histories by (idx1, idx2) to allow differences in merge order
         let mut r_sorted: Vec<_> = hist_r.clone().into_iter().collect();

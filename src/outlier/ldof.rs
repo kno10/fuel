@@ -3,7 +3,7 @@ use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 pub fn local_density_outlier_factor<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize,
-) -> OutlierResult<F>
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -11,55 +11,61 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(Vec::new(), "LDOF", false, F::zero(), F::zero(), F::infinity());
+        return Ok(make_outlier_result(
+            Vec::new(),
+            "LDOF",
+            false,
+            F::zero(),
+            F::zero(),
+            F::infinity(),
+        ));
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             vec![F::one(); size],
             "LDOF",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
-    let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh);
+    let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh)?;
 
-    let scores: Vec<F> = (0..size)
-        .par_map(|i| {
-            let neigh = &neighborhoods[i];
-            if neigh.is_empty() {
-                return F::one();
-            }
+    let scores: Vec<F> = (0..size).par_map(|i| {
+        let neigh = &neighborhoods[i];
+        if neigh.is_empty() {
+            return F::one();
+        }
 
-            let dxp: f64 = neigh.iter().map(|(_, d)| d.to_f64().unwrap_or(0.0)).sum::<f64>()
-                / (neigh.len() as f64);
+        let dxp: f64 = neigh.iter().map(|(_, d)| d.to_f64().unwrap_or(0.0)).sum::<f64>()
+            / (neigh.len() as f64);
 
-            let mut pair_sum = 0.0;
-            let mut pair_count = 0;
+        let mut pair_sum = 0.0;
+        let mut pair_count = 0;
 
-            for (u_idx, _) in neigh.iter() {
-                for (v_idx, _) in neigh.iter() {
-                    if u_idx >= v_idx {
-                        continue;
-                    }
-                    pair_sum += data.distance(*u_idx, *v_idx).to_f64().unwrap_or(0.0);
-                    pair_count += 1;
+        for (u_idx, _) in neigh.iter() {
+            for (v_idx, _) in neigh.iter() {
+                if u_idx >= v_idx {
+                    continue;
                 }
+                pair_sum += data.distance(*u_idx, *v_idx).to_f64().unwrap_or(0.0);
+                pair_count += 1;
             }
+        }
 
-            let d_xp = if pair_count > 0 { pair_sum / pair_count as f64 } else { 0.0 };
+        let d_xp = if pair_count > 0 { pair_sum / pair_count as f64 } else { 0.0 };
 
-            let lf = if d_xp <= 0.0 { 1.0 } else { dxp / d_xp };
-            let score = if lf.is_nan() || lf.is_infinite() { 1.0 } else { lf };
+        let lf = if d_xp <= 0.0 { 1.0 } else { dxp / d_xp };
+        let score = if lf.is_nan() || lf.is_infinite() { 1.0 } else { lf };
 
-            F::from_f64(score).unwrap_or(F::zero())
-        });
+        F::from_f64(score).unwrap_or(F::zero())
+    });
 
-    make_outlier_result(scores, "LDOF", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(scores, "LDOF", false, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -78,7 +84,7 @@ mod tests {
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let tree: crate::search::vptree::VPTree<f64> =
             crate::search::vptree::VPTree::new(&data, 2, &mut rand::rngs::StdRng::seed_from_u64(0));
-        let results = local_density_outlier_factor(&tree, &data, 2);
+        let results = local_density_outlier_factor(&tree, &data, 2).unwrap();
         let (best_index, _) = results
             .scores
             .iter()
@@ -96,7 +102,7 @@ mod tests {
         let tree: crate::search::vptree::VPTree<f64> =
             crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
-        let result = local_density_outlier_factor(&tree, &data, 10);
+        let result = local_density_outlier_factor(&tree, &data, 10).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("LDOF-10").expect("No reference for LDOF-10");
         let labels: Vec<u8> = label_from_reference(&reference);

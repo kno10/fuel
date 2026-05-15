@@ -5,7 +5,7 @@ use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 /// Fast-ABOD (approximate ABOD) using `k` nearest Euclidean neighbors and a kernel similarity function.
 pub fn fast_angle_based_outlier_detection<'a, S, D, F, K>(
     tree: &S, data: &'a D, k: usize, kernel: K,
-) -> OutlierResult<F>
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + VectorData<F> + Sync + 'a,
@@ -14,38 +14,37 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             Vec::new(),
             "FastABOD",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective < 2 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             vec![F::infinity(); size],
             "FastABOD",
             false,
             F::zero(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
     let neighborhoods: Vec<Vec<(usize, F)>> =
-        for_each_knn(tree, data, k_effective, false, |_idx, neighbors| neighbors);
+        for_each_knn(tree, data, k_effective, false, |_idx, neighbors| neighbors)?;
 
-    let scores: Vec<F> = (0..size)
-        .par_map(|i| {
-            let neighbor_ids: Vec<usize> = neighborhoods[i].iter().map(|(idx, _)| *idx).collect();
-            abod_kernel_score_for_neighbor_set(data, i, &neighbor_ids, &kernel)
-        });
+    let scores: Vec<F> = (0..size).par_map(|i| {
+        let neighbor_ids: Vec<usize> = neighborhoods[i].iter().map(|(idx, _)| *idx).collect();
+        abod_kernel_score_for_neighbor_set(data, i, &neighbor_ids, &kernel)
+    });
 
-    make_outlier_result(scores, "FastABOD", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(scores, "FastABOD", false, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -68,7 +67,8 @@ mod tests {
 
         let kernel = crate::kernel::polynomial::PolynomialKernel::new(2, 1.0, 0.0);
         let result =
-            fast_angle_based_outlier_detection(&tree, &data, 10, |x, y| kernel.similarity(x, y));
+            fast_angle_based_outlier_detection(&tree, &data, 10, |x, y| kernel.similarity(x, y))
+                .unwrap();
 
         assert_eq!(result.scores.len(), points.len());
         assert!(result.scores.iter().all(|s| s.is_finite()));
@@ -83,7 +83,8 @@ mod tests {
 
         let kernel = crate::kernel::polynomial::PolynomialKernel::new(2, 1.0, 0.0);
         let fast =
-            fast_angle_based_outlier_detection(&tree, &data, 10, |x, y| kernel.similarity(x, y));
+            fast_angle_based_outlier_detection(&tree, &data, 10, |x, y| kernel.similarity(x, y))
+                .unwrap();
         let result_lba = crate::outlier::locality_based_abod_kernel(&data, 10, 10, |x, y| {
             kernel.similarity(x, y)
         });

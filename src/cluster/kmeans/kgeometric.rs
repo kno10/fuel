@@ -183,7 +183,7 @@ where
 /// for assignment uses squared L2 (just like standard k‑means).
 pub fn kgeometric<N, I, A>(
     data: &A, k: usize, init: &mut I, maxiter: usize, tol: N, steps: usize,
-) -> KMeansResult<N>
+) -> Result<KMeansResult<N>, String>
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
@@ -350,7 +350,7 @@ where
         csize[a] += 1;
         lastsum += s_sq.sqrt();
     }
-    KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum)
+    Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum))
 }
 
 /// K-geometric median clustering entry with runtime math dispatch
@@ -466,7 +466,7 @@ mod kgeometric_tests {
         let mat = gen_test_data((100, 2), Pcg32::seed_from_u64(42));
         let dataset = NdArrayDataset::new(&mat);
         let mut init = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res = kgeometric(&dataset, 5, &mut init, 100, 1e-8, 1);
+        let res = kgeometric(&dataset, 5, &mut init, 100, 1e-8, 1).unwrap();
         let (cent, assign, niter, los) =
             (res.centers, res.assignments, res.iterations, res.inertia.unwrap_or_default());
         // compute Euclidean loss using Math helper
@@ -489,10 +489,10 @@ mod kgeometric_tests {
         let mat = gen_test_data((100, 2), Pcg32::seed_from_u64(42));
         let dataset = NdArrayDataset::new(&mat);
         let mut init1 = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res1 = kgeometric(&dataset, 5, &mut init1, 100, 1e-4, 1);
+        let res1 = kgeometric(&dataset, 5, &mut init1, 100, 1e-4, 1).unwrap();
         let n1 = res1.iterations;
         let mut init2 = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res2 = kgeometric(&dataset, 5, &mut init2, 100, 1e-3, 1);
+        let res2 = kgeometric(&dataset, 5, &mut init2, 100, 1e-3, 1).unwrap();
         let n2 = res2.iterations;
         assert!(n2 <= n1, "tolerance should not increase iteration count");
     }
@@ -520,21 +520,21 @@ mod kgeometric_tests {
         }
 
         let mut init1 = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res1 = kgeometric(&dataset, 5, &mut init1, 100, 1e-12, 1);
+        let res1 = kgeometric(&dataset, 5, &mut init1, 100, 1e-12, 1).unwrap();
         let (cent1, assign1, _n1, loss_geo) =
             (res1.centers, res1.assignments, res1.iterations, res1.inertia.unwrap_or_default());
         let manual_geo = euclidean_loss(&dataset, &cent1, &assign1);
         assert!((loss_geo - manual_geo).abs() < 1e-12);
 
         let mut init2 = RandomSample::new(Box::new(Pcg32::seed_from_u64(42)));
-        let res2 = crate::cluster::kmeans::kmedians(&dataset, 5, &mut init2, 100, 0.0);
+        let res2 = crate::cluster::kmeans::kmedians(&dataset, 5, &mut init2, 100, 0.0).unwrap();
         let (cent2, assign2, _n2, loss_med) =
             (res2.centers, res2.assignments, res2.iterations, res2.inertia.unwrap_or_default());
         let manual_med = euclidean_loss(&dataset, &cent2, &assign2);
         assert!((loss_med - manual_med).abs() < 1e-12);
 
         let mut init3 = RandomSample::new(Box::new(Pcg32::seed_from_u64(42)));
-        let res3 = crate::cluster::kmeans::lloyd::lloyd(&dataset, 5, &mut init3, 100, 0.0);
+        let res3 = crate::cluster::kmeans::lloyd::lloyd(&dataset, 5, &mut init3, 100, 0.0).unwrap();
         let (cent3, assign3, _n3, _loss_km) =
             (res3.centers, res3.assignments, res3.iterations, res3.inertia.unwrap_or_default());
         let manual_km = euclidean_loss(&dataset, &cent3, &assign3);

@@ -115,7 +115,9 @@ where
 // Inline always to allow CPU optimization!
 // Otherwise, CPU properties such as fma/avx2 may get lost and this will severely harm performance.
 #[inline(always)]
-pub fn lloyd<N, I, A>(data: &A, k: usize, init: &mut I, maxiter: usize, tol: N) -> KMeansResult<N>
+pub fn lloyd<N, I, A>(
+    data: &A, k: usize, init: &mut I, maxiter: usize, tol: N,
+) -> Result<KMeansResult<N>, String>
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
@@ -125,9 +127,9 @@ where
     let mut scratch = vec![N::zero(); d];
     let mut cent = Centers::<N>::new(k, d);
     let mut sums = Centers::<N>::new(k, d);
-    let (mut assign, mut csize, mut lastsum) = lloyd_initial_assignment::<N, A, I>(
-        data, None, k, init, &mut cent, &mut sums,
-    );
+    let (mut assign, mut csize, mut lastsum) =
+        lloyd_initial_assignment::<N, A, I>(data, None, k, init, &mut cent, &mut sums);
+    crate::check_interrupted()?;
     let mut iter = 1; // Initial iteration above!
     while iter < maxiter {
         iter += 1;
@@ -180,6 +182,7 @@ where
                 }
                 (local_changed, local_sum, delta_sums, delta_csize)
             });
+        crate::check_interrupted()?;
         let mut changed = 0usize;
         let mut total_sum = N::zero();
         for (c, s, ds, dc) in deltas {
@@ -195,7 +198,7 @@ where
             break;
         }
     }
-    KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum)
+    Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum))
 }
 
 #[cfg(test)]
@@ -212,7 +215,7 @@ mod tests {
         let mat = gen_test_data((100, 2), Pcg32::seed_from_u64(42));
         let dataset = NdArrayDataset::new(&mat);
         let mut init = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res = lloyd::<_, _, _>(&dataset, 5, &mut init, 100, 0.0);
+        let res = lloyd::<_, _, _>(&dataset, 5, &mut init, 100, 0.0).unwrap();
         let loss = compute_loss(&dataset, &res.centers, &res.assignments);
         assert_eq!(res.iterations, 11, "niter not as expected");
         assert!((loss - 50.82715291533402).abs() < 1e-12, "loss not as expected: {}", loss);
@@ -225,13 +228,13 @@ mod tests {
         let dataset = NdArrayDataset::new(&mat);
 
         let mut init1 = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res1 = lloyd::<_, _, _>(&dataset, 5, &mut init1, 100, 0.0);
+        let res1 = lloyd::<_, _, _>(&dataset, 5, &mut init1, 100, 0.0).unwrap();
         let (_cent1, _assign1, niter1, _) =
             (res1.centers, res1.assignments, res1.iterations, res1.inertia.unwrap_or_default());
 
         let tol: f64 = 1e-3;
         let mut init2 = RandomSample::new(Pcg32::seed_from_u64(42));
-        let res2 = lloyd::<_, _, _>(&dataset, 5, &mut init2, 100, tol);
+        let res2 = lloyd::<_, _, _>(&dataset, 5, &mut init2, 100, tol).unwrap();
         let (_cent2, _assign2, niter2, _) =
             (res2.centers, res2.assignments, res2.iterations, res2.inertia.unwrap_or_default());
 
@@ -254,10 +257,10 @@ mod tests {
         let dataset = NdArrayDataset::new(&mat_f32);
 
         let mut init1 = RandomSample::new(Pcg32::seed_from_u64(55));
-        let res1 = lloyd::<f32, _, _>(&dataset, 10, &mut init1, 200, 0.0);
+        let res1 = lloyd::<f32, _, _>(&dataset, 10, &mut init1, 200, 0.0).unwrap();
 
         let mut init2 = RandomSample::new(Pcg32::seed_from_u64(55));
-        let res2 = lloyd_naive::<f32, _, _>(&dataset, 10, &mut init2, 200, 0.0);
+        let res2 = lloyd_naive::<f32, _, _>(&dataset, 10, &mut init2, 200, 0.0).unwrap();
 
         let loss1 = compute_loss(&dataset, &res1.centers, &res1.assignments);
         let loss2 = compute_loss(&dataset, &res2.centers, &res2.assignments);
@@ -294,10 +297,10 @@ mod tests {
         let dataset = NdArrayDataset::new(&mat_f32);
 
         let mut init1 = RandomSample::new(Pcg32::seed_from_u64(77));
-        let res1 = lloyd::<f32, _, _>(&dataset, 10, &mut init1, 200, 0.0);
+        let res1 = lloyd::<f32, _, _>(&dataset, 10, &mut init1, 200, 0.0).unwrap();
 
         let mut init2 = RandomSample::new(Pcg32::seed_from_u64(77));
-        let res2 = lloyd_naive::<f32, _, _>(&dataset, 10, &mut init2, 200, 0.0);
+        let res2 = lloyd_naive::<f32, _, _>(&dataset, 10, &mut init2, 200, 0.0).unwrap();
 
         let loss1 = compute_loss(&dataset, &res1.centers, &res1.assignments);
         let loss2 = compute_loss(&dataset, &res2.centers, &res2.assignments);

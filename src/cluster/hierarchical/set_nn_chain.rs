@@ -13,8 +13,7 @@ use crate::{DistanceData, Float};
 
 /// Nearest-neighbor chain heuristic agglomeration using an arbitrary set-based
 /// linkage criterion.
-#[must_use]
-pub fn set_nn_chain<D, L, F, S>(data: &D) -> MergeHistory<F>
+pub fn set_nn_chain<D, L, F, S>(data: &D) -> Result<MergeHistory<F>, String>
 where
     D: DistanceData<F>,
     F: Float,
@@ -23,17 +22,18 @@ where
     let n = data.len();
     assert!(n > 0, "number of points must be positive");
     if n == 1 {
-        return MergeHistory::new();
+        return Ok(MergeHistory::new());
     }
 
     let (mut members, mut summaries, mut distances, mut clustermap) =
-        initialize_set_clusters::<D, L, F, S>(data);
+        initialize_set_clusters::<D, L, F, S>(data)?;
     let mut builder = Builder::<F>::new(n);
     let mut chain: Vec<usize> = Vec::with_capacity((n / 4).max(2));
     let mut end = n;
     let mut merged = 0usize;
 
     while merged < n - 1 {
+        crate::poll_interrupted()?;
         let mut a;
         let mut b;
         if chain.len() < 2 {
@@ -112,7 +112,7 @@ where
     }
 
     builder.optimize_order_in_place();
-    builder.into_merges()
+    Ok(builder.into_merges())
 }
 
 fn update_matrices<D, L, F, S>(
@@ -155,7 +155,7 @@ mod tests {
             "minimax",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_nn_chain::<_, MinimaxLinkage, _, _>(access);
+                let history = set_nn_chain::<_, MinimaxLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -171,7 +171,7 @@ mod tests {
             "average",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_nn_chain::<_, GroupAverageLinkage, _, _>(access);
+                let history = set_nn_chain::<_, GroupAverageLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -187,7 +187,7 @@ mod tests {
             "complete",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_nn_chain::<_, CompleteLinkage, _, _>(access);
+                let history = set_nn_chain::<_, CompleteLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -203,7 +203,7 @@ mod tests {
             "single",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_nn_chain::<_, SingleLinkage, _, _>(access);
+                let history = set_nn_chain::<_, SingleLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -219,7 +219,7 @@ mod tests {
             "ward",
             crate::distance::SquaredEuclidean,
             |access, min_clusters| {
-                let history = set_nn_chain::<_, WardLinkage, _, _>(access);
+                let history = set_nn_chain::<_, WardLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -235,7 +235,7 @@ mod tests {
             "hausdorff",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_nn_chain::<_, HausdorffLinkage, _, _>(access);
+                let history = set_nn_chain::<_, HausdorffLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -251,7 +251,7 @@ mod tests {
             "medoid",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_nn_chain::<_, MedoidLinkage, _, _>(access);
+                let history = set_nn_chain::<_, MedoidLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -267,7 +267,7 @@ mod tests {
             "mivar",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_nn_chain::<_, MinimumVarianceIncreaseLinkage, _, _>(access);
+                let history = set_nn_chain::<_, MinimumVarianceIncreaseLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -283,7 +283,7 @@ mod tests {
             "mnssq",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_nn_chain::<_, MinimumSumSquaresLinkage, _, _>(access);
+                let history = set_nn_chain::<_, MinimumSumSquaresLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -299,7 +299,7 @@ mod tests {
             "mnvar",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_nn_chain::<_, MinimumVarianceLinkage, _, _>(access);
+                let history = set_nn_chain::<_, MinimumVarianceLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -315,7 +315,7 @@ mod tests {
             "minimum_sum",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_nn_chain::<_, MinimumSumLinkage, _, _>(access);
+                let history = set_nn_chain::<_, MinimumSumLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -331,7 +331,7 @@ mod tests {
             "minimum_sum_increase",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = set_nn_chain::<_, MinimumSumIncreaseLinkage, _, _>(access);
+                let history = set_nn_chain::<_, MinimumSumIncreaseLinkage, _, _>(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)

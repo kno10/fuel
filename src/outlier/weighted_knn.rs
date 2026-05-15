@@ -9,7 +9,9 @@ use crate::{DistanceData, Float, KnnSearch};
 /// # Panics
 ///
 /// Panics if `k == 0`.
-pub fn weighted_knn<'a, S, D, F>(tree: &S, data: &'a D, k: usize) -> OutlierResult<F>
+pub fn weighted_knn<'a, S, D, F>(
+    tree: &S, data: &'a D, k: usize,
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -22,9 +24,9 @@ where
     let scores: Vec<F> =
         crate::outlier::common::for_each_knn(tree, data, k_effective, false, |_idx, neighbors| {
             neighbors.iter().take(k_effective).map(|(_, distance)| *distance).sum::<F>()
-        });
+        })?;
 
-    make_outlier_result(scores, "WeightedKNN", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(scores, "WeightedKNN", false, F::zero(), F::zero(), F::infinity()))
 }
 
 #[cfg(test)]
@@ -48,7 +50,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let results = weighted_knn(&tree, &data, 2);
+        let results = weighted_knn(&tree, &data, 2).unwrap();
 
         assert_eq!(results.scores.len(), points.len());
         let (best_index, best_score) = results
@@ -68,7 +70,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let result = weighted_knn(&tree, &data, 10);
+        let result = weighted_knn(&tree, &data, 10).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("KNNW-10").expect("No reference for KNNW-10");
         let labels: Vec<u8> = label_from_reference(&reference);

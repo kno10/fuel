@@ -1,7 +1,9 @@
 use crate::outlier::common::{OutlierResult, for_each_range, make_outlier_result};
 use crate::{DistanceData, Float, RangeSearch};
 
-pub fn db_outlier_detection<'a, S, D, F>(tree: &S, data: &'a D, d: F, p: f64) -> OutlierResult<F>
+pub fn db_outlier_detection<'a, S, D, F>(
+    tree: &S, data: &'a D, d: F, p: f64,
+) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -9,14 +11,14 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(
+        return Ok(make_outlier_result(
             Vec::new(),
             "DBOutlierDetection",
             false,
             F::one(),
             F::zero(),
             F::infinity(),
-        );
+        ));
     }
 
     let m = ((size as f64) * (1.0 - p)).floor() as usize;
@@ -25,9 +27,16 @@ where
         let count = neighbors.len();
         let outlier = if count < m { 1.0 } else { 0.0 };
         F::from_f64(outlier).unwrap_or(F::zero())
-    });
+    })?;
 
-    make_outlier_result(scores, "DBOutlierDetection", false, F::zero(), F::zero(), F::infinity())
+    Ok(make_outlier_result(
+        scores,
+        "DBOutlierDetection",
+        false,
+        F::zero(),
+        F::zero(),
+        F::infinity(),
+    ))
 }
 
 #[cfg(test)]
@@ -53,7 +62,7 @@ mod tests {
         let data = TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = rand::rngs::StdRng::seed_from_u64(0);
         let tree = crate::search::vptree::VPTree::new(&data, 2, &mut rng);
-        let results = db_outlier_detection(&tree, &data, 0.2, 0.2);
+        let results = db_outlier_detection(&tree, &data, 0.2, 0.2).unwrap();
         let (best_index, _) = results
             .scores
             .iter()
@@ -70,7 +79,7 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let tree = crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
-        let result = db_outlier_detection(&tree, &data, 0.25, 0.95);
+        let result = db_outlier_detection(&tree, &data, 0.25, 0.95).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("DBOD-10").expect("No reference for DBOD-10");
         let labels: Vec<u8> = label_from_reference(&reference);
@@ -96,7 +105,7 @@ mod tests {
         // point 1: count=2 -> inlier
         // point 2: count=1 -> outlier
         let result: crate::outlier::common::OutlierResult<f64> =
-            db_outlier_detection(&tree, &data, 0.5, 0.1);
+            db_outlier_detection(&tree, &data, 0.5, 0.1).unwrap();
         assert_eq!(result.scores, vec![0.0, 0.0, 1.0]);
     }
 }

@@ -9,7 +9,9 @@ use crate::cluster::hierarchical::pointer::{PointerRepresentation, pointer_to_me
 use crate::{DistanceData, Float};
 
 // Version using the original "pointer" representation
-pub fn slink_pointer<F: Float, D: DistanceData<F>>(data: &D) -> PointerRepresentation<F> {
+pub fn slink_pointer<F: Float, D: DistanceData<F>>(
+    data: &D,
+) -> Result<PointerRepresentation<F>, String> {
     let n = data.len();
     assert!(n > 0, "number of points must be positive");
 
@@ -18,6 +20,7 @@ pub fn slink_pointer<F: Float, D: DistanceData<F>>(data: &D) -> PointerRepresent
     let mut m = vec![F::infinity(); n];
 
     for cur in 1..n {
+        crate::poll_interrupted()?;
         m[cur] = F::infinity();
 
         for (i, slot) in m.iter_mut().enumerate().take(cur) {
@@ -49,13 +52,12 @@ pub fn slink_pointer<F: Float, D: DistanceData<F>>(data: &D) -> PointerRepresent
         }
     }
 
-    PointerRepresentation::new(pi, lambda)
+    Ok(PointerRepresentation::new(pi, lambda))
 }
 
 /// Convenience wrapper returning the common merge history format.
-#[must_use]
-pub fn slink<F: Float, D: DistanceData<F>>(data: &D) -> MergeHistory<F> {
-    pointer_to_merge_history(&slink_pointer(data))
+pub fn slink<F: Float, D: DistanceData<F>>(data: &D) -> Result<MergeHistory<F>, String> {
+    Ok(pointer_to_merge_history(&slink_pointer(data)?))
 }
 
 #[cfg(test)]
@@ -71,8 +73,8 @@ mod tests {
     fn slink_matches_agnes_single_on_unique_distances() {
         let d = vec![1.0, 8.0, 15.0, 22.0, 2.0, 9.0, 16.0, 3.0, 10.0, 4.0];
         let cm = CondensedDistanceMatrix::new_from_condensed(d.clone(), 5, false);
-        let a = agnes(&cm, SingleLinkage);
-        let b = pointer_to_merge_history(&slink_pointer(&cm));
+        let a = agnes(&cm, SingleLinkage).unwrap();
+        let b = pointer_to_merge_history(&slink_pointer(&cm).unwrap());
         assert_eq!(a, b);
     }
 
@@ -80,7 +82,7 @@ mod tests {
     fn slink_pointer_has_valid_shape() {
         let d = vec![1.0, 3.0, 8.0, 2.0, 7.0, 6.0];
         let cm = CondensedDistanceMatrix::new_from_condensed(d, 4, false);
-        let p = slink_pointer(&cm);
+        let p = slink_pointer(&cm).unwrap();
         assert_eq!(p.pi.len(), 4);
         assert_eq!(p.lambda.len(), 4);
     }
@@ -92,7 +94,7 @@ mod tests {
             "single",
             crate::distance::Euclidean,
             |access, min_clusters| {
-                let history = slink(access);
+                let history = slink(access).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)

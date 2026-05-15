@@ -38,8 +38,8 @@ fn run_em_model<'py, N, D, Mo, F, C>(
 ) -> PyResult<Py<PyAny>>
 where
     N: Float + Element + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    D: crate::VectorData<N>,
-    Mo: cluster::em::EmModel<N>,
+    D: crate::VectorData<N> + Sync,
+    Mo: cluster::em::EmModel<N> + Send,
     F: FnOnce(cluster::kmeans::init::RandomSample<N, Pcg32>, &D) -> Vec<Mo>,
     C: FnOnce(Python<'py>, cluster::em::EmResult<N, Mo>) -> PyResult<Py<PyAny>>,
 {
@@ -56,7 +56,10 @@ where
         min_log_likelihood,
         noise_ratio,
     };
-    let res = cluster::em::expectation_maximization::<N, _, _>(dataset, k, models, config);
+    let res = crate::py_interruptible(py, || {
+        cluster::em::expectation_maximization::<N, _, _>(dataset, k, models, config)
+            .map_err(|e| format!("{e:?}"))
+    })?;
     converter(py, res)
 }
 

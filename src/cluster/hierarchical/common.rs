@@ -87,7 +87,7 @@ pub(crate) fn shrink_active_end(clustermap: &[idsize], end: &mut usize) {
 
 pub(crate) fn initialize_set_clusters<D, L, F, S>(
     data: &D,
-) -> (Vec<Vec<idsize>>, Vec<S>, Vec<F>, Vec<idsize>)
+) -> Result<(Vec<Vec<idsize>>, Vec<S>, Vec<F>, Vec<idsize>), String>
 where
     D: DistanceData<F>,
     F: Float,
@@ -99,6 +99,7 @@ where
 
     let mut distances = Vec::with_capacity(n * (n - 1) / 2);
     for x in 1..n {
+        crate::poll_interrupted()?;
         for y in 0..x {
             // TODO: retain/cache the pair-wise summaries?
             let (d, _) =
@@ -107,7 +108,7 @@ where
         }
     }
 
-    (members, summaries, distances, (0..(n as idsize)).collect())
+    Ok((members, summaries, distances, (0..(n as idsize)).collect()))
 }
 
 /// Update the condensed-distance matrix for the pair `(x,y)` according to a
