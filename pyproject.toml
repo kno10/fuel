@@ -9,12 +9,24 @@ description = "Fast Unsupervised Learning"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 dependencies = ["numpy"]
+classifier = [
+        "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+        "Intended Audience :: Developers",
+        "Intended Audience :: Science/Research",
+        "Programming Language :: Python",
+        "Programming Language :: Rust",
+        "Operating System :: POSIX",
+        "Operating System :: MacOS",
+        "Operating System :: Microsoft :: Windows",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+        "Topic :: Software Development :: Libraries"
+]
 
 [tool.maturin]
 features = ["python","parallel"]
 python-source = "python"
 python-packages = ["fuel"]
-strip = false # TODO: change later
+strip = true
 module-name = "fuel._fuel"
 profile = "release"
 editable-profile = "release"

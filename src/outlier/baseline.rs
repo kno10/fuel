@@ -2,6 +2,7 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 
 use crate::api::VectorData; // needed for MatrixDataAccess.point/dims in this file
+use crate::distance::DistanceFunction;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
 use crate::{DistanceData, Float, ParMap};
 
@@ -17,12 +18,15 @@ use crate::{DistanceData, Float, ParMap};
 /// # Panics
 ///
 /// Panics if the data set is empty (division by zero when computing the mean).
-pub fn distance_from_origin<D: VectorData<F> + Sync, F: Float>(data: D) -> OutlierResult<F> {
-    let scores: Vec<F> = (0..data.len()).par_map(|idx| {
-        let coords = data.point(idx);
-        let sq = coords.iter().map(|&x| x * x).sum::<F>();
-        sq.sqrt()
-    });
+pub fn distance_from_origin<D, F, Dist>(data: D, dist: &Dist) -> OutlierResult<F>
+where
+    D: VectorData<F> + Sync,
+    F: Float,
+    Dist: DistanceFunction<[F], F> + Sync + ?Sized,
+{
+    let dims = data.dims();
+    let origin = vec![F::zero(); dims];
+    let scores: Vec<F> = (0..data.len()).par_map(|idx| dist.distance(data.point(idx), &origin));
 
     make_outlier_result(scores, "Distance from origin", false, F::zero(), F::zero(), F::infinity())
 }
@@ -32,7 +36,12 @@ pub fn distance_from_origin<D: VectorData<F> + Sync, F: Float>(data: D) -> Outli
 ///
 /// The centre is computed by averaging each coordinate.  For an empty
 /// dataset this function will panic when trying to divide by zero.
-pub fn distance_from_center<D: VectorData<F> + Sync, F: Float>(data: D) -> OutlierResult<F> {
+pub fn distance_from_center<D, F, Dist>(data: D, dist: &Dist) -> OutlierResult<F>
+where
+    D: VectorData<F> + Sync,
+    F: Float,
+    Dist: DistanceFunction<[F], F> + Sync + ?Sized,
+{
     let size = data.len();
     if size == 0 {
         return make_outlier_result(
@@ -58,18 +67,7 @@ pub fn distance_from_center<D: VectorData<F> + Sync, F: Float>(data: D) -> Outli
         *x /= F::from_usize(size).unwrap_or(F::one());
     }
 
-    let scores: Vec<F> = (0..size).par_map(|idx| {
-        let coords = data.point(idx);
-        let sq: F = coords
-            .iter()
-            .enumerate()
-            .map(|(i, &x)| {
-                let d = x - centre[i];
-                d * d
-            })
-            .sum();
-        sq.sqrt()
-    });
+    let scores: Vec<F> = (0..size).par_map(|idx| dist.distance(data.point(idx), &centre));
 
     make_outlier_result(scores, "Distance from center", false, F::zero(), F::zero(), F::infinity())
 }
@@ -130,7 +128,7 @@ mod tests {
     #[test]
     fn origin_ranks_remote_point_highest() {
         let (data, _tree) = make_simple_data();
-        let results = distance_from_origin(&data);
+        let results = distance_from_origin(&data, &Euclidean);
 
         let (best_index, _) = results
             .scores
@@ -145,7 +143,7 @@ mod tests {
     #[test]
     fn center_ranks_remote_point_highest() {
         let (data, _tree) = make_simple_data();
-        let results = distance_from_center(&data);
+        let results = distance_from_center(&data, &Euclidean);
         let (best_index, _) = results
             .scores
             .iter()

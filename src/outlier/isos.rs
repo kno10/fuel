@@ -147,7 +147,8 @@ mod tests {
         let tree: crate::search::vptree::VPTree<f64> =
             crate::search::vptree::VPTree::new(&data, 2, &mut rng);
 
-        let result = intrinsic_stochastic_outlier_selection::<_, _, _, HillID>(&tree, &data, 20).unwrap();
+        let result =
+            intrinsic_stochastic_outlier_selection::<_, _, _, HillID>(&tree, &data, 20).unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("ISOS-20-Hill").expect("No reference for ISOS-20-Hill");
         let labels: Vec<u8> = label_from_reference(&reference);
@@ -174,7 +175,8 @@ mod tests {
             _,
             _,
             crate::intrinsicdimensionality::AggregatedHillID,
-        >(&tree, &data, 10).unwrap();
+        >(&tree, &data, 10)
+        .unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("ISOS-10").expect("No reference for ISOS-10");
         let labels: Vec<u8> = label_from_reference(&reference);

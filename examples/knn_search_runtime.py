@@ -2,7 +2,7 @@ import argparse
 import time
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
-from fuel import get_rayon_parallellism, search
+from fuel import get_rayon_parallelism, search
 
 def run_fuel_search(data, queries, tree_name, k):
     start_build = time.perf_counter()

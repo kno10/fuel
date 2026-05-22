@@ -128,7 +128,13 @@ Find all neighbors within `radius` of each point in `query` against `data`.
 Build a persistent search index once and use it for repeated queries:
 
 ```python
-index = search.SearchIndex(data, distance='euclidean', tree='auto', seed=None)
+index = search.SearchIndex(
+    data,
+    distance='euclidean',
+    tree='auto',
+    seed=None,
+    precompute=None,
+)
 ```
 
 Note: modifying the data array after building the index is not supported,
@@ -146,6 +152,9 @@ because the data is not copied. This can yield incorrect results.
   - `'linear'` builds a brute-force linear-scan searcher.
 - `seed` : int or None, optional
   - RNG seed for VP-tree or cover-tree construction.
+- `precompute` : int or None, optional
+  - If provided, precompute the kNN results up to this value for repeated
+    queries. Supported for ``'vp'``, ``'cover'``, ``'kd'``, and ``'linear'``.
 
 **Returns**
 
@@ -173,14 +182,19 @@ import fuel.cluster as cluster
 K-means clustering minimizes the sum of squared errors (squared Euclidean distance).
 
 ```python
-centers, assignments, iterations, inertia, inertia_bound = cluster.kmeans(
-    data, *, k,
+result = cluster.kmeans(
+    data, k=10,
     variant='simplified_elkan',
     max_iter=300,
     tol=0,
     seed=None,
     init=None,
 )
+print(result.centers)
+print(result.labels)
+print(result.n_iter)
+print(result.inertia)
+print(result.inertia_bound)
 ```
 
 The input must be a dense ndarray.
@@ -200,9 +214,14 @@ K-medians clustering uses the median on each axis instead of the mean,
 which minimizes Manhattan distances.
 
 ```python
-centers, assignments, iterations, inertia, inertia_bound = cluster.kmedians(
-    data, *, k, max_iter=300, tol=0, seed=None, init=None,
+result = cluster.kmedians(
+    data, k=10, max_iter=300, tol=0, seed=None, init=None,
 )
+print(result.centers)
+print(result.labels)
+print(result.n_iter)
+print(result.inertia)
+print(result.inertia_bound)
 ```
 
 K-medians clustering (Manhattan distance).
@@ -214,9 +233,15 @@ K-medians clustering (Manhattan distance).
 This uses the geometric median to optimize Euclidean distances.
 
 ```python
-centers, assignments, iterations, inertia, inertia_bound = cluster.kgeometric(
-    data, *, k, steps, variant='default', max_iter=300, tol=1e-4, seed=None, init=None,
+result = cluster.kgeometric(
+    data, k=10, steps=3, variant='default', max_iter=300, tol=1e-4,
+    seed=None, init=None,
 )
+print(result.centers)
+print(result.labels)
+print(result.n_iter)
+print(result.inertia)
+print(result.inertia_bound)
 ```
 
 K-geometric-means. `steps` controls the number of geometric update sub-steps.
@@ -229,9 +254,15 @@ K-geometric-means. `steps` controls the number of geometric update sub-steps.
 This is an alternative approach also using geometric medians.
 
 ```python
-centers, assignments, iterations, inertia, inertia_bound = cluster.kgmedians(
-    data, *, k, gamma, alpha, max_iter=300, tol=1e-4, seed=None, init=None,
+result = cluster.kgmedians(
+    data, k=10, gamma=1.0, alpha=1.0, max_iter=300, tol=1e-4,
+    seed=None, init=None,
 )
+print(result.centers)
+print(result.labels)
+print(result.n_iter)
+print(result.inertia)
+print(result.inertia_bound)
 ```
 
 Generalised k-medians with parameters `gamma` and `alpha`.
@@ -241,12 +272,119 @@ Generalised k-medians with parameters `gamma` and `alpha`.
 ### K-Harmonic means clustering
 
 ```python
-centers, assignments, iterations, inertia, inertia_bound = cluster.kharmonic(
-    data, *, k, p, max_iter=300, tol=1e-4, seed=None, init=None,
+result = cluster.kharmonic(
+    data, k=10, p=2.0, max_iter=300, tol=1e-4, seed=None, init=None,
 )
+print(result.centers)
+print(result.labels)
+print(result.n_iter)
+print(result.inertia)
+print(result.inertia_bound)
 ```
 
 K-harmonic means with harmonic power `p`.
+
+---
+
+### K-Medoids clustering
+
+K-medoids clustering uses a dataset or a distance matrix and a list of initial medoids.
+The `kmedoids` function supports multiple variants of k-medoids clustering,
+
+```python
+result = cluster.kmedoids(
+    data, meds,
+    variant='par_fasterpam',
+    max_iter=300,
+    seed=0,
+    distance='euclidean',
+)
+print(result.loss)
+print(result.labels)
+print(result.medoids)
+```
+
+If ``distance='precomputed'``, the first argument is treated as a square
+pairwise distance matrix instead of a feature dataset.
+
+**Variants:**
+- `'par_fasterpam'` — parallel version of `fasterpam`; use `n_cpu` to control threads.
+- `'fasterpam'` — optimized PAM with faster swap evaluation.
+- `'rand_fasterpam'` — slightly increased randomness by starting iteration at a random position within the data set.
+- `'fastpam1'` — the original FastPAM1 algorithm.
+- `'pam_swap'` — classic PAM swap-based refinement.
+- `'alternating'` — alternating medoid update that resembles a k-means style loop.
+
+The `kmedoids` functions return a `KMedoidsResult` object with the following attributes:
+- `loss` — final objective value
+- `labels` — cluster assignment indices
+- `medoids` — final medoid indices
+- `n_iter` — number of iterations performed
+- `n_swap` — number of medoid swaps performed
+
+---
+
+### Silhouette Clustering
+Silhouette-based medoid optimization.
+
+```python
+result = cluster.silhouette_clustering(
+    data, meds,
+    variant='fastermsc',
+    max_iter=300,
+    distance='euclidean',
+)
+print(result.loss)
+print(result.labels)
+print(result.medoids)
+```
+
+If ``distance='precomputed'``, the first argument is treated as a square
+pairwise distance matrix instead of a feature dataset.
+
+**Variants:**
+- `'pamsil'` — PAM-based silhouette optimization; baseline Silhouette method.
+- `'pammedsil'` — PAM-based medoid silhouette optimization; baseline faster alternative.
+- `'fastmsc'` — optimized medoid silhouette algorithm.
+- `'fastermsc'` — further optimized medoid silhouette algorithm.
+
+`pamsil` and `pammedsil` are the baseline algorithms; the `fastmsc` and
+`fastermsc` variants optimize the medoid silhouette and are much faster.
+
+The `kmedoids` and `silhouette_clustering` functions return a `KMedoidsResult` object with the following attributes:
+- `loss` — final objective value (medoid silhouette or silhouette)
+- `labels` — cluster assignment indices
+- `medoids` — final medoid indices
+- `n_iter` — number of iterations performed
+- `n_swap` — number of medoid swaps performed
+
+#### Automatic Number of Clusters with Silhouette Clustering
+The DynMSC algorithm dynamically chooses the optimum (regarding medoid Silhouette) number of clusters. It begins with the maximum number of clusters, then efficiently reduces the number of clusters to find the optimum. As sometimes there may be an undesirable optimum with a low k, a minimum_k can be specified to stop.
+
+```python
+result = cluster.dynmsc(
+    data, meds,
+    minimum_k=2,
+    max_iter=300,
+    distance='euclidean',
+)
+print(result.loss)
+print(result.labels)
+print(result.medoids)
+print(result.bestk)
+print(result.losses)
+print(result.rangek)
+```
+
+The `dynmsc` function returns a `DynkResult` object with the following attributes:
+- `loss` — final objective value for the chosen `bestk`
+- `labels` — cluster assignment indices for the chosen `bestk`
+- `medoids` — medoid indices for the selected `bestk`
+- `bestk` — selected number of clusters
+- `losses` — objective values for each tested `k`
+- `rangek` — tested cluster counts
+- `n_iter` — number of iterations performed for the selected solution
+- `n_swap` — number of medoid swaps performed for the selected solution
 
 ---
 
@@ -255,9 +393,14 @@ K-harmonic means with harmonic power `p`.
 Also known as k-means\-\-.
 
 ```python
-centers, assignments, iterations, inertia, inertia_bound = cluster.tkmeans(
-    data, *, k, alpha, max_iter=300, tol=0, seed=None, init=None,
+result = cluster.tkmeans(
+    data, k=10, alpha=0.1, max_iter=300, tol=0, seed=None, init=None,
 )
+print(result.centers)
+print(result.labels)
+print(result.n_iter)
+print(result.inertia)
+print(result.inertia_bound)
 ```
 
 Trimmed k-means. `alpha` is the trimming proportion in `[0, 1)`.
@@ -267,9 +410,15 @@ Trimmed k-means. `alpha` is the trimming proportion in `[0, 1)`.
 ### Fuzzy c-means clustering
 
 ```python
-centers, membership, assignments, iterations, loss = cluster.fuzzycmeans(
-    data, *, k, m, max_iter=300, tol=1e-4, seed=None, init=None,
+result = cluster.fuzzycmeans(
+    data, k=10, m=2.0, max_iter=300, tol=1e-4,
+    seed=None, init=None,
 )
+print(result.centers)
+print(result.membership)
+print(result.labels)
+print(result.n_iter)
+print(result.loss)
 ```
 
 Fuzzy c-means (Lloyd update). `m` is the fuzziness exponent (>1).
@@ -283,14 +432,20 @@ Spherical k-means minimizes the angle between the data points and the cluster
 direction.
 
 ```python
-centers, assignments, iterations, inertia, inertia_bound = cluster.spherical_kmeans(
-    data, *, k,
+result = cluster.spherical_kmeans(
+    data, k=10,
     variant='simp_elkan',
     max_iter=300,
     tol=0,
     seed=None,
     init=None,
 )
+print(result.centers)
+
+print(result.labels)
+print(result.n_iter)
+print(result.inertia)
+print(result.inertia_bound)
 ```
 
 Spherical k-means (cosine distance). Accepts dense ndarray or CSR sparse matrix.
@@ -302,18 +457,17 @@ Spherical k-means (cosine distance). Accepts dense ndarray or CSR sparse matrix.
 ### Gaussian Mixture Modeling (EM Clustering)
 
 Each cluster is modeled using a multivariate Gaussian distributions.
-Three different cluster models are supported (spherical, axis-aligned aka. diagonal covariance matrix, and a fully multivariate model that allows rotated Gaussians). Three variants with differnt numerical behavior are supported, but its usually fine to stick to the default approach.
+Three different cluster models are supported (spherical, axis-aligned aka. diagonal covariance matrix, and a fully multivariate model that allows rotated Gaussians). Three variants with different numerical behavior are supported, but it is usually fine to stick to the default approach.
 Prior can be used to use a maximum-a-posteriori approach, where the prior is based on the overall data distribution.
 
 ```python
-weights, means, variances, assignments, responsibilities, n_iter, log_likelihood = cluster.em(
-    data, k,
-    *,
+result = cluster.em(
+    data, k=k,
     model='diagonal',
     variant='default',
-    delta=1e-5,
-    miniter=10,
-    maxiter=200,
+    tol=1e-5,
+    min_iter=10,
+    max_iter=200,
     hard=False,
     prior=0.0,
     return_soft=False,
@@ -321,6 +475,13 @@ weights, means, variances, assignments, responsibilities, n_iter, log_likelihood
     noise_ratio=0.0,
     seed=None,
 )
+print(result.weights)
+print(result.means)
+print(result.parameters)
+print(result.assignments)
+print(result.responsibilities)
+print(result.n_iter)
+print(result.log_likelihood)
 ```
 
 Gaussian mixture model EM.
@@ -328,7 +489,7 @@ Gaussian mixture model EM.
 **`model`:** `'diagonal'`, `'spherical'`, `'multivariate'`.
 **`variant`:** `'default'`, `'textbook'`, `'two_pass'`.
 
-For `'multivariate'`, `variances` is a covariance matrix array of shape `(k, d, d)`;
+For `'multivariate'`, `parameters` is a covariance matrix array of shape `(k, d, d)`;
 for `'diagonal'` it is shape `(k, d)`, for `'spherical'` shape `(k,)`.
 
 When `return_soft=True`, `responsibilities` is the full `(n, k)` soft-assignment matrix;
@@ -341,12 +502,11 @@ otherwise it is `None`.
 This is an expectation-maximization approach for points on the sphere, e.g., on text data. In contrast to spherical k-means, it is a soft clustering approach, and clusters can have different diameters.
 
 ```python
-weights, means, kappas, assignments, responsibilities, n_iter, log_likelihood = cluster.von_mises_fisher(
-    data, k,
-    *,
-    delta=1e-5,
-    miniter=10,
-    maxiter=200,
+result = cluster.von_mises_fisher(
+    data, k=k,
+    tol=1e-5,
+    min_iter=10,
+    max_iter=200,
     hard=False,
     prior=0.0,
     return_soft=False,
@@ -355,6 +515,13 @@ weights, means, kappas, assignments, responsibilities, n_iter, log_likelihood = 
     init_kappa=1.0,
     seed=None,
 )
+print(result.weights)
+print(result.means)
+print(result.parameters)
+print(result.assignments)
+print(result.responsibilities)
+print(result.n_iter)
+print(result.log_likelihood)
 ```
 
 Von Mises-Fisher mixture model EM. Accepts a CSR sparse matrix.
@@ -372,10 +539,9 @@ result = cluster.hierarchical(
     variant='auto',
     linkage='ward',
     *,
-    distance=None,
-    sample_size=None,
+    distance='euclidean',
+    index=None,
     slack=None,
-    seed=None,
 )
 ```
 
@@ -391,14 +557,14 @@ Hierarchical agglomerative clustering. Returns a `MergeHistory` object.
 | `nn_chain` | NN-chain, O(n^2) | All standard |
 | `set_agnes`, `set_anderberg`, `set_muellner`, `set_nn_chain` | Set-based; include minimax / hausdorff / medoid | Extended |
 | `geometric_nn_chain` | Euclidean geometry, no distance parameter | Geometric only |
-| `incremental_nn_chain` | Incremental search; requires `sample_size` | Geometric only |
+| `incremental_nn_chain` | Incremental search; requires `index` | Geometric only |
 | `slink` | Sibson SLINK, O(n^2) memory | Fixed: `single` |
 | `clink` | Defays CLINK | Fixed: `complete` |
-| `boruvka_searchers_single_link` | Boruvka+searchers; requires `sample_size` | Fixed: `single` |
-| `heap_of_searchers_single_link` | Heap-of-searchers; requires `sample_size` | Fixed: `single` |
-| `restarting_search_single_link` | Restarting search; requires `sample_size` | Fixed: `single` |
-| `buffered_search_single_link` | Buffered; requires `sample_size`, `slack` | Fixed: `single` |
-| `lazy_buffered_search_single_link` | Lazy buffered; requires `sample_size`, `slack` | Fixed: `single` |
+| `boruvka_searchers_single_link` | Boruvka+searchers; requires `index` | Fixed: `single` |
+| `heap_of_searchers_single_link` | Heap-of-searchers; requires `index` | Fixed: `single` |
+| `restarting_search_single_link` | Restarting search; requires `index` | Fixed: `single` |
+| `buffered_search_single_link` | Buffered; requires `index`, `slack` | Fixed: `single` |
+| `lazy_buffered_search_single_link` | Lazy buffered; requires `index`, `slack` | Fixed: `single` |
 
 **Standard linkages:** `single`, `complete`, `average` (`group_average`,
 `weighted_average`), `centroid`, `median`, `ward` (`missq`), `minimum_sum_squares`
@@ -427,10 +593,9 @@ result = cluster.hdbscan(
     data, min_points,
     variant='hdbscan_prim',
     *,
-    distance=None,
-    sample_size=None,
+    distance='euclidean',
     slack=None,
-    seed=None,
+    index=None,
 )
 ```
 
@@ -442,11 +607,11 @@ HDBSCAN hierarchy construction. Returns an `HdbscanHierarchy` object.
 |---------|-------------|
 | `hdbscan_prim` | Prim's MST on mutual reachability, O(n^2) |
 | `slink_hdbscan` | SLINK-style, O(n^2) |
-| `heap_of_searchers_hdbscan` | Tree-accelerated; requires `sample_size` |
-| `restarting_search_hdbscan` | Tree-accelerated; requires `sample_size` |
-| `boruvka_searchers_hdbscan` | Tree-accelerated; requires `sample_size` |
-| `buffered_search_hdbscan` | Tree-accelerated; requires `sample_size`, `slack` |
-| `lazy_buffered_search_hdbscan` | Tree-accelerated; requires `sample_size`, `slack` |
+| `heap_of_searchers_hdbscan` | Tree-accelerated; uses `index` |
+| `restarting_search_hdbscan` | Tree-accelerated; uses `index` |
+| `boruvka_searchers_hdbscan` | Tree-accelerated; uses `index` |
+| `buffered_search_hdbscan` | Tree-accelerated; uses `index`, `slack` |
+| `lazy_buffered_search_hdbscan` | Tree-accelerated; uses `index`, `slack` |
 
 **`HdbscanHierarchy` methods:**
 
@@ -472,13 +637,14 @@ labels = cluster.dbscan(
     *,
     distance="euclidean",
     variant="dbscan",
-    seed=None,
+    index=None,
 )
 ```
 
 DBSCAN. Returns `int64` labels; `-1` indicates noise.
 
 Use `variant='parallel'` to select the parallel DBSCAN implementation.
+Pass a prebuilt `SearchIndex` via `index` to reuse it across calls.
 
 ---
 
@@ -487,7 +653,7 @@ Use `variant='parallel'` to select the parallel DBSCAN implementation.
 A successor to DBSCAN and precursor to HDBSCAN. Typically, HDBSCAN* is to be preferred.
 
 ```python
-result = cluster.optics(data, max_eps, min_points, *, distance="euclidean", seed=None)
+result = cluster.optics(data, max_eps, min_points, *, distance="euclidean", index=None)
 ```
 
 OPTICS ordering and reachability. Returns an `OpticsResult` object.
@@ -536,79 +702,103 @@ It can be built using the command
 cargo build --release --bin compute_knn_outlier_scores --features parallel,io
 ```
 
+For Python-side parameter sweeps, build a `SearchIndex` with `precompute=k_max+1` once
+and pass it to every call. The `+1` accounts for the query point itself being included in
+the kNN count by the index but excluded by the outlier detectors:
+
+```python
+import numpy as np
+import fuel.search as search
+import fuel.outlier as outlier
+
+data = np.load("data.npy")  # float32 or float64 (n, d) array
+k_max = 20
+
+# Build the index once. precompute=k_max+1 because the index counts the query
+# point itself, while the outlier detectors exclude it from the k neighbors.
+index = search.SearchIndex(data, precompute=k_max + 1)
+
+for k in range(5, k_max):
+    knn_scores, _ = outlier.k_nearest_neighbors_outlier(data, k, index=index)
+    lof_scores, _ = outlier.local_outlier_factor(data, k, index=index)
+```
+
 ### Angle-based
 
 | Function | Parameters | Notes |
 |----------|-----------|-------|
-| `angle_based_outlier_detection(data, *, kernel, distance)` | `kernel`: `'poly2'` (default), `'poly3'`, `'linear'` | ABOD |
-| `fast_angle_based_outlier_detection(data, k, *, kernel, seed, distance)` | | FastABOD |
-| `locality_based_abod(data, k, l, *, distance)` | | LB-ABOD |
+| `angle_based_outlier_detection(data, *, kernel='poly2', distance='euclidean')` | `kernel`: `'poly2'`, `'poly3'`, `'linear'` | ABOD |
+| `fast_angle_based_outlier_detection(data, k, *, kernel='poly2', distance='euclidean', index=None)` | | FastABOD |
+| `lb_abod(data, k, l, *, distance='euclidean')` | | LB-ABOD |
+| `lb_abod_kernel(data, k, l, *, kernel='poly2', distance='euclidean')` | | LB-ABOD with configurable kernel |
 
 ### Correlation / subspace
 
 | Function | Parameters | Notes |
 |----------|-----------|-------|
-| `approximate_local_correlation_integral(data, nmin, alpha, g, *, seed, distance)` | `nmin`: minimum neighborhood size, `alpha`: smoothing parameter, `g`: kernel exponent | ALOCI |
-| `local_correlation_integral(data, rmax, nmin, alpha, *, seed, distance)` | `rmax`: radius threshold, `nmin`: minimum neighborhood size, `alpha`: smoothing parameter | LOCI |
-| `correlation_outlier_probabilities(data, k, expect, dist, *, seed, distance)` | `k`: neighbors, `expect`: expected neighbor count, `dist`: `'chi2'` or `'gamma'` | COP |
-| `local_intrinsic_dimensionality(data, k, *, estimator, seed, distance)` | `k`: neighbors, `estimator`: LID estimator name | LID-based |
-| `intrinsic_dimensionality_outlier_score(data, k_c, k_r, *, estimator, seed, distance)` | `k_c`: reference neighbors, `k_r`: reachability neighbors, `estimator`: LID estimator | IDOS |
-| `subspace_outlier_degree(data, k, alpha, *, seed, distance)` | `k`: neighbors, `alpha`: subspace balance parameter | SOD |
+| `approximate_local_correlation_integral(data, nmin, alpha, g, *, seed=None, distance='euclidean')` | `nmin`: minimum neighborhood size, `alpha`: smoothing parameter, `g`: kernel exponent, `seed`: algorithmic RNG seed | ALOCI |
+| `local_correlation_integral(data, rmax, nmin, alpha, *, distance='euclidean', index=None)` | `rmax`: radius threshold, `nmin`: minimum neighborhood size, `alpha`: smoothing parameter | LOCI |
+| `correlation_outlier_probabilities(data, k, expect, dist, *, distance='euclidean', index=None)` | `k`: neighbors, `expect`: expected neighbor count, `dist`: `'chi2'` or `'gamma'` | COP |
+| `local_intrinsic_dimensionality(data, k, *, estimator=None, distance='euclidean', index=None)` | `k`: neighbors, `estimator`: LID estimator name | LID-based |
+| `intrinsic_dimensionality_outlier_score(data, k_c, k_r, *, estimator=None, distance='euclidean', index=None)` | `k_c`: reference neighbors, `k_r`: reachability neighbors, `estimator`: LID estimator | IDOS |
+| `subspace_outlier_degree(data, k, alpha, *, distance='euclidean', index=None)` | `k`: neighbors, `alpha`: subspace balance parameter | SOD |
+| `intrinsic_stochastic_outlier_selection(data, k, *, estimator=None, distance='euclidean', index=None)` | `k`: neighbors, `estimator`: LID estimator name | ISOS |
 
 ### Distance / density based
 
 The function signatures below show the available parameters. Common arguments are:
 - `k`: number of nearest neighbors used for the score.
-- `distance`: metric name, default `euclidean`.
-- `seed`: RNG seed for repeatable results.
+- `distance`: metric name, default `'euclidean'`.
+- `index`: optional search index. Accepts a `SearchIndex` instance or one of `'auto'`, `'vp'`, `'cover'`/`'ct'`, `'kd'`, `'linear'`. When `None`, an index is built automatically.
 
 | Function | Notes |
 |----------|-------|
-| `k_nearest_neighbors_outlier(data, k, *, seed, distance)` | kNN distance outlier |
-| `k_nearest_neighbors_distance_deviation(data, k, *, seed, distance)` | kNNDD |
-| `k_nearest_neighbors_sos(data, k, *, seed, distance)` | kNN-SOS |
-| `weighted_knn(data, k, *, seed, distance)` | Weighted kNN |
-| `local_outlier_factor(data, k, *, seed, distance)` | LOF |
-| `simplified_lof(data, k, *, seed, distance)` | Simplified LOF |
-| `flexible_lof(data, krefer, kreach, *, seed, distance)` | Flexible LOF, `krefer` reference set size, `kreach` reachability count |
-| `local_density_outlier_factor(data, k, *, seed, distance)` | LDOF |
-| `local_outlier_probabilities(data, k, m, *, seed, distance)` | LoOP, `m` smoothing parameter |
-| `dynamic_window_outlier_factor(data, k, delta, *, seed, distance)` | DWOF, `delta` window size |
-| `local_density_factor(data, k, h, c, kernel, *, seed, distance)` | LDF, `h` bandwidth, `c` kernel parameter |
-| `simple_kernel_density_lof(data, k, h, kernel, *, seed, distance)` | KDEOS, `h` bandwidth, `kernel` name |
-| `stochastic_outlier_selection(data, perplexity, *, seed, distance)` | SOS, `perplexity` effective neighbor count |
-| `outlier_detection_independence_neighbor(data, k, *, seed, distance)` | ODIN |
-| `local_isolation_coefficient(data, k, *, seed, distance)` | LIC |
-| `influence_outlier(data, k, m, *, seed, distance)` | `m` influence exponent |
-| `variance_of_volume(data, k, *, seed, distance)` | VOV |
-| `connectivity_outlier_factor(data, k, *, seed, distance)` | COF |
+| `k_nearest_neighbors_outlier(data, k, *, distance='euclidean', index=None)` | kNN distance outlier |
+| `k_nearest_neighbors_distance_deviation(data, k, *, distance='euclidean', index=None)` | kNNDD |
+| `k_nearest_neighbors_sos(data, k, *, distance='euclidean', index=None)` | kNN-SOS |
+| `weighted_knn(data, k, *, distance='euclidean', index=None)` | Weighted kNN |
+| `local_outlier_factor(data, k, *, distance='euclidean', index=None)` | LOF |
+| `simplified_lof(data, k, *, distance='euclidean', index=None)` | Simplified LOF |
+| `flexible_lof(data, krefer, kreach, *, distance='euclidean', index=None)` | Flexible LOF, `krefer` reference set size, `kreach` reachability count |
+| `local_density_outlier_factor(data, k, *, distance='euclidean', index=None)` | LDOF |
+| `local_outlier_probabilities(data, k, m, *, distance='euclidean', index=None)` | LoOP, `m` smoothing parameter |
+| `dynamic_window_outlier_factor(data, k, delta, *, distance='euclidean', index=None)` | DWOF, `delta` window size |
+| `local_density_factor(data, k, h, c, kernel, *, distance='euclidean', index=None)` | LDF, `h` bandwidth, `c` kernel parameter |
+| `simple_kernel_density_lof(data, k, h, kernel, *, distance='euclidean', index=None)` | KDEOS (2-param), `h` bandwidth, `kernel` name |
+| `kdeos(data, kmin, kmax, *, kernel='gaussian', min_bandwidth=0.0, scale=1.0, idim=None, distance='euclidean', index=None)` | KDEOS (range variant) |
+| `stochastic_outlier_selection(data, perplexity, *, distance='euclidean', index=None)` | SOS, `perplexity` effective neighbor count |
+| `outlier_detection_independence_neighbor(data, k, *, distance='euclidean', index=None)` | ODIN |
+| `local_isolation_coefficient(data, k, *, distance='euclidean', index=None)` | LIC |
+| `influence_outlier(data, k, m, *, distance='euclidean', index=None)` | `m` influence exponent |
+| `variance_of_volume(data, k, *, distance='euclidean', index=None)` | VOV |
+| `connectivity_outlier_factor(data, k, *, distance='euclidean', index=None)` | COF |
 
 ### Center / distance from reference
 
 | Function | Parameters |
 |----------|-----------|
-| `distance_from_center(data, *, distance)` | Distance to centroid |
-| `distance_from_origin(data, *, distance)` | Distance to origin |
+| `distance_from_center(data, *, distance='euclidean')` | Distance to centroid |
+| `distance_from_origin(data, *, distance='euclidean')` | Distance to origin |
 
 ### DB-outlier
 
 | Function | Parameters |
 |----------|-----------|
-| `db_outlier_score(data, d, *, seed, distance)` | |
-| `db_outlier_detection(data, d, p, *, seed, distance)` | |
+| `db_outlier_score(data, d, *, distance='euclidean', index=None)` | |
+| `db_outlier_detection(data, d, p, *, distance='euclidean', index=None)` | |
 
 ### Forest-based
 
 | Function | Parameters |
 |----------|-----------|
-| `isolation_forest(data, num_trees, subsample_size, *, seed)` | No `distance` parameter |
+| `isolation_forest(data, num_trees, subsample_size, *, seed=None)` | No `distance` parameter |
 
 ### Baselines
 
 | Function | Parameters |
 |----------|-----------|
 | `zero(data)` | Returns zero score for every point |
-| `random(data, *, seed)` | Returns uniform random scores |
+| `random(data, *, seed=None)` | Returns uniform random scores |
 
 ### LID estimators (`estimator` keyword)
 

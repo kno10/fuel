@@ -239,7 +239,7 @@ impl<F: Float> PrioritySearcher<'_, F> {
         &mut self, query: &D, filter: &mut S,
     ) -> Option<DistPair<F>>
     where
-        S: SearchFilter,
+        S: SearchFilter + ?Sized,
     {
         loop {
             if self.has_current_candidate {

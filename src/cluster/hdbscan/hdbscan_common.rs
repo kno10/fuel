@@ -63,7 +63,6 @@ pub(crate) fn compute_core_distances<D: DistanceData<F>, F: Float>(
 /// avoids the quadratic cost of the brute-force routine above by asking the
 /// tree for the `min_points` nearest neighbours of each point.  The tree
 /// must have been built on the same dataset as `data`.
-#[must_use]
 pub fn compute_core_distances_tree<'a, S, D, F>(
     tree: &S, data: &'a D, min_points: usize,
 ) -> Result<Vec<F>, String>

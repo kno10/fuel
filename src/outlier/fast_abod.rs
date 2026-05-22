@@ -85,9 +85,8 @@ mod tests {
         let fast =
             fast_angle_based_outlier_detection(&tree, &data, 10, |x, y| kernel.similarity(x, y))
                 .unwrap();
-        let result_lba = crate::outlier::locality_based_abod_kernel(&data, 10, 10, |x, y| {
-            kernel.similarity(x, y)
-        });
+        let result_lba =
+            crate::outlier::lb_abod_kernel(&data, 10, 10, |x, y| kernel.similarity(x, y));
 
         assert_eq!(fast.scores.len(), points.len());
         assert!(fast.scores.iter().all(|s| s.is_finite()));

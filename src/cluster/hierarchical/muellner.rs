@@ -15,7 +15,6 @@ use crate::{CandidateHeap, DistPair, DistanceData, Float};
 
 /// Perform hierarchical clustering using Müllner's generic-linkage approach
 /// with an Anderberg nearest-neighbor cache and a heap for candidate retrieval.
-#[must_use]
 pub fn muellner<D, F: Float, L: Linkage<F> + Copy + Sync>(
     data: &D, linkage: L,
 ) -> Result<MergeHistory<F>, String>

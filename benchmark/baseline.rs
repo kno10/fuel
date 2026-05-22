@@ -48,8 +48,8 @@ fn run() -> Result<(), Box<dyn Error>> {
     let distance_count_after_index = distance.count();
 
     let scores = match mode.as_str() {
-        "origin" => distance_from_origin(&data),
-        "center" => distance_from_center(&data),
+        "origin" => distance_from_origin(&data, &Euclidean),
+        "center" => distance_from_center(&data, &Euclidean),
         "random" => random(&data, seed),
         "zero" => zero(&data),
         other => return Err(format!("unknown mode: {other}").into()),

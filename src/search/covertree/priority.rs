@@ -203,7 +203,7 @@ where
         &mut self, query: &Q, filter: &mut S,
     ) -> Option<DistPair<F>>
     where
-        S: crate::api::SearchFilter,
+        S: crate::api::SearchFilter + ?Sized,
     {
         while let Some(candidate) = self.next(query) {
             if !filter.skip_point(candidate.index) {
@@ -229,10 +229,9 @@ where
         CoverTreePrioritySearcher::next(self, query)
     }
 
-    fn next_with_filter<S2>(&mut self, query: &Q, filter: &mut S2) -> Option<DistPair<F>>
-    where
-        S2: crate::api::SearchFilter,
-    {
+    fn next_with_filter(
+        &mut self, query: &Q, filter: &mut dyn crate::api::SearchFilter,
+    ) -> Option<DistPair<F>> {
         CoverTreePrioritySearcher::next_with_filter(self, query, filter)
     }
 

@@ -44,7 +44,7 @@ def benchmark_sklearn(X, init_centers, algorithm="lloyd", n_clusters=10):
 def benchmark_fuel(X, init_centers, variant="simp_hamerly", n_clusters=10):
     print("Running fuel kmeans", variant)
     start = time.perf_counter()
-    centers, assignments, iterations, inertia, _ = kmeans(
+    result = kmeans(
         X,
         k=n_clusters,
         variant=variant,
@@ -55,9 +55,9 @@ def benchmark_fuel(X, init_centers, variant="simp_hamerly", n_clusters=10):
     )
     elapsed = time.perf_counter() - start
     import fuel
-    n_threads = fuel.get_rayon_parallellism()
+    n_threads = fuel.get_rayon_parallelism()
     print(f"fuel {variant} finished in {elapsed:.3f} seconds n_threads={n_threads}")
-    print(f"iterations={iterations}, inertia={inertia}")
+    print(f"iterations={result.n_iter}, inertia={result.inertia}")
     return elapsed
 
 

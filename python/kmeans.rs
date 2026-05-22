@@ -417,9 +417,16 @@ fn fuzzy_lloyd_f32<'py>(
         array.ncols(),
         params.seed,
     )?;
-    let (centers, membership, assignments, iterations, loss) = crate::py_interruptible(py, move || {
-        Ok(cluster::kmeans::fuzzy_lloyd::<f32, _, _>(&dataset, k, &mut init, params.max_iter, m))
-    })?;
+    let (centers, membership, assignments, iterations, loss) =
+        crate::py_interruptible(py, move || {
+            Ok(cluster::kmeans::fuzzy_lloyd::<f32, _, _>(
+                &dataset,
+                k,
+                &mut init,
+                params.max_iter,
+                m,
+            ))
+        })?;
     result_to_py_fuzzy(py, centers, membership, assignments, iterations, loss)
 }
 
@@ -437,9 +444,16 @@ fn fuzzy_lloyd_f64<'py>(
         array.ncols(),
         params.seed,
     )?;
-    let (centers, membership, assignments, iterations, loss) = crate::py_interruptible(py, move || {
-        Ok(cluster::kmeans::fuzzy_lloyd::<f64, _, _>(&dataset, k, &mut init, params.max_iter, m))
-    })?;
+    let (centers, membership, assignments, iterations, loss) =
+        crate::py_interruptible(py, move || {
+            Ok(cluster::kmeans::fuzzy_lloyd::<f64, _, _>(
+                &dataset,
+                k,
+                &mut init,
+                params.max_iter,
+                m,
+            ))
+        })?;
     result_to_py_fuzzy(py, centers, membership, assignments, iterations, loss)
 }
 

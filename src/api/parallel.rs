@@ -1,5 +1,4 @@
 use std::sync::atomic::Ordering::Relaxed;
-use std::time::Duration;
 
 #[cfg(feature = "python")]
 use pyo3::exceptions::*;
@@ -157,7 +156,7 @@ where
             result
         });
         loop {
-            py.detach(|| std::thread::park_timeout(Duration::from_millis(10)));
+            py.detach(|| std::thread::park_timeout(std::time::Duration::from_millis(10)));
             if handle.is_finished() {
                 break;
             }

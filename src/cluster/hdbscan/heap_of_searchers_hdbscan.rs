@@ -4,7 +4,6 @@ use crate::cluster::hierarchical::search_single_link_common::{ClusterBuilder, Sa
 use crate::{CandidateHeap, DistPair, DistanceSearch, Float, IndexQuery, KnnSearch};
 
 /// Heap-of-searchers HDBSCAN-HS (HSSL-style acceleration with priority-search acceleration).
-#[must_use]
 pub fn heap_of_searchers_hdbscan<'a, S, D, F>(
     tree: &'a S, data: &'a D, min_points: usize,
 ) -> Result<HdbscanHierarchy<F>, String>

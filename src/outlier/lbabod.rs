@@ -93,18 +93,16 @@ fn max_value<F: Float>(values: &[F]) -> Option<F> {
 }
 
 /// LB-ABOD: lower-bound ABOD (approximate + refinement).
-pub fn locality_based_abod<D, F>(data: &D, k: usize, l: usize) -> OutlierResult<F>
+pub fn lb_abod<D, F>(data: &D, k: usize, l: usize) -> OutlierResult<F>
 where
     F: Float,
     D: DistanceData<F> + VectorData<F> + Sync,
 {
-    locality_based_abod_kernel(data, k, l, |x, y| dot_product(x, y))
+    lb_abod_kernel(data, k, l, |x, y| dot_product(x, y))
 }
 
 /// LBABOD for kernel similarity variant.
-pub fn locality_based_abod_kernel<D, F, K>(
-    data: &D, k: usize, l: usize, kernel: K,
-) -> OutlierResult<F>
+pub fn lb_abod_kernel<D, F, K>(data: &D, k: usize, l: usize, kernel: K) -> OutlierResult<F>
 where
     F: Float,
     D: DistanceData<F> + VectorData<F> + Sync,
@@ -184,7 +182,7 @@ mod tests {
         let data = TableWithDistance::with_distance(&points, Euclidean);
 
         let kernel = crate::kernel::polynomial::PolynomialKernel::new(2, 1.0, 0.0);
-        let result = locality_based_abod_kernel(&data, 10, 10, |x, y| kernel.similarity(x, y));
+        let result = lb_abod_kernel(&data, 10, 10, |x, y| kernel.similarity(x, y));
 
         let reference = load_reference_scores();
         let expected = reference.get("LBABOD-10-poly2").expect("No reference for LBABOD-10-poly2");

@@ -1,6 +1,92 @@
 from .. import _fuel as _fuel
 from .._dispatch import _call, _f32_sparse
 
+
+class KMeansResult:
+    """K-means clustering result.
+
+    Parameters
+    ----------
+    centers : ndarray
+        Cluster centers.
+    labels : ndarray
+        Cluster assignments.
+    n_iter : int
+        Number of iterations.
+    inertia : float
+        Final inertia objective.
+    inertia_bound : float
+        Bound on inertia used during optimization.
+    """
+
+    def __init__(self, centers, labels, n_iter, inertia, inertia_bound):
+        self.centers = centers
+        self.labels = labels
+        self.n_iter = n_iter
+        self.inertia = inertia
+        self.inertia_bound = inertia_bound
+
+    def __repr__(self):
+        return (
+            f"KMeansResult(centers={self.centers}, labels={self.labels}, "
+            f"n_iter={self.n_iter}, inertia={self.inertia}, "
+            f"inertia_bound={self.inertia_bound})"
+        )
+
+
+class FuzzyCMeansResult:
+    """Fuzzy c-means clustering result.
+
+    Parameters
+    ----------
+    centers : ndarray
+        Cluster centers.
+    membership : ndarray
+        Fuzzy membership matrix.
+    labels : ndarray
+        Hard cluster assignments.
+    n_iter : int
+        Number of iterations.
+    loss : float
+        Final objective value.
+    """
+
+    def __init__(self, centers, membership, labels, n_iter, loss):
+        self.centers = centers
+        self.membership = membership
+        self.labels = labels
+        self.n_iter = n_iter
+        self.loss = loss
+
+    def __repr__(self):
+        return (
+            f"FuzzyCMeansResult(centers={self.centers}, membership={self.membership}, "
+            f"labels={self.labels}, n_iter={self.n_iter}, loss={self.loss})"
+        )
+
+
+def _build_fuzzycmeans_result(result):
+    if isinstance(result, FuzzyCMeansResult):
+        return result
+    if not isinstance(result, tuple):
+        return result
+    if len(result) == 5:
+        centers, membership, labels, n_iter, loss = result
+        return FuzzyCMeansResult(centers, membership, labels, n_iter, loss)
+    return result
+
+
+def _build_kmeans_result(result):
+    if isinstance(result, KMeansResult):
+        return result
+    if not isinstance(result, tuple):
+        return result
+    if len(result) == 5:
+        centers, labels, n_iter, inertia, inertia_bound = result
+        return KMeansResult(centers, labels, n_iter, inertia, inertia_bound)
+    return result
+
+
 def _make_kmeans_params(k, max_iter=300, tol=1e-4, seed=None, init=None):
     return _fuel.KMeansParams(
         k,
@@ -44,7 +130,7 @@ def kmeans(data, *, k, variant='simp_elkan', max_iter=300, tol=0,
     variant : {'lloyd', 'lloyd_blas', 'lloyd_naive', 'elkan', 'simp_elkan',
                'hamerly', 'simp_hamerly', 'exponion', 'shallot',
                'hartigan_wong', 'hartigan_wong_quick', 'macqueen',
-               'kmedians'}, default 'simp_hamerly'
+               'kmedians'}, default 'simp_elkan'
         Algorithm variant.
     max_iter : int, default 300
         Maximum number of iterations.
@@ -63,8 +149,9 @@ def kmeans(data, *, k, variant='simp_elkan', max_iter=300, tol=0,
 
     Returns
     -------
-    tuple
-        (centers, assignments, iterations, inertia, inertia_bound)
+    KMeansResult
+        Named result object with `centers`, `labels`, `n_iter`, `inertia`,
+        and `inertia_bound`.
     """
     params = _make_kmeans_params(k, max_iter=max_iter, tol=tol,
                                  seed=seed, init=init)
@@ -74,7 +161,7 @@ def kmeans(data, *, k, variant='simp_elkan', max_iter=300, tol=0,
             f"unknown kmeans variant '{variant}'. Valid: {sorted(_KMEANS_VARIANTS)}"
         )
     f32_fn, f64_fn = _KMEANS_VARIANTS[v]
-    return _call(f32_fn, f64_fn, data, params)
+    return _build_kmeans_result(_call(f32_fn, f64_fn, data, params))
 
 
 def kmedians(data, *, k, max_iter=300, tol=0, seed=None, init=None):
@@ -103,12 +190,13 @@ def kmedians(data, *, k, max_iter=300, tol=0, seed=None, init=None):
 
     Returns
     -------
-    tuple
-        (centers, assignments, iterations, inertia, inertia_bound)
+    KMeansResult
+        Named result object with `centers`, `labels`, `n_iter`, `inertia`,
+        and `inertia_bound`.
     """
     params = _make_kmeans_params(k, max_iter=max_iter, tol=tol,
                                  seed=seed, init=init)
-    return _call(_fuel.kmedians_f32, _fuel.kmedians_f64, data, params)
+    return _build_kmeans_result(_call(_fuel.kmedians_f32, _fuel.kmedians_f64, data, params))
 
 
 _KGEOMETRIC_VARIANTS = {
@@ -142,8 +230,9 @@ def kgeometric(data, *, k, steps, variant='default', max_iter=300,
 
     Returns
     -------
-    tuple
-        (centers, assignments, iterations, inertia, inertia_bound)
+    KMeansResult
+        Named result object with `centers`, `labels`, `n_iter`, `inertia`,
+        and `inertia_bound`.
     """
     params = _make_kmeans_params(k, max_iter=max_iter, tol=tol,
                                  seed=seed, init=init)
@@ -153,7 +242,7 @@ def kgeometric(data, *, k, steps, variant='default', max_iter=300,
             f"unknown kgeometric variant '{variant}'. Valid: {sorted(_KGEOMETRIC_VARIANTS)}"
         )
     f32_fn, f64_fn = _KGEOMETRIC_VARIANTS[v]
-    return _call(f32_fn, f64_fn, data, params, steps)
+    return _build_kmeans_result(_call(f32_fn, f64_fn, data, params, steps))
 
 
 def kgmedians(data, *, k, gamma, alpha, max_iter=300, tol=1e-4,
@@ -181,12 +270,13 @@ def kgmedians(data, *, k, gamma, alpha, max_iter=300, tol=1e-4,
 
     Returns
     -------
-    tuple
-        (centers, assignments, iterations, inertia, inertia_bound)
+    KMeansResult
+        Named result object with `centers`, `labels`, `n_iter`, `inertia`,
+        and `inertia_bound`.
     """
     params = _make_kmeans_params(k, max_iter=max_iter, tol=tol,
                                  seed=seed, init=init)
-    return _call(_fuel.kgmedians_f32, _fuel.kgmedians_f64, data, params, gamma, alpha)
+    return _build_kmeans_result(_call(_fuel.kgmedians_f32, _fuel.kgmedians_f64, data, params, gamma, alpha))
 
 
 def kharmonic(data, *, k, p, max_iter=300, tol=1e-4,
@@ -212,12 +302,13 @@ def kharmonic(data, *, k, p, max_iter=300, tol=1e-4,
 
     Returns
     -------
-    tuple
-        (centers, assignments, iterations, inertia, inertia_bound)
+    KMeansResult
+        Named result object with `centers`, `labels`, `n_iter`, `inertia`,
+        and `inertia_bound`.
     """
     params = _make_kmeans_params(k, max_iter=max_iter, tol=tol,
                                  seed=seed, init=init)
-    return _call(_fuel.kharmonic_f32, _fuel.kharmonic_f64, data, params, p)
+    return _build_kmeans_result(_call(_fuel.kharmonic_f32, _fuel.kharmonic_f64, data, params, p))
 
 
 def tkmeans(data, *, k, alpha, max_iter=300, tol=0,
@@ -243,12 +334,13 @@ def tkmeans(data, *, k, alpha, max_iter=300, tol=0,
 
     Returns
     -------
-    tuple
-        (centers, assignments, iterations, inertia, inertia_bound)
+    KMeansResult
+        Named result object with `centers`, `labels`, `n_iter`, `inertia`,
+        and `inertia_bound`.
     """
     params = _make_kmeans_params(k, max_iter=max_iter, tol=tol,
                                  seed=seed, init=init)
-    return _call(_fuel.tkmeans_f32, _fuel.tkmeans_f64, data, params, alpha)
+    return _build_kmeans_result(_call(_fuel.tkmeans_f32, _fuel.tkmeans_f64, data, params, alpha))
 
 
 def fuzzycmeans(data, *, k, m, max_iter=300, tol=1e-4,
@@ -274,12 +366,15 @@ def fuzzycmeans(data, *, k, m, max_iter=300, tol=1e-4,
 
     Returns
     -------
-    tuple
-        (centers, membership, assignments, iterations, loss)
+    FuzzyCMeansResult
+        Named result object with `centers`, `membership`, `labels`,
+        `n_iter`, and `loss`.
     """
     params = _make_kmeans_params(k, max_iter=max_iter, tol=tol,
                                  seed=seed, init=init)
-    return _call(_fuel.fuzzy_lloyd_f32, _fuel.fuzzy_lloyd_f64, data, params, m)
+    return _build_fuzzycmeans_result(
+        _call(_fuel.fuzzy_lloyd_f32, _fuel.fuzzy_lloyd_f64, data, params, m)
+    )
 
 
 _SPHERICAL_VARIANTS = {
@@ -337,8 +432,9 @@ def spherical_kmeans(data, *, k, variant='simp_elkan', max_iter=300,
 
     Returns
     -------
-    tuple
-        (centers, assignments, iterations, inertia, inertia_bound)
+    KMeansResult
+        Named result object with `centers`, `labels`, `n_iter`, `inertia`,
+        and `inertia_bound`.
     """
     params = _make_kmeans_params(k, max_iter=max_iter, tol=tol,
                                  seed=seed, init=init)
@@ -349,7 +445,7 @@ def spherical_kmeans(data, *, k, variant='simp_elkan', max_iter=300,
         )
     if _f32_sparse(data):
         f32_fn, f64_fn = _SPHERICAL_VARIANTS_SPARSE[v]
-        return f32_fn(data, params)
+        return _build_kmeans_result(f32_fn(data, params))
 
     f32_fn, f64_fn = _SPHERICAL_VARIANTS[v]
-    return _call(f32_fn, f64_fn, data, params)
+    return _build_kmeans_result(_call(f32_fn, f64_fn, data, params))

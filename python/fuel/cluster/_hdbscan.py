@@ -1,5 +1,6 @@
 from .. import _fuel as _fuel
 from .._dispatch import _call, _ensure_float
+from ..search import SearchIndex, _prepare_search_index
 
 # Brute-force variants (no tree required).
 _BRUTE_FORCE_VARIANTS = frozenset({'hdbscan_prim', 'slink_hdbscan'})
@@ -36,8 +37,8 @@ _TREE_SLACK_DISPATCH = {
 }
 
 
-def hdbscan(data, min_points, variant='hdbscan_prim', *, distance=None,
-            sample_size=None, slack=None, seed=None):
+def hdbscan(data, min_points, variant='hdbscan_prim', *, distance='euclidean',
+            slack=5, index=None):
     """
     HDBSCAN hierarchy construction.
 
@@ -55,27 +56,23 @@ def hdbscan(data, min_points, variant='hdbscan_prim', *, distance=None,
         - 'slink_hdbscan'
             SLINK-style linear-memory variant.
 
-        Tree-accelerated (require sample_size):
+        Tree-accelerated:
         - 'heap_of_searchers_hdbscan'
         - 'restarting_search_hdbscan'
         - 'boruvka_searchers_hdbscan'
 
-        Tree-accelerated with slack buffer (require sample_size and slack):
+        Tree-accelerated with slack buffer:
         - 'buffered_search_hdbscan'
         - 'lazy_buffered_search_hdbscan'
 
-    distance : str or None
-        Distance function (default: euclidean). Accepted names: euclidean,
+    distance : str
+        Distance function name. Default ``'euclidean'``. Accepted names: euclidean,
         sqeuclidean, manhattan, chebyshev, cosine, arccosine, canberra,
         braycurtis, hellinger, clark, chi, chi_squared, jensen_shannon,
         jeffrey, histogram_intersection.
-    sample_size : int or None
-        VP-tree sample size. Required for tree-accelerated variants.
-    slack : int or None
-        Buffer slack. Required for buffered_search_hdbscan and
-        lazy_buffered_search_hdbscan.
-    seed : int or None
-        RNG seed for VP-tree construction.
+    slack : int
+        Buffer slack for buffered_search_hdbscan and
+        lazy_buffered_search_hdbscan variants.
 
     Returns
     -------
@@ -90,22 +87,22 @@ def hdbscan(data, min_points, variant='hdbscan_prim', *, distance=None,
     v = variant.lower()
 
     if v in _BRUTE_FORCE_DISPATCH:
+        if index is not None:
+            raise ValueError(f"variant '{v}' does not use index")
         f32_fn, f64_fn = _BRUTE_FORCE_DISPATCH[v]
         return _call(f32_fn, f64_fn, data, min_points, distance)
 
     if v in _TREE_DISPATCH:
-        if sample_size is None:
-            raise ValueError(f"variant '{v}' requires sample_size")
+        index = _prepare_search_index(data, index, distance=distance, priority_search=True)
         f32_fn, f64_fn = _TREE_DISPATCH[v]
-        return _call(f32_fn, f64_fn, data, min_points, sample_size, seed, distance)
+        return _call(f32_fn, f64_fn, data, min_points,
+                     distance=distance, index=index)
 
     if v in _TREE_SLACK_DISPATCH:
-        if sample_size is None:
-            raise ValueError(f"variant '{v}' requires sample_size")
-        if slack is None:
-            raise ValueError(f"variant '{v}' requires slack")
+        index = _prepare_search_index(data, index, distance=distance, priority_search=True)
         f32_fn, f64_fn = _TREE_SLACK_DISPATCH[v]
-        return _call(f32_fn, f64_fn, data, min_points, slack, sample_size, seed, distance)
+        return _call(f32_fn, f64_fn, data, min_points, slack,
+                     distance=distance, index=index)
 
     raise ValueError(
         f"unknown HDBSCAN variant '{variant}'. Valid: {_ALL_VARIANTS}"

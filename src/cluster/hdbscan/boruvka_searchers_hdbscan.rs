@@ -40,7 +40,6 @@ impl<F: Float> Ord for Edge<F> {
 }
 
 /// Boruvka-style heap-of-searchers HDBSCAN MST (index accelerated).
-#[must_use]
 pub fn boruvka_searchers_hdbscan<'a, S, D, F>(
     tree: &'a S, data: &'a D, min_points: usize,
 ) -> Result<HdbscanHierarchy<F>, String>

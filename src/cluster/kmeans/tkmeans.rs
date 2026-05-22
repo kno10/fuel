@@ -196,7 +196,8 @@ mod tests {
         let mut init2 = crate::cluster::kmeans::init::RandomSample::new(Pcg32::seed_from_u64(42));
 
         let res_lloyd =
-            crate::cluster::kmeans::lloyd::lloyd::<f64, _, _>(&dataset, 5, &mut init1, 100, 0.0).unwrap();
+            crate::cluster::kmeans::lloyd::lloyd::<f64, _, _>(&dataset, 5, &mut init1, 100, 0.0)
+                .unwrap();
         let res_tkmeans = tkmeans(&dataset, 5, &mut init2, 100, 0.0, 0.0).unwrap();
 
         assert_eq!(res_lloyd.iterations, res_tkmeans.iterations);

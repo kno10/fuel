@@ -2,17 +2,16 @@ use cluster::hierarchical::extraction::{
     cut_dendrogram_by_height, cut_dendrogram_by_number_of_clusters,
 };
 use ndarray::ArrayView2;
-use numpy::{PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray2};
+use numpy::{Element, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray2};
 use pyo3::IntoPyObjectExt;
 use pyo3::exceptions::{PyIndexError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 
-use super::make_rng;
 use crate::cluster::hierarchical;
 use crate::distance::{DistanceFunction, Euclidean};
-use crate::search::vptree::VPTree;
-use crate::{Float, NdArrayDatasetWithDistance, cluster};
+use crate::python::search::SearchIndex;
+use crate::{CondensedDistanceMatrix, Float, NdArrayDatasetWithDistance, cluster};
 
 fn to_py_array1_i64<'py, I>(py: Python<'py>, values: I) -> PyResult<Py<PyAny>>
 where
@@ -112,18 +111,43 @@ macro_rules! merge_history_methods {
 merge_history_methods!(MergeHistoryF32, f32);
 merge_history_methods!(MergeHistoryF64, f64);
 
+macro_rules! dispatch_linkage {
+    ($py:expr, $algo:path, $data_ref:expr, $linkage:expr, $wrapper:ident) => {{
+        let history = crate::py_interruptible($py, || {
+            match $linkage.as_str() {
+                "single" => $algo($data_ref, hierarchical::SingleLinkage),
+                "complete" => $algo($data_ref, hierarchical::CompleteLinkage),
+                "average" | "group_average" => $algo($data_ref, hierarchical::GroupAverageLinkage),
+                "weighted_average" => $algo($data_ref, hierarchical::WeightedAverageLinkage),
+                "centroid" => $algo($data_ref, hierarchical::CentroidLinkage),
+                "median" => $algo($data_ref, hierarchical::MedianLinkage),
+                "ward" | "missq" => $algo($data_ref, hierarchical::WardLinkage),
+                "minimum_sum_squares" | "mnssq" => {
+                    $algo($data_ref, hierarchical::MinimumSumSquaresLinkage)
+                }
+                "minimum_variance_increase" | "mivar" => {
+                    $algo($data_ref, hierarchical::MinimumVarianceIncreaseLinkage)
+                }
+                "minimum_variance" | "mnvar" => {
+                    $algo($data_ref, hierarchical::MinimumVarianceLinkage)
+                }
+                _ => unreachable!("validated above"),
+            }
+        })?;
+        Ok(Py::new($py, $wrapper { history })?.into())
+    }};
+}
+
 macro_rules! linkage_wrapper {
     ($name:ident, $algo:path, $dtype:ty, $wrapper:ident) => {
         #[pyfunction]
-        #[pyo3(signature = (data, linkage, distance=None))]
+        #[pyo3(signature = (data, linkage, distance))]
         fn $name<'py>(
             py: Python<'py>,
-            data: PyReadonlyArray2<'py, $dtype>,
+            data: Py<PyAny>,
             linkage: &str,
-            distance: Option<&str>,
+            distance: &str,
         ) -> PyResult<Py<PyAny>> {
-            let array = data.as_array();
-            let dataset = build_hier_dataset::<$dtype>(&array, distance)?;
             let linkage = linkage.to_ascii_lowercase();
             match linkage.as_str() {
                 "single" | "complete" | "average" | "group_average" | "weighted_average"
@@ -135,28 +159,16 @@ macro_rules! linkage_wrapper {
                     ))
                 }
             }
-            let history = crate::py_interruptible(py, || {
-                match linkage.as_str() {
-                    "single" => $algo(&dataset, hierarchical::SingleLinkage),
-                    "complete" => $algo(&dataset, hierarchical::CompleteLinkage),
-                    "average" | "group_average" => $algo(&dataset, hierarchical::GroupAverageLinkage),
-                    "weighted_average" => $algo(&dataset, hierarchical::WeightedAverageLinkage),
-                    "centroid" => $algo(&dataset, hierarchical::CentroidLinkage),
-                    "median" => $algo(&dataset, hierarchical::MedianLinkage),
-                    "ward" | "missq" => $algo(&dataset, hierarchical::WardLinkage),
-                    "minimum_sum_squares" | "mnssq" => {
-                        $algo(&dataset, hierarchical::MinimumSumSquaresLinkage)
-                    }
-                    "minimum_variance_increase" | "mivar" => {
-                        $algo(&dataset, hierarchical::MinimumVarianceIncreaseLinkage)
-                    }
-                    "minimum_variance" | "mnvar" => {
-                        $algo(&dataset, hierarchical::MinimumVarianceLinkage)
-                    }
-                    _ => unreachable!("validated above"),
-                }
-            })?;
-            Ok(Py::new(py, $wrapper { history })?.into())
+            if distance.eq_ignore_ascii_case("precomputed") {
+                let cm = precomputed_to_condensed::<$dtype>(data.bind(py))?;
+                dispatch_linkage!(py, $algo, &cm, linkage, $wrapper)
+            } else {
+                let arr = data.bind(py).cast::<PyArray2<$dtype>>()?;
+                let readonly = arr.readonly();
+                let array = readonly.as_array();
+                let dataset = build_hier_dataset::<$dtype>(&array, distance)?;
+                dispatch_linkage!(py, $algo, &dataset, linkage, $wrapper)
+            }
         }
     };
 }
@@ -229,83 +241,155 @@ geometric_linkage_wrapper!(
 );
 
 #[pyfunction]
-#[pyo3(signature = (data, distance=None))]
-fn slink_f32<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, distance: Option<&str>,
-) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = build_hier_dataset::<f32>(&array, distance)?;
-    let history = crate::py_interruptible(py, || hierarchical::slink(&dataset))?;
+#[pyo3(signature = (data, distance))]
+fn slink_f32<'py>(py: Python<'py>, data: Py<PyAny>, distance: &str) -> PyResult<Py<PyAny>> {
+    let history = if distance.eq_ignore_ascii_case("precomputed") {
+        let cm = precomputed_to_condensed::<f32>(data.bind(py))?;
+        crate::py_interruptible(py, || hierarchical::slink(&cm))?
+    } else {
+        let arr = data.bind(py).cast::<PyArray2<f32>>()?;
+        let readonly = arr.readonly();
+        let array = readonly.as_array();
+        let dataset = build_hier_dataset::<f32>(&array, distance)?;
+        crate::py_interruptible(py, || hierarchical::slink(&dataset))?
+    };
     Ok(Py::new(py, MergeHistoryF32 { history })?.into())
 }
 
 #[pyfunction]
-#[pyo3(signature = (data, distance=None))]
-fn slink_f64<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, distance: Option<&str>,
-) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = build_hier_dataset::<f64>(&array, distance)?;
-    let history = crate::py_interruptible(py, || hierarchical::slink(&dataset))?;
+#[pyo3(signature = (data, distance))]
+fn slink_f64<'py>(py: Python<'py>, data: Py<PyAny>, distance: &str) -> PyResult<Py<PyAny>> {
+    let history = if distance.eq_ignore_ascii_case("precomputed") {
+        let cm = precomputed_to_condensed::<f64>(data.bind(py))?;
+        crate::py_interruptible(py, || hierarchical::slink(&cm))?
+    } else {
+        let arr = data.bind(py).cast::<PyArray2<f64>>()?;
+        let readonly = arr.readonly();
+        let array = readonly.as_array();
+        let dataset = build_hier_dataset::<f64>(&array, distance)?;
+        crate::py_interruptible(py, || hierarchical::slink(&dataset))?
+    };
     Ok(Py::new(py, MergeHistoryF64 { history })?.into())
 }
 
 #[pyfunction]
-#[pyo3(signature = (data, distance=None))]
-fn clink_f32<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, distance: Option<&str>,
-) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = build_hier_dataset::<f32>(&array, distance)?;
-    let history = crate::py_interruptible(py, || hierarchical::clink(&dataset))?;
+#[pyo3(signature = (data, distance))]
+fn clink_f32<'py>(py: Python<'py>, data: Py<PyAny>, distance: &str) -> PyResult<Py<PyAny>> {
+    let history = if distance.eq_ignore_ascii_case("precomputed") {
+        let cm = precomputed_to_condensed::<f32>(data.bind(py))?;
+        crate::py_interruptible(py, || hierarchical::clink(&cm))?
+    } else {
+        let arr = data.bind(py).cast::<PyArray2<f32>>()?;
+        let readonly = arr.readonly();
+        let array = readonly.as_array();
+        let dataset = build_hier_dataset::<f32>(&array, distance)?;
+        crate::py_interruptible(py, || hierarchical::clink(&dataset))?
+    };
     Ok(Py::new(py, MergeHistoryF32 { history })?.into())
 }
 
 #[pyfunction]
-#[pyo3(signature = (data, distance=None))]
-fn clink_f64<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, distance: Option<&str>,
-) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = build_hier_dataset::<f64>(&array, distance)?;
-    let history = crate::py_interruptible(py, || hierarchical::clink(&dataset))?;
+#[pyo3(signature = (data, distance))]
+fn clink_f64<'py>(py: Python<'py>, data: Py<PyAny>, distance: &str) -> PyResult<Py<PyAny>> {
+    let history = if distance.eq_ignore_ascii_case("precomputed") {
+        let cm = precomputed_to_condensed::<f64>(data.bind(py))?;
+        crate::py_interruptible(py, || hierarchical::clink(&cm))?
+    } else {
+        let arr = data.bind(py).cast::<PyArray2<f64>>()?;
+        let readonly = arr.readonly();
+        let array = readonly.as_array();
+        let dataset = build_hier_dataset::<f64>(&array, distance)?;
+        crate::py_interruptible(py, || hierarchical::clink(&dataset))?
+    };
     Ok(Py::new(py, MergeHistoryF64 { history })?.into())
-}
-
-fn build_vptree<D, F>(data: &D, sample_size: usize, seed: Option<u64>) -> VPTree<F>
-where
-    D: crate::DistanceData<F> + Sync,
-    F: Float,
-{
-    let mut rng = make_rng(seed);
-    VPTree::new(data, sample_size.max(2), &mut rng)
 }
 
 fn build_hier_dataset<'a, N>(
-    array: &'a ArrayView2<'a, N>, distance: Option<&str>,
+    array: &'a ArrayView2<'a, N>, distance: &str,
 ) -> PyResult<
     NdArrayDatasetWithDistance<'a, N, ArrayView2<'a, N>, Box<dyn DistanceFunction<[N], N> + Sync>>,
 >
 where
     N: Float,
 {
-    let dist_fn: Box<dyn DistanceFunction<[N], N> + Sync> =
-        super::parse_distance_fn(distance.unwrap_or("euclidean"))?;
+    let dist_fn: Box<dyn DistanceFunction<[N], N> + Sync> = super::parse_distance_fn(distance)?;
     Ok(NdArrayDatasetWithDistance::with_distance(array, dist_fn))
 }
+
+fn precomputed_to_condensed<N: Float + Element>(
+    data: &Bound<'_, PyAny>,
+) -> PyResult<CondensedDistanceMatrix<N>> {
+    let ndim: usize = data.getattr("ndim")?.extract()?;
+    match ndim {
+        1 => {
+            let arr = data.cast::<PyArray1<N>>()?;
+            let readonly = arr.readonly();
+            let slice =
+                readonly.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+            let len = slice.len();
+            // n*(n-1)/2 == len  =>  n = (1 + sqrt(1 + 8*len)) / 2
+            let n = (1 + ((1 + 8 * len) as f64).sqrt() as usize) / 2;
+            if n < 2 || n * (n - 1) / 2 != len {
+                return Err(PyValueError::new_err(format!(
+                    "condensed distance vector length {len} is not n*(n-1)/2 for any n>=2"
+                )));
+            }
+            // scipy pdist returns upper-triangular row-major: pairs (a,b) with a<b,
+            // at index  n*a - a*(a+1)/2 + (b-a-1).
+            // Our internal format is lower-triangular row-major: pairs (big,small) with big>small,
+            // at index  big*(big-1)/2 + small.
+            // Reorder so that each (big,small) pair fetches the correct scipy element.
+            let mut condensed = Vec::with_capacity(len);
+            for big in 1..n {
+                for small in 0..big {
+                    // (a, b) = (small, big) in scipy upper-triangular notation
+                    let scipy_idx = n * small - small * (small + 1) / 2 + (big - small - 1);
+                    condensed.push(slice[scipy_idx]);
+                }
+            }
+            Ok(CondensedDistanceMatrix::new_from_condensed(condensed, n, false))
+        }
+        2 => {
+            let arr = data.cast::<PyArray2<N>>()?;
+            let readonly = arr.readonly();
+            let array = readonly.as_array();
+            let n = array.shape()[0];
+            if array.shape()[1] != n {
+                return Err(PyValueError::new_err(
+                    "precomputed distance matrix must be square",
+                ));
+            }
+            // Extract lower triangle, consistent with Python _square_to_condensed (tril_indices)
+            let mut condensed = Vec::with_capacity(n * (n - 1) / 2);
+            for i in 1..n {
+                for j in 0..i {
+                    condensed.push(array[[i, j]]);
+                }
+            }
+            Ok(CondensedDistanceMatrix::new_from_condensed(condensed, n, false))
+        }
+        _ => Err(PyValueError::new_err(
+            "precomputed data must be a 1D condensed vector or 2D square matrix",
+        )),
+    }
+}
+
+
+
+
 
 macro_rules! search_single_link_wrapper {
     ($name:ident, $algo:path, $dtype:ty, $wrapper:ident) => {
         #[pyfunction]
-        #[pyo3(signature = (data, sample_size, seed=None, distance=None))]
+        #[pyo3(signature = (data, index, distance))]
         fn $name<'py>(
-            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, sample_size: usize,
-            seed: Option<u64>, distance: Option<&str>,
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, index: PyRef<'_, SearchIndex>,
+            distance: &str,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_hier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, sample_size, seed);
-            let history = crate::py_interruptible(py, || $algo(&tree, &dataset))?;
+            let index_inner = index.inner();
+            let history = crate::py_interruptible(py, || $algo(index_inner, &dataset))?;
             Ok(Py::new(py, $wrapper { history })?.into())
         }
     };
@@ -314,15 +398,15 @@ macro_rules! search_single_link_wrapper {
 macro_rules! search_single_link_wrapper_slack {
     ($name:ident, $algo:path, $dtype:ty, $wrapper:ident) => {
         #[pyfunction]
-        #[pyo3(signature = (data, slack, sample_size, seed=None, distance=None))]
+        #[pyo3(signature = (data, slack, index, distance))]
         fn $name<'py>(
-            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, slack: usize, sample_size: usize,
-            seed: Option<u64>, distance: Option<&str>,
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, slack: usize,
+            index: PyRef<'_, SearchIndex>, distance: &str,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_hier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, sample_size, seed);
-            let history = crate::py_interruptible(py, || $algo(&tree, &dataset, slack))?;
+            let index_inner = index.inner();
+            let history = crate::py_interruptible(py, || $algo(index_inner, &dataset, slack))?;
             Ok(Py::new(py, $wrapper { history })?.into())
         }
     };
@@ -390,129 +474,186 @@ search_single_link_wrapper!(
 );
 
 #[pyfunction]
+#[pyo3(signature = (data, linkage, index))]
 fn incremental_nn_chain_f32<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, linkage: &str, sample_size: usize,
-    seed: Option<u64>,
+    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, linkage: &str, index: PyRef<'_, SearchIndex>,
 ) -> PyResult<Py<PyAny>> {
     let array = data.as_array();
     let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
-    let tree = build_vptree(&dataset, sample_size, seed);
     let linkage = linkage.to_ascii_lowercase();
     match linkage.as_str() {
-        "average" | "group_average" | "centroid" | "ward" | "missq" | "minimum_sum_squares"
-        | "mnssq" | "minimum_variance_increase" | "mivar" | "minimum_variance" | "mnvar" => {}
+        "average"
+        | "group_average"
+        | "centroid"
+        | "ward"
+        | "missq"
+        | "minimum_sum_squares"
+        | "mnssq"
+        | "minimum_variance_increase"
+        | "mivar"
+        | "minimum_variance"
+        | "mnvar" => {}
         _ => {
             return Err(PyValueError::new_err(
                 "unsupported incremental linkage: expected one of average, group_average, centroid, ward, minimum_sum_squares, minimum_variance, minimum_variance_increase",
             ));
         }
     }
-    let history = crate::py_interruptible(py, || {
-            match linkage.as_str() {
-                "average" | "group_average" => hierarchical::incremental_nn_chain(
-                    &tree,
-                    &dataset,
-                    hierarchical::GroupAverageLinkage,
-                ),
-                "centroid" => hierarchical::incremental_nn_chain(
-                    &tree,
-                    &dataset,
-                    hierarchical::CentroidLinkage,
-                ),
-                "ward" | "missq" => hierarchical::incremental_nn_chain(
-                    &tree,
-                    &dataset,
-                    hierarchical::WardLinkage,
-                ),
-                "minimum_sum_squares" | "mnssq" => hierarchical::incremental_nn_chain(
-                    &tree,
-                    &dataset,
-                    hierarchical::MinimumSumSquaresLinkage,
-                ),
-                "minimum_variance_increase" | "mivar" => hierarchical::incremental_nn_chain(
-                    &tree,
-                    &dataset,
-                    hierarchical::MinimumVarianceIncreaseLinkage,
-                ),
-                "minimum_variance" | "mnvar" => hierarchical::incremental_nn_chain(
-                    &tree,
-                    &dataset,
-                    hierarchical::MinimumVarianceLinkage,
-                ),
-                _ => unreachable!("validated above"),
-            }
-        })?;
+    let index_inner = index.inner();
+    let history = crate::py_interruptible(py, || match linkage.as_str() {
+        "average" | "group_average" => hierarchical::incremental_nn_chain(
+            index_inner,
+            &dataset,
+            hierarchical::GroupAverageLinkage,
+        ),
+        "centroid" => {
+            hierarchical::incremental_nn_chain(index_inner, &dataset, hierarchical::CentroidLinkage)
+        }
+        "ward" | "missq" => {
+            hierarchical::incremental_nn_chain(index_inner, &dataset, hierarchical::WardLinkage)
+        }
+        "minimum_sum_squares" | "mnssq" => hierarchical::incremental_nn_chain(
+            index_inner,
+            &dataset,
+            hierarchical::MinimumSumSquaresLinkage,
+        ),
+        "minimum_variance_increase" | "mivar" => hierarchical::incremental_nn_chain(
+            index_inner,
+            &dataset,
+            hierarchical::MinimumVarianceIncreaseLinkage,
+        ),
+        "minimum_variance" | "mnvar" => hierarchical::incremental_nn_chain(
+            index_inner,
+            &dataset,
+            hierarchical::MinimumVarianceLinkage,
+        ),
+        _ => unreachable!("validated above"),
+    })?;
     Ok(Py::new(py, MergeHistoryF32 { history })?.into())
 }
 
 #[pyfunction]
+#[pyo3(signature = (data, linkage, index))]
 fn incremental_nn_chain_f64<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, linkage: &str, sample_size: usize,
-    seed: Option<u64>,
+    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, linkage: &str, index: PyRef<'_, SearchIndex>,
 ) -> PyResult<Py<PyAny>> {
     let array = data.as_array();
     let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
-    let tree = build_vptree(&dataset, sample_size, seed);
     let linkage = linkage.to_ascii_lowercase();
     match linkage.as_str() {
-        "average" | "group_average" | "centroid" | "ward" | "missq" | "minimum_sum_squares"
-        | "mnssq" | "minimum_variance_increase" | "mivar" | "minimum_variance" | "mnvar" => {}
+        "average"
+        | "group_average"
+        | "centroid"
+        | "ward"
+        | "missq"
+        | "minimum_sum_squares"
+        | "mnssq"
+        | "minimum_variance_increase"
+        | "mivar"
+        | "minimum_variance"
+        | "mnvar" => {}
         _ => {
             return Err(PyValueError::new_err(
                 "unsupported incremental linkage: expected one of average, group_average, centroid, ward, minimum_sum_squares, minimum_variance, minimum_variance_increase",
             ));
         }
     }
-    let history = crate::py_interruptible(py, || {
-            match linkage.as_str() {
-                "average" | "group_average" => hierarchical::incremental_nn_chain(
-                    &tree,
-                    &dataset,
-                    hierarchical::GroupAverageLinkage,
-                ),
-                "centroid" => hierarchical::incremental_nn_chain(
-                    &tree,
-                    &dataset,
-                    hierarchical::CentroidLinkage,
-                ),
-                "ward" | "missq" => hierarchical::incremental_nn_chain(
-                    &tree,
-                    &dataset,
-                    hierarchical::WardLinkage,
-                ),
-                "minimum_sum_squares" | "mnssq" => hierarchical::incremental_nn_chain(
-                    &tree,
-                    &dataset,
-                    hierarchical::MinimumSumSquaresLinkage,
-                ),
-                "minimum_variance" | "mnvar" => hierarchical::incremental_nn_chain(
-                    &tree,
-                    &dataset,
-                    hierarchical::MinimumVarianceLinkage,
-                ),
-                "minimum_variance_increase" | "mivar" => hierarchical::incremental_nn_chain(
-                    &tree,
-                    &dataset,
-                    hierarchical::MinimumVarianceIncreaseLinkage,
-                ),
+    let index_inner = index.inner();
+    let history = crate::py_interruptible(py, || match linkage.as_str() {
+        "average" | "group_average" => hierarchical::incremental_nn_chain(
+            index_inner,
+            &dataset,
+            hierarchical::GroupAverageLinkage,
+        ),
+        "centroid" => {
+            hierarchical::incremental_nn_chain(index_inner, &dataset, hierarchical::CentroidLinkage)
+        }
+        "ward" | "missq" => {
+            hierarchical::incremental_nn_chain(index_inner, &dataset, hierarchical::WardLinkage)
+        }
+        "minimum_sum_squares" | "mnssq" => hierarchical::incremental_nn_chain(
+            index_inner,
+            &dataset,
+            hierarchical::MinimumSumSquaresLinkage,
+        ),
+        "minimum_variance" | "mnvar" => hierarchical::incremental_nn_chain(
+            index_inner,
+            &dataset,
+            hierarchical::MinimumVarianceLinkage,
+        ),
+        "minimum_variance_increase" | "mivar" => hierarchical::incremental_nn_chain(
+            index_inner,
+            &dataset,
+            hierarchical::MinimumVarianceIncreaseLinkage,
+        ),
+        _ => unreachable!("validated above"),
+    })?;
+    Ok(Py::new(py, MergeHistoryF64 { history })?.into())
+}
+
+macro_rules! dispatch_set_linkage {
+    ($py:expr, $algo:ident, $data_ref:expr, $linkage:expr, $wrapper:ident) => {{
+        let history = crate::py_interruptible($py, || {
+            match $linkage.as_str() {
+                "single" => {
+                    hierarchical::$algo::<_, hierarchical::SingleLinkage, _, _>($data_ref)
+                }
+                "complete" => {
+                    hierarchical::$algo::<_, hierarchical::CompleteLinkage, _, _>($data_ref)
+                }
+                "average" | "group_average" => {
+                    hierarchical::$algo::<_, hierarchical::GroupAverageLinkage, _, _>($data_ref)
+                }
+                "ward" | "missq" => {
+                    hierarchical::$algo::<_, hierarchical::WardLinkage, _, _>($data_ref)
+                }
+                "minimum_sum_squares" | "mnssq" => {
+                    hierarchical::$algo::<_, hierarchical::MinimumSumSquaresLinkage, _, _>(
+                        $data_ref,
+                    )
+                }
+                "minimum_variance_increase" | "mivar" => {
+                    hierarchical::$algo::<_, hierarchical::MinimumVarianceIncreaseLinkage, _, _>(
+                        $data_ref,
+                    )
+                }
+                "minimum_variance" | "mnvar" => {
+                    hierarchical::$algo::<_, hierarchical::MinimumVarianceLinkage, _, _>($data_ref)
+                }
+                "minimax" => {
+                    hierarchical::$algo::<_, hierarchical::MinimaxLinkage, _, _>($data_ref)
+                }
+                "hausdorff" => {
+                    hierarchical::$algo::<_, hierarchical::HausdorffLinkage, _, _>($data_ref)
+                }
+                "medoid" => {
+                    hierarchical::$algo::<_, hierarchical::MedoidLinkage, _, _>($data_ref)
+                }
+                "minimum_sum" | "mnsum" => {
+                    hierarchical::$algo::<_, hierarchical::MinimumSumLinkage, _, _>($data_ref)
+                }
+                "minimum_sum_increase" | "misum" => {
+                    hierarchical::$algo::<_, hierarchical::MinimumSumIncreaseLinkage, _, _>(
+                        $data_ref,
+                    )
+                }
                 _ => unreachable!("validated above"),
             }
         })?;
-    Ok(Py::new(py, MergeHistoryF64 { history })?.into())
+        Ok(Py::new($py, $wrapper { history })?.into())
+    }};
 }
 
 macro_rules! set_linkage_wrapper {
     ($name:ident, $algo:ident, $dtype:ty, $wrapper:ident) => {
         #[pyfunction]
-        #[pyo3(signature = (data, linkage, distance=None))]
+        #[pyo3(signature = (data, linkage, distance))]
         fn $name<'py>(
             py: Python<'py>,
-            data: PyReadonlyArray2<'py, $dtype>,
+            data: Py<PyAny>,
             linkage: &str,
-            distance: Option<&str>,
+            distance: &str,
         ) -> PyResult<Py<PyAny>> {
-            let array = data.as_array();
-            let dataset = build_hier_dataset::<$dtype>(&array, distance)?;
             let linkage = linkage.to_ascii_lowercase();
             match linkage.as_str() {
                 "single" | "complete" | "average" | "group_average" | "ward" | "missq"
@@ -525,56 +666,16 @@ macro_rules! set_linkage_wrapper {
                     ))
                 }
             }
-            let history = crate::py_interruptible(py, || {
-                    match linkage.as_str() {
-                        "single" => {
-                            hierarchical::$algo::<_, hierarchical::SingleLinkage, _, _>(&dataset)
-                        }
-                        "complete" => {
-                            hierarchical::$algo::<_, hierarchical::CompleteLinkage, _, _>(&dataset)
-                        }
-                        "average" | "group_average" => {
-                            hierarchical::$algo::<_, hierarchical::GroupAverageLinkage, _, _>(
-                                &dataset,
-                            )
-                        }
-                        "ward" | "missq" => {
-                            hierarchical::$algo::<_, hierarchical::WardLinkage, _, _>(&dataset)
-                        }
-                        "minimum_sum_squares" | "mnssq" => {
-                            hierarchical::$algo::<_, hierarchical::MinimumSumSquaresLinkage, _, _>(
-                                &dataset,
-                            )
-                        }
-                        "minimum_variance_increase" | "mivar" => {
-                            hierarchical::$algo::<_, hierarchical::MinimumVarianceIncreaseLinkage, _, _>(&dataset)
-                        }
-                        "minimum_variance" | "mnvar" => {
-                            hierarchical::$algo::<_, hierarchical::MinimumVarianceLinkage, _, _>(
-                                &dataset,
-                            )
-                        }
-                        "minimax" => {
-                            hierarchical::$algo::<_, hierarchical::MinimaxLinkage, _, _>(&dataset)
-                        }
-                        "hausdorff" => {
-                            hierarchical::$algo::<_, hierarchical::HausdorffLinkage, _, _>(&dataset)
-                        }
-                        "medoid" => {
-                            hierarchical::$algo::<_, hierarchical::MedoidLinkage, _, _>(&dataset)
-                        }
-                        "minimum_sum" | "mnsum" => {
-                            hierarchical::$algo::<_, hierarchical::MinimumSumLinkage, _, _>(&dataset)
-                        }
-                        "minimum_sum_increase" | "misum" => {
-                            hierarchical::$algo::<_, hierarchical::MinimumSumIncreaseLinkage, _, _>(
-                                &dataset,
-                            )
-                        }
-                        _ => unreachable!("validated above"),
-                    }
-                })?;
-            Ok(Py::new(py, $wrapper { history })?.into())
+            if distance.eq_ignore_ascii_case("precomputed") {
+                let cm = precomputed_to_condensed::<$dtype>(data.bind(py))?;
+                dispatch_set_linkage!(py, $algo, &cm, linkage, $wrapper)
+            } else {
+                let arr = data.bind(py).cast::<PyArray2<$dtype>>()?;
+                let readonly = arr.readonly();
+                let array = readonly.as_array();
+                let dataset = build_hier_dataset::<$dtype>(&array, distance)?;
+                dispatch_set_linkage!(py, $algo, &dataset, linkage, $wrapper)
+            }
         }
     };
 }

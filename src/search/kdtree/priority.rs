@@ -271,10 +271,9 @@ where
 
     fn next(&mut self, query: &Q) -> Option<crate::DistPair<F>> { self.next_internal(query) }
 
-    fn next_with_filter<S>(&mut self, query: &Q, filter: &mut S) -> Option<DistPair<F>>
-    where
-        S: SearchFilter,
-    {
+    fn next_with_filter(
+        &mut self, query: &Q, filter: &mut dyn SearchFilter,
+    ) -> Option<DistPair<F>> {
         loop {
             let cand = self.next_internal(query)?;
             if !filter.skip_point(cand.index) {

@@ -4,14 +4,13 @@ use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 
-use super::make_rng;
 use crate::cluster::hdbscan;
 use crate::cluster::hdbscan::extraction::{
     extract_clusters_with_noise, extract_hdbscan_hierarchy_hdbscan,
     extract_simplified_hierarchy_hdbscan,
 };
 use crate::distance::DistanceFunction;
-use crate::search::vptree::VPTree;
+use crate::python::search::SearchIndex;
 use crate::{Float, NdArrayDatasetWithDistance};
 
 // ---- result wrappers -------------------------------------------------------
@@ -136,25 +135,15 @@ hdbscan_hierarchy_methods!(HdbscanHierarchyF64, f64);
 // ---- dataset / tree helpers ------------------------------------------------
 
 fn build_dataset<'a, N>(
-    array: &'a ArrayView2<'a, N>, distance: Option<&str>,
+    array: &'a ArrayView2<'a, N>, distance: &str,
 ) -> PyResult<
     NdArrayDatasetWithDistance<'a, N, ArrayView2<'a, N>, Box<dyn DistanceFunction<[N], N> + Sync>>,
 >
 where
     N: Float,
 {
-    let dist_fn: Box<dyn DistanceFunction<[N], N> + Sync> =
-        super::parse_distance_fn(distance.unwrap_or("euclidean"))?;
+    let dist_fn: Box<dyn DistanceFunction<[N], N> + Sync> = super::parse_distance_fn(distance)?;
     Ok(NdArrayDatasetWithDistance::with_distance(array, dist_fn))
-}
-
-fn build_vptree<D, F>(data: &D, sample_size: usize, seed: Option<u64>) -> VPTree<F>
-where
-    D: crate::DistanceData<F> + Sync,
-    F: Float,
-{
-    let mut rng = make_rng(seed);
-    VPTree::new(data, sample_size.max(2), &mut rng)
 }
 
 // ---- brute-force algorithms (no tree) --------------------------------------
@@ -162,10 +151,9 @@ where
 macro_rules! hdbscan_brute_force_wrapper {
     ($name:ident, $algo:path, $dtype:ty, $wrapper:ident) => {
         #[pyfunction]
-        #[pyo3(signature = (data, min_points, distance=None))]
+        #[pyo3(signature = (data, min_points, distance))]
         fn $name<'py>(
-            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, min_points: usize,
-            distance: Option<&str>,
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, min_points: usize, distance: &str,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_dataset::<$dtype>(&array, distance)?;
@@ -190,18 +178,18 @@ hdbscan_brute_force_wrapper!(slink_hdbscan_f64, hdbscan::slink_hdbscan, f64, Hdb
 macro_rules! hdbscan_tree_wrapper {
     ($name:ident, $algo:path, $dtype:ty, $wrapper:ident) => {
         #[pyfunction]
-        #[pyo3(signature = (data, min_points, sample_size, seed=None, distance=None))]
+        #[pyo3(signature = (data, min_points, *, distance, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, min_points: usize,
-            sample_size: usize, seed: Option<u64>, distance: Option<&str>,
+            distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, sample_size, seed);
+            let index = index.inner();
             let inner = py
                 .detach(|| {
                     crate::reset_interrupted();
-                    $algo(&tree, &dataset, min_points)
+                    $algo(index, &dataset, min_points)
                 })
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
             Py::new(py, $wrapper { inner })?.into_py_any(py)
@@ -251,18 +239,18 @@ hdbscan_tree_wrapper!(
 macro_rules! hdbscan_tree_slack_wrapper {
     ($name:ident, $algo:path, $dtype:ty, $wrapper:ident) => {
         #[pyfunction]
-        #[pyo3(signature = (data, min_points, slack, sample_size, seed=None, distance=None))]
+        #[pyo3(signature = (data, min_points, slack, *, distance, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, min_points: usize, slack: usize,
-            sample_size: usize, seed: Option<u64>, distance: Option<&str>,
+            distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, sample_size, seed);
+            let index = index.inner();
             let inner = py
                 .detach(|| {
                     crate::reset_interrupted();
-                    $algo(&tree, &dataset, min_points, slack)
+                    $algo(index, &dataset, min_points, slack)
                 })
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
             Py::new(py, $wrapper { inner })?.into_py_any(py)

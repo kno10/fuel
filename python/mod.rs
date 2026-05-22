@@ -1,3 +1,5 @@
+use numpy::{PyArray1, PyArray2, PyReadonlyArray2};
+use pyo3::IntoPyObjectExt;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
@@ -27,7 +29,7 @@ where
 fn make_rng(seed: Option<u64>) -> Pcg32 { Pcg32::seed_from_u64(seed.unwrap_or(0)) }
 
 #[pyfunction]
-fn get_rayon_parallellism() -> PyResult<usize> { Ok(rayon::current_num_threads()) }
+fn get_rayon_parallelism() -> PyResult<usize> { Ok(rayon::current_num_threads()) }
 
 /// Parse a distance name into a boxed dynamic distance function.
 ///
@@ -68,6 +70,58 @@ where
     }
 }
 
+#[pyfunction]
+fn _compute_pairwise_distances_f32<'py>(
+    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, distance: &str,
+) -> PyResult<Py<PyAny>> {
+    let dist_fn = parse_distance_fn::<f32>(distance)?;
+    let points_vec: Vec<Vec<f32>> = data.as_array().outer_iter().map(|row| row.to_vec()).collect();
+    let points: Vec<&[f32]> = points_vec.iter().map(|row| row.as_slice()).collect();
+    let matrix = crate::api::compute_pairwise_dense(&points, &|a, b| {
+        dist_fn.distance(a.as_ref(), b.as_ref())
+    });
+    Ok(PyArray2::from_owned_array(py, matrix).into_py_any(py)?)
+}
+
+#[pyfunction]
+fn _compute_pairwise_distances_f64<'py>(
+    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, distance: &str,
+) -> PyResult<Py<PyAny>> {
+    let dist_fn = parse_distance_fn::<f64>(distance)?;
+    let points_vec: Vec<Vec<f64>> = data.as_array().outer_iter().map(|row| row.to_vec()).collect();
+    let points: Vec<&[f64]> = points_vec.iter().map(|row| row.as_slice()).collect();
+    let matrix = crate::api::compute_pairwise_dense(&points, &|a, b| {
+        dist_fn.distance(a.as_ref(), b.as_ref())
+    });
+    Ok(PyArray2::from_owned_array(py, matrix).into_py_any(py)?)
+}
+
+#[pyfunction]
+fn _compute_pairwise_distances_condensed_f32<'py>(
+    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, distance: &str,
+) -> PyResult<Py<PyAny>> {
+    let dist_fn = parse_distance_fn::<f32>(distance)?;
+    let points_vec: Vec<Vec<f32>> = data.as_array().outer_iter().map(|row| row.to_vec()).collect();
+    let points: Vec<&[f32]> = points_vec.iter().map(|row| row.as_slice()).collect();
+    let vector = crate::api::compute_pairwise_condensed(&points, &|a, b| {
+        dist_fn.distance(a.as_ref(), b.as_ref())
+    });
+    Ok(PyArray1::from_vec(py, vector).into_py_any(py)?)
+}
+
+#[pyfunction]
+fn _compute_pairwise_distances_condensed_f64<'py>(
+    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, distance: &str,
+) -> PyResult<Py<PyAny>> {
+    let dist_fn = parse_distance_fn::<f64>(distance)?;
+    let points_vec: Vec<Vec<f64>> = data.as_array().outer_iter().map(|row| row.to_vec()).collect();
+    let points: Vec<&[f64]> = points_vec.iter().map(|row| row.as_slice()).collect();
+    let vector = crate::api::compute_pairwise_condensed(&points, &|a, b| {
+        dist_fn.distance(a.as_ref(), b.as_ref())
+    });
+    Ok(PyArray1::from_vec(py, vector).into_py_any(py)?)
+}
+
 pub(super) fn parse_kd_distance_fn<N>(
     dist: &str,
 ) -> PyResult<Box<dyn KdDistanceFunction<N, N> + Sync + Send>>
@@ -91,6 +145,7 @@ mod evaluation;
 mod hdbscan;
 mod hierarchical;
 mod kmeans;
+mod kmedoids;
 mod outlier;
 mod search;
 mod sparse;
@@ -99,7 +154,7 @@ mod spherical;
 #[pymodule]
 #[pyo3(module = "fuel", name = "_fuel")]
 fn _fuel<'py>(_py: Python<'py>, m: &'py Bound<'py, PyModule>) -> PyResult<()> {
-    m.add_wrapped(wrap_pyfunction!(get_rayon_parallellism))?;
+    m.add_wrapped(wrap_pyfunction!(get_rayon_parallelism))?;
     dbscan::register(m)?;
     kmeans::register(m)?;
     spherical::register(m)?;
@@ -109,5 +164,22 @@ fn _fuel<'py>(_py: Python<'py>, m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     hierarchical::register(m)?;
     outlier::register(m)?;
     search::register(m)?;
+    m.add(
+        "_compute_pairwise_distances_f32",
+        wrap_pyfunction!(_compute_pairwise_distances_f32, m)?,
+    )?;
+    m.add(
+        "_compute_pairwise_distances_f64",
+        wrap_pyfunction!(_compute_pairwise_distances_f64, m)?,
+    )?;
+    m.add(
+        "_compute_pairwise_distances_condensed_f32",
+        wrap_pyfunction!(_compute_pairwise_distances_condensed_f32, m)?,
+    )?;
+    m.add(
+        "_compute_pairwise_distances_condensed_f64",
+        wrap_pyfunction!(_compute_pairwise_distances_condensed_f64, m)?,
+    )?;
+    kmedoids::register(m)?;
     Ok(())
 }

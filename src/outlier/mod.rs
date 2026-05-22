@@ -52,7 +52,7 @@ pub use self::isos::intrinsic_stochastic_outlier_selection;
 pub use self::knn::k_nearest_neighbors_outlier;
 pub use self::knndd::k_nearest_neighbors_distance_deviation;
 pub use self::knnsos::k_nearest_neighbors_sos;
-pub use self::lbabod::{locality_based_abod, locality_based_abod_kernel};
+pub use self::lbabod::{lb_abod, lb_abod_kernel};
 pub use self::ldf::local_density_factor;
 pub use self::ldof::local_density_outlier_factor;
 pub use self::lid::local_intrinsic_dimensionality;

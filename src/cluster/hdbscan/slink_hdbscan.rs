@@ -8,7 +8,6 @@ use crate::{DistanceData, Float};
 ///
 /// This implements the same update rules as standard SLINK, but replaces the
 /// pairwise metric distance with mutual reachability distance.
-#[must_use]
 pub fn slink_hdbscan_pointer<F: Float, D: DistanceData<F>>(
     data: &D, min_points: usize,
 ) -> Result<(PointerRepresentation<F>, Vec<F>), String> {
@@ -58,7 +57,6 @@ pub fn slink_hdbscan_pointer<F: Float, D: DistanceData<F>>(
     Ok((PointerRepresentation::new(pi, lambda), core_distances))
 }
 
-#[must_use]
 pub fn slink_hdbscan<F: Float, D: DistanceData<F>>(
     data: &D, min_points: usize,
 ) -> Result<HdbscanHierarchy<F>, String> {

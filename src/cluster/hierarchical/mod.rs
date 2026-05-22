@@ -103,26 +103,26 @@
 #[allow(non_camel_case_types)]
 pub type idsize = u32;
 
-pub mod agnes;
-pub mod anderberg;
-pub mod boruvka_searchers_single_link;
-pub mod buffered_search_single_link;
-pub mod clink;
+pub(crate) mod agnes;
+pub(crate) mod anderberg;
+pub(crate) mod boruvka_searchers_single_link;
+pub(crate) mod buffered_search_single_link;
+pub(crate) mod clink;
 pub(crate) mod common;
 pub mod extraction;
-pub mod geometric_nn_chain;
-pub mod hausdorff;
-pub mod heap_of_searchers_single_link;
-pub mod incremental_nn_chain;
-pub mod lazy_buffered_search_single_link;
+pub(crate) mod geometric_nn_chain;
+pub(crate) mod hausdorff;
+pub(crate) mod heap_of_searchers_single_link;
+pub(crate) mod incremental_nn_chain;
+pub(crate) mod lazy_buffered_search_single_link;
 pub mod linkage;
-pub mod medoid_linkage;
+pub(crate) mod medoid_linkage;
 pub(crate) mod merge_history;
-pub mod muellner;
-pub mod set_agnes;
-pub mod set_anderberg;
-pub mod set_muellner;
-pub mod set_nn_chain;
+pub(crate) mod muellner;
+pub(crate) mod set_agnes;
+pub(crate) mod set_anderberg;
+pub(crate) mod set_muellner;
+pub(crate) mod set_nn_chain;
 
 // algorithm entrypoints
 pub use agnes::agnes;
@@ -146,12 +146,12 @@ pub use set_muellner::set_muellner;
 pub use set_nn_chain::set_nn_chain;
 pub use slink::{slink, slink_pointer};
 
-pub mod nn_chain;
-pub mod optics_to_hierarchical;
+pub(crate) mod nn_chain;
+pub(crate) mod optics_to_hierarchical;
 pub mod pointer;
-pub mod restarting_search_single_link;
+pub(crate) mod restarting_search_single_link;
 pub(crate) mod search_single_link_common;
-pub mod slink;
+pub(crate) mod slink;
 
 // API level operations
 // basic criterion implementations

@@ -28,12 +28,13 @@ pub use tabular::*;
 /// acquiring the GIL.
 pub static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
-/// Minimum interval between GIL-acquiring interrupt checks (50 ms).
-const CHECK_INTERVAL_MS: u64 = 50;
-
 /// Timestamp (ms) of the last GIL-acquiring interrupt check.
 /// Written and read exclusively on the Python main thread.
 static mut LAST_CHECK_MS: u64 = 0;
+
+/// Interval (ms) at which the main thread should acquire the GIL to check for interrupts.
+#[cfg(feature = "python")]
+static CHECK_INTERVAL_MS: u64 = 50;
 
 thread_local! {
     /// `true` only on the thread that last called [`reset_interrupted()`].
@@ -106,7 +107,9 @@ pub fn check_interrupted() -> Result<(), String> {
     #[cfg(feature = "python")]
     {
         use pyo3::prelude::*;
-        if let Some(result) = Python::try_attach(|py| py.check_signals().map_err(|err| err.to_string())) {
+        if let Some(result) =
+            Python::try_attach(|py| py.check_signals().map_err(|err| err.to_string()))
+        {
             result?;
         }
     }

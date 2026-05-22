@@ -2,10 +2,10 @@ use ndarray::Array2;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+use crate::search::linear_scan::LinearScanPrioritySearcher;
 use crate::{
     Data, DistPair, DistanceData, DistanceSearch, Float, IndexQuery, KnnSearch,
-    LinearScanPrioritySearcher, PrioritySearcherFactory, RangeSearch, VectorData, linear_scan_knn,
-    linear_scan_range, math,
+    PrioritySearcherFactory, RangeSearch, VectorData, linear_scan_knn, linear_scan_range, math,
 };
 
 /// Compute a dense pairwise matrix. Can be used with both distances and similarity functions such as kernels.

@@ -35,7 +35,7 @@ use fuel::outlier::simplified_lof::simplified_lof;
 use fuel::outlier::variance_of_volume::variance_of_volume;
 use fuel::outlier::weighted_knn::weighted_knn;
 use fuel::outlier::{intrinsic_dimensionality_outlier_score, local_outlier_probabilities};
-use fuel::search::proxy::ProxyKnnSearcher;
+use fuel::search::precomputed::PrecomputedKnnSearcher;
 use fuel::{Data, DistanceData, KnnSearch, RangeSearch, VectorData};
 use io::{FileFormat, ReadOptions, read_numeric_table};
 use rand::SeedableRng;
@@ -548,11 +548,11 @@ where
     let tree = fuel::search::vptree::VPTree::new(&data, 2, &mut rng);
     let ks = build_sorted_ks(config.ks.clone());
     let max_k = ks.iter().copied().max().unwrap_or(0).min(data.len().saturating_sub(1));
-    let proxy = ProxyKnnSearcher::new(&tree, &data, max_k + 2);
+    let precomputed = PrecomputedKnnSearcher::new(tree, &data, max_k + 2);
     let index_time = index_start.elapsed();
     eprintln!("Data indexing time ({}): {:.3}s", distance_name, index_time.as_secs_f64());
 
-    compute_knn_outlier_scores(writer, &proxy, &data, ks, options).map_err(|e| e.to_string())
+    compute_knn_outlier_scores(writer, &precomputed, &data, ks, options).map_err(|e| e.to_string())
 }
 
 fn main() {

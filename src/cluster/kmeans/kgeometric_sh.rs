@@ -322,7 +322,8 @@ mod tests {
         let dataset = NdArrayDataset::new(&mat);
         let mut init1 = RandomSample::new(Pcg32::seed_from_u64(1));
         let res1 =
-            crate::cluster::kmeans::kgeometric::kgeometric(&dataset, 5, &mut init1, 50, 1e-4, 1).unwrap();
+            crate::cluster::kmeans::kgeometric::kgeometric(&dataset, 5, &mut init1, 50, 1e-4, 1)
+                .unwrap();
         let mut init2 = RandomSample::new(Pcg32::seed_from_u64(1));
         let res2 = kgeometric_sh(&dataset, 5, &mut init2, 50, 1e-4, 1).unwrap();
         // assignments may differ because of numerical rounding; recompute

@@ -194,7 +194,6 @@ where
 ///
 /// This variant uses incremental priority search to accelerate nearest
 /// neighbour discovery for geometric linkage criteria.
-#[must_use]
 pub fn incremental_nn_chain<'a, S, D, F, L>(
     tree: &'a S, data: &'a D, linkage: L,
 ) -> Result<MergeHistory<F>, String>
@@ -400,7 +399,8 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let tree = KdTree::new(access, MaxVarianceSplit);
-                let history = incremental_nn_chain(&tree, access, MinimumSumSquaresLinkage).unwrap();
+                let history =
+                    incremental_nn_chain(&tree, access, MinimumSumSquaresLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)
@@ -434,7 +434,8 @@ mod tests {
             SquaredEuclidean,
             |access, min_clusters| {
                 let tree = KdTree::new(access, MaxVarianceSplit);
-                let history = incremental_nn_chain(&tree, access, MinimumVarianceIncreaseLinkage).unwrap();
+                let history =
+                    incremental_nn_chain(&tree, access, MinimumVarianceIncreaseLinkage).unwrap();
                 {
                     let labels = cut_dendrogram_by_number_of_clusters(&history, min_clusters);
                     (labels, history.last().unwrap().distance)

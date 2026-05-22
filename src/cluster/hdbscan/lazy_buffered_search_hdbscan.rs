@@ -13,7 +13,6 @@ use crate::{
 /// with a witness cache for skip_node pruning.  The slack parameter controls how
 /// many extra priority-search expansions are allowed beyond the current
 /// lower-bound threshold.
-#[must_use]
 pub fn lazy_buffered_search_hdbscan<'a, S, D, F>(
     tree: &'a S, data: &'a D, min_points: usize, slack: usize,
 ) -> Result<HdbscanHierarchy<F>, String>

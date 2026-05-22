@@ -82,8 +82,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         let label = algorithm.label();
         let baseline = distance.count();
         let start = Instant::now();
-        let history =
-            run_single_link_algorithm(algorithm, config.tree_kind, config.seed, sample_size, &data)?;
+        let history = run_single_link_algorithm(
+            algorithm,
+            config.tree_kind,
+            config.seed,
+            sample_size,
+            &data,
+        )?;
         let elapsed = start.elapsed();
         let after = distance.count();
         let dist_count = after.saturating_sub(baseline);

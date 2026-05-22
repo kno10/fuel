@@ -3,14 +3,13 @@ use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 
-use super::make_rng;
 use crate::cluster::{dbscan, optics, parallel_dbscan};
 use crate::distance::DistanceFunction;
-use crate::search::vptree::VPTree;
+use crate::python::search::SearchIndex;
 use crate::{Float, NdArrayDatasetWithDistance};
 
 fn build_dataset<'a, N>(
-    array: &'a ndarray::ArrayView2<'a, N>, distance: Option<&str>,
+    array: &'a ndarray::ArrayView2<'a, N>, distance: &str,
 ) -> PyResult<
     NdArrayDatasetWithDistance<
         'a,
@@ -22,18 +21,8 @@ fn build_dataset<'a, N>(
 where
     N: Float,
 {
-    let dist_fn: Box<dyn DistanceFunction<[N], N> + Sync> =
-        super::parse_distance_fn(distance.unwrap_or("euclidean"))?;
+    let dist_fn: Box<dyn DistanceFunction<[N], N> + Sync> = super::parse_distance_fn(distance)?;
     Ok(NdArrayDatasetWithDistance::with_distance(array, dist_fn))
-}
-
-fn build_vptree<D, F>(data: &D, seed: Option<u64>) -> VPTree<F>
-where
-    D: crate::DistanceData<F> + Sync,
-    F: Float,
-{
-    let mut rng = make_rng(seed);
-    VPTree::new(data, 5, &mut rng)
 }
 
 fn labels_to_py<'py>(py: Python<'py>, labels: Vec<isize>) -> PyResult<Py<PyAny>> {
@@ -46,18 +35,17 @@ fn labels_to_py<'py>(py: Python<'py>, labels: Vec<isize>) -> PyResult<Py<PyAny>>
 macro_rules! dbscan_fn {
     ($name:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, eps, min_points, distance=None, seed=None))]
+        #[pyo3(signature = (data, eps, min_points, distance, *, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, eps: f64, min_points: usize,
-            distance: Option<&str>, seed: Option<u64>,
+            distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_dataset(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
+            let tree = index.inner();
             let eps = <$dtype as crate::Float>::cast(eps);
-            let labels = crate::py_interruptible(py, || {
-                    dbscan::dbscan(&tree, &dataset, eps, min_points)
-                })?;
+            let labels =
+                crate::py_interruptible(py, || dbscan::dbscan(tree, &dataset, eps, min_points))?;
             labels_to_py(py, labels)
         }
     };
@@ -66,18 +54,18 @@ macro_rules! dbscan_fn {
 macro_rules! parallel_dbscan_fn {
     ($name:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, eps, min_points, distance=None, seed=None))]
+        #[pyo3(signature = (data, eps, min_points, distance, *, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, eps: f64, min_points: usize,
-            distance: Option<&str>, seed: Option<u64>,
+            distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_dataset(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
+            let tree = index.inner();
             let eps = <$dtype as crate::Float>::cast(eps);
             let labels = crate::py_interruptible(py, || {
-                    parallel_dbscan::parallel_dbscan(&tree, &dataset, eps, min_points)
-                })?;
+                parallel_dbscan::parallel_dbscan(tree, &dataset, eps, min_points)
+            })?;
             labels_to_py(py, labels)
         }
     };
@@ -163,33 +151,29 @@ optics_result_methods!(OpticsResultF32, f32);
 optics_result_methods!(OpticsResultF64, f64);
 
 #[pyfunction]
-#[pyo3(signature = (data, eps, min_points, distance=None, seed=None))]
+#[pyo3(signature = (data, eps, min_points, distance, *, index))]
 fn optics_f32<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, eps: f64, min_points: usize,
-    distance: Option<&str>, seed: Option<u64>,
+    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, eps: f64, min_points: usize, distance: &str,
+    index: PyRef<'_, SearchIndex>,
 ) -> PyResult<OpticsResultF32> {
     let array = data.as_array();
     let dataset = build_dataset(&array, distance)?;
-    let tree = build_vptree(&dataset, seed);
+    let tree = index.inner();
     let eps = f32::cast(eps);
-    let inner = crate::py_interruptible(py, || {
-        optics::optics(&tree, &dataset, eps, min_points)
-    })?;
+    let inner = crate::py_interruptible(py, || optics::optics(tree, &dataset, eps, min_points))?;
     Ok(OpticsResultF32 { inner })
 }
 
 #[pyfunction]
-#[pyo3(signature = (data, eps, min_points, distance=None, seed=None))]
+#[pyo3(signature = (data, eps, min_points, distance, *, index))]
 fn optics_f64<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, eps: f64, min_points: usize,
-    distance: Option<&str>, seed: Option<u64>,
+    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, eps: f64, min_points: usize, distance: &str,
+    index: PyRef<'_, SearchIndex>,
 ) -> PyResult<OpticsResultF64> {
     let array = data.as_array();
     let dataset = build_dataset(&array, distance)?;
-    let tree = build_vptree(&dataset, seed);
-    let inner = crate::py_interruptible(py, || {
-        optics::optics(&tree, &dataset, eps, min_points)
-    })?;
+    let tree = index.inner();
+    let inner = crate::py_interruptible(py, || optics::optics(tree, &dataset, eps, min_points))?;
     Ok(OpticsResultF64 { inner })
 }
 

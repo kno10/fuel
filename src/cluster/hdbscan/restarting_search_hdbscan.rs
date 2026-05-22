@@ -7,7 +7,6 @@ use crate::{
 };
 
 /// Restarting-search HDBSCAN-RS (RSSL-style acceleration with VP-tree search).
-#[must_use]
 pub fn restarting_search_hdbscan<'a, S, D, F>(
     tree: &'a S, data: &'a D, min_points: usize,
 ) -> Result<HdbscanHierarchy<F>, String>

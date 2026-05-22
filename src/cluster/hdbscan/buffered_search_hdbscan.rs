@@ -15,7 +15,6 @@ use crate::{
 /// threshold.  Unlike `lazy_buffered_search_hdbscan`, this variant caps
 /// memory per point and relies on `SameClusterFilter` with a witness cache
 /// for skip_node pruning.
-#[must_use]
 pub fn buffered_search_hdbscan<'a, S, D, F>(
     tree: &'a S, data: &'a D, min_points: usize, slack: usize,
 ) -> Result<HdbscanHierarchy<F>, String>

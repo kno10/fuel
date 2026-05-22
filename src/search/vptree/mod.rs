@@ -62,10 +62,9 @@ where
 
     fn next(&mut self, query: &Q) -> Option<DistPair<F>> { self.inner.next(query) }
 
-    fn next_with_filter<S>(&mut self, query: &Q, filter: &mut S) -> Option<DistPair<F>>
-    where
-        S: SearchFilter,
-    {
+    fn next_with_filter(
+        &mut self, query: &Q, filter: &mut dyn SearchFilter,
+    ) -> Option<DistPair<F>> {
         self.inner.next_with_filter(query, filter)
     }
 

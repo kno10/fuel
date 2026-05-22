@@ -93,7 +93,8 @@ mod tests {
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
         let result =
-            intrinsic_dimensionality_outlier_score::<_, _, _, HillID>(&tree, &data, 20, 20).unwrap();
+            intrinsic_dimensionality_outlier_score::<_, _, _, HillID>(&tree, &data, 20, 20)
+                .unwrap();
         let reference = load_reference_scores();
         let expected = reference.get("IDOS-20-Hill").expect("No reference for IDOS-20-Hill");
         let labels: Vec<u8> = label_from_reference(&reference);

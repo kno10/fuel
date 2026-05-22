@@ -50,7 +50,7 @@ pub struct ConcordanceStats<F: Float> {
 }
 
 /// Neighbor consistency results produced by
-/// [`super::neighbor_consistency_knn`].
+/// [`super::neighbor_consistency::neighbor_consistency_knn`].
 #[derive(Debug, Clone)]
 pub struct NeighborConsistencyStats<F: Float> {
     pub average: F,

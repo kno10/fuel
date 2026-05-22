@@ -6,7 +6,7 @@ use crate::{DistanceData, Float};
 ///
 /// This linkage originates from hierarchical clustering around medoids (HACAM).
 /// The raw distance/prototype computation is identical to
-/// [`MinimumSumLinkage`]; the merge distance is corrected by subtracting the
+/// [`crate::cluster::hierarchical::MinimumSumLinkage`]; the merge distance is corrected by subtracting the
 /// stored intra-cluster totals, similar to Ward's method.
 /// This method is only implemented as a set-based linkage.
 pub struct MinimumSumIncreaseLinkage;

@@ -8,7 +8,6 @@ use crate::{DistanceData, Float};
 /// mutual reachability distances.  This was formerly exposed as
 /// `hdbscan_linear_memory` but is now renamed to emphasise the underlying
 /// Prim/MST approach.
-#[must_use]
 /// generic float version of prim-based HDBSCAN
 pub fn hdbscan_prim<F: Float, D: DistanceData<F>>(
     data: &D, min_points: usize,

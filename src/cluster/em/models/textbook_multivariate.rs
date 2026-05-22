@@ -10,8 +10,8 @@ use crate::cluster::kmeans::init::Initialization;
 use crate::{Float, VectorData as Dataset, math};
 
 /// Textbook multivariate Gaussian component.
-/// less stable algorithm using E[XY]-E[X]E[Y], provided for reference only;
-/// prefer [`MultivariateGaussianModel`] in production.
+/// Less stable algorithm using `E[XY]-E[X]E[Y]`, provided for reference only;
+/// prefer [`super::multivariate::MultivariateGaussianModel`] in production.
 #[derive(Clone, Debug)]
 pub struct TextbookMultivariateGaussianModel<N>
 where

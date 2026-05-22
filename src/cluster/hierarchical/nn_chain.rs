@@ -23,7 +23,6 @@ use crate::{DistanceData, Float};
 ///
 /// Input and output conventions are the same as [`crate::cluster::hierarchical::agnes`].
 /// The input matrix uses lower-triangular condensed indexing.
-#[must_use]
 pub fn nn_chain<D, F: Float, L: Linkage<F> + Copy + Sync>(
     data: &D, linkage: L,
 ) -> Result<MergeHistory<F>, String>

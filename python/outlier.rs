@@ -2,7 +2,6 @@ use numpy::{Element, PyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use super::make_rng;
 use crate::distance::{DistanceFunction, Euclidean};
 use crate::intrinsicdimensionality::{
     ABID, ALID, AggregatedHillID, GeneralizedExpansionDimension, HillID, LMomentsEstimator,
@@ -12,10 +11,10 @@ use crate::intrinsicdimensionality::{
 use crate::kernel::polynomial::PolynomialKernel;
 use crate::outlier::cop::CopDistanceDist;
 use crate::outlier::kernel::KernelDensityFunction;
-use crate::search::vptree::VPTree;
-use crate::{DistanceData, Float, NdArrayDatasetWithDistance, outlier};
+use crate::python::search::SearchIndex;
+use crate::{Float, NdArrayDatasetWithDistance, outlier};
 
-fn parse_abod_kernel<F>(kernel: &str) -> PyResult<Box<dyn Fn(&[F], &[F]) -> F + Sync>>
+fn parse_abod_kernel<F>(kernel: &str) -> PyResult<Box<dyn Fn(&[F], &[F]) -> F + Sync + Send>>
 where
     F: Float + 'static,
 {
@@ -39,30 +38,21 @@ where
     }
 }
 
-fn build_vptree<D, F>(data: &D, seed: Option<u64>) -> VPTree<F>
-where
-    D: DistanceData<F> + Sync,
-    F: Float,
-{
-    let mut rng = make_rng(seed);
-    VPTree::new(data, 5, &mut rng)
-}
-
 fn build_outlier_dataset<'a, N>(
-    array: &'a ndarray::ArrayView2<'a, N>, distance: Option<&str>,
+    array: &'a ndarray::ArrayView2<'a, N>, distance: &str,
 ) -> PyResult<
     NdArrayDatasetWithDistance<
         'a,
         N,
         ndarray::ArrayView2<'a, N>,
-        Box<dyn DistanceFunction<[N], N> + Sync>,
+        Box<dyn DistanceFunction<[N], N> + Sync + Send>,
     >,
 >
 where
     N: Float,
 {
-    let dist_fn: Box<dyn DistanceFunction<[N], N> + Sync> =
-        super::parse_distance_fn(distance.unwrap_or("euclidean"))?;
+    let dist_fn: Box<dyn DistanceFunction<[N], N> + Sync + Send> =
+        super::parse_distance_fn(distance)?;
     Ok(NdArrayDatasetWithDistance::with_distance(array, dist_fn))
 }
 
@@ -113,34 +103,20 @@ fn parse_kernel_density_function(kernel: &str) -> PyResult<KernelDensityFunction
     }
 }
 
-macro_rules! data_outlier_no_args {
-    ($name:ident, $variant:ident, $dtype:ty) => {
-        #[pyfunction]
-        #[pyo3(signature = (data, distance=None))]
-        fn $name<'py>(
-            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, distance: Option<&str>,
-        ) -> PyResult<Py<PyAny>> {
-            let array = data.as_array();
-            let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let result = crate::py_interruptible(py, || Ok(outlier::$variant::<_, $dtype>(&dataset)))?;
-            result_to_py_outlier(py, result)
-        }
-    };
-}
-
 macro_rules! tree_outlier_p {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, perplexity, seed=None, distance=None))]
+        #[pyo3(signature = (data, perplexity, distance, *, index))]
         fn $name<'py>(
-            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, perplexity: f64,
-            seed: Option<u64>, distance: Option<&str>,
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, perplexity: f64, distance: &str,
+            index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
-            let result =
-                crate::py_interruptible(py, || Ok(outlier::$variant::<_, _, $dtype>(&tree, &dataset, perplexity)))?;
+            let tree = index.inner();
+            let result = crate::py_interruptible(py, || {
+                Ok(outlier::$variant::<_, _, $dtype>(tree, &dataset, perplexity))
+            })?;
             result_to_py_outlier(py, result)
         }
     };
@@ -149,14 +125,15 @@ macro_rules! tree_outlier_p {
 macro_rules! data_outlier_k_l {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, k, l, distance=None))]
+        #[pyo3(signature = (data, k, l, distance))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, l: usize,
-            distance: Option<&str>,
+            distance: &str,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let result = crate::py_interruptible(py, || Ok(outlier::$variant::<_, $dtype>(&dataset, k, l)))?;
+            let result =
+                crate::py_interruptible(py, || Ok(outlier::$variant::<_, $dtype>(&dataset, k, l)))?;
             result_to_py_outlier(py, result)
         }
     };
@@ -165,16 +142,16 @@ macro_rules! data_outlier_k_l {
 macro_rules! data_outlier_n {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, nmin, alpha, g, seed=None, distance=None))]
+        #[pyo3(signature = (data, nmin, alpha, g, seed=None, *, distance))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, nmin: usize, alpha: usize,
-            g: usize, seed: Option<u64>, distance: Option<&str>,
+            g: usize, seed: Option<u64>, distance: &str,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let result = crate::py_interruptible(py, || Ok(outlier::$variant::<_, $dtype>(
-                &dataset, nmin, alpha, g, seed.unwrap_or(0),
-            )))?;
+            let result = crate::py_interruptible(py, || {
+                Ok(outlier::$variant::<_, $dtype>(&dataset, nmin, alpha, g, seed.unwrap_or(0)))
+            })?;
             result_to_py_outlier(py, result)
         }
     };
@@ -183,16 +160,16 @@ macro_rules! data_outlier_n {
 macro_rules! tree_outlier_k {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, k, seed=None, distance=None))]
+        #[pyo3(signature = (data, k, distance, *, index))]
         fn $name<'py>(
-            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, seed: Option<u64>,
-            distance: Option<&str>,
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, distance: &str,
+            index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
+            let tree = index.inner();
             let result = crate::py_interruptible(py, || {
-                outlier::$variant::<_, _, $dtype>(&tree, &dataset, k)
+                outlier::$variant::<_, _, $dtype>(tree, &dataset, k)
             })?;
             result_to_py_outlier(py, result)
         }
@@ -202,16 +179,16 @@ macro_rules! tree_outlier_k {
 macro_rules! tree_outlier_k_m {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, k, m, seed=None, distance=None))]
+        #[pyo3(signature = (data, k, m, distance, *, index))]
         fn $name<'py>(
-            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, m: f64,
-            seed: Option<u64>, distance: Option<&str>,
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, m: f64, distance: &str,
+            index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
+            let tree = index.inner();
             let result = crate::py_interruptible(py, || {
-                outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, m)
+                outlier::$variant::<_, _, $dtype>(tree, &dataset, k, m)
             })?;
             result_to_py_outlier(py, result)
         }
@@ -221,16 +198,16 @@ macro_rules! tree_outlier_k_m {
 macro_rules! tree_outlier_k_alpha {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, k, alpha, seed=None, distance=None))]
+        #[pyo3(signature = (data, k, alpha, distance, *, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, alpha: f64,
-            seed: Option<u64>, distance: Option<&str>,
+            distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
+            let tree = index.inner();
             let result = crate::py_interruptible(py, || {
-                outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, alpha)
+                outlier::$variant::<_, _, $dtype>(tree, &dataset, k, alpha)
             })?;
             result_to_py_outlier(py, result)
         }
@@ -240,16 +217,16 @@ macro_rules! tree_outlier_k_alpha {
 macro_rules! tree_outlier_d {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, d, seed=None, distance=None))]
+        #[pyo3(signature = (data, d, distance, *, index))]
         fn $name<'py>(
-            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, d: $dtype, seed: Option<u64>,
-            distance: Option<&str>,
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, d: $dtype, distance: &str,
+            index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
+            let tree = index.inner();
             let result = crate::py_interruptible(py, || {
-                outlier::$variant::<_, _, $dtype>(&tree, &dataset, d)
+                outlier::$variant::<_, _, $dtype>(tree, &dataset, d)
             })?;
             result_to_py_outlier(py, result)
         }
@@ -259,16 +236,16 @@ macro_rules! tree_outlier_d {
 macro_rules! tree_outlier_d_p {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, d, p, seed=None, distance=None))]
+        #[pyo3(signature = (data, d, p, distance, *, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, d: $dtype, p: f64,
-            seed: Option<u64>, distance: Option<&str>,
+            distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
+            let tree = index.inner();
             let result = crate::py_interruptible(py, || {
-                outlier::$variant::<_, _, $dtype>(&tree, &dataset, d, p)
+                outlier::$variant::<_, _, $dtype>(tree, &dataset, d, p)
             })?;
             result_to_py_outlier(py, result)
         }
@@ -278,16 +255,16 @@ macro_rules! tree_outlier_d_p {
 macro_rules! tree_outlier_k_delta {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, k, delta, seed=None, distance=None))]
+        #[pyo3(signature = (data, k, delta, distance, *, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, delta: f64,
-            seed: Option<u64>, distance: Option<&str>,
+            distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
+            let tree = index.inner();
             let result = crate::py_interruptible(py, || {
-                outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, delta)
+                outlier::$variant::<_, _, $dtype>(tree, &dataset, k, delta)
             })?;
             result_to_py_outlier(py, result)
         }
@@ -297,17 +274,17 @@ macro_rules! tree_outlier_k_delta {
 macro_rules! tree_outlier_k_expect_dist {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, k, expect, dist, seed=None, distance=None))]
+        #[pyo3(signature = (data, k, expect, dist, distance, *, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, expect: f64,
-            dist: &str, seed: Option<u64>, distance: Option<&str>,
+            dist: &str, distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
+            let tree = index.inner();
             let dist = parse_cop_distance_dist(dist)?;
             let result = crate::py_interruptible(py, || {
-                outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, expect, dist)
+                outlier::$variant::<_, _, $dtype>(tree, &dataset, k, expect, dist)
             })?;
             result_to_py_outlier(py, result)
         }
@@ -328,17 +305,17 @@ tree_outlier_k_expect_dist!(
 macro_rules! tree_outlier_k_h_kernel {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, k, h, kernel, seed=None, distance=None))]
+        #[pyo3(signature = (data, k, h, kernel, distance, *, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, h: f64, kernel: &str,
-            seed: Option<u64>, distance: Option<&str>,
+            distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
+            let tree = index.inner();
             let kernel = parse_kernel_density_function(kernel)?;
             let result = crate::py_interruptible(py, || {
-                outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, h, kernel)
+                outlier::$variant::<_, _, $dtype>(tree, &dataset, k, h, kernel)
             })?;
             result_to_py_outlier(py, result)
         }
@@ -388,15 +365,15 @@ macro_rules! apply_idos {
 macro_rules! tree_outlier_kc_kr {
     ($name:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, k_c, k_r, estimator=None, seed=None, distance=None))]
+        #[pyo3(signature = (data, k_c, k_r, estimator=None, *, distance, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k_c: usize, k_r: usize,
-            estimator: Option<&str>, seed: Option<u64>, distance: Option<&str>,
+            estimator: Option<&str>, distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
-            let result = dispatch_id_estimator!(estimator, apply_idos!(&tree, &dataset, k_c, k_r));
+            let tree = index.inner();
+            let result = dispatch_id_estimator!(estimator, apply_idos!(tree, &dataset, k_c, k_r));
             result_to_py_outlier(py, result)
         }
     };
@@ -414,15 +391,15 @@ macro_rules! apply_lid {
 macro_rules! tree_outlier_k_id {
     ($name:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, k, estimator=None, seed=None, distance=None))]
+        #[pyo3(signature = (data, k, estimator=None, *, distance, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize,
-            estimator: Option<&str>, seed: Option<u64>, distance: Option<&str>,
+            estimator: Option<&str>, distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
-            let result = dispatch_id_estimator!(estimator, apply_lid!(&tree, &dataset, k));
+            let tree = index.inner();
+            let result = dispatch_id_estimator!(estimator, apply_lid!(tree, &dataset, k));
             result_to_py_outlier(py, result)
         }
     };
@@ -431,79 +408,97 @@ macro_rules! tree_outlier_k_id {
 tree_outlier_k_id!(local_intrinsic_dimensionality_f32, f32);
 tree_outlier_k_id!(local_intrinsic_dimensionality_f64, f64);
 
-#[pyfunction]
-fn isolation_forest_f32<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, num_trees: usize, subsample_size: usize,
-    seed: Option<u64>,
-) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
-    let result =
-        outlier::isolation_forest::<_, f32>(&dataset, num_trees, subsample_size, seed.unwrap_or(0));
-    result_to_py_outlier(py, result)
+macro_rules! isolation_forest {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, num_trees: usize,
+            subsample_size: usize, seed: Option<u64>,
+        ) -> PyResult<Py<PyAny>> {
+            let array = data.as_array();
+            let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
+            let result = outlier::isolation_forest::<_, $dtype>(
+                &dataset,
+                num_trees,
+                subsample_size,
+                seed.unwrap_or(0),
+            );
+            result_to_py_outlier(py, result)
+        }
+    };
 }
 
-#[pyfunction]
-fn isolation_forest_f64<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, num_trees: usize, subsample_size: usize,
-    seed: Option<u64>,
-) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
-    let result =
-        outlier::isolation_forest::<_, f64>(&dataset, num_trees, subsample_size, seed.unwrap_or(0));
-    result_to_py_outlier(py, result)
+isolation_forest!(isolation_forest_f32, f32);
+isolation_forest!(isolation_forest_f64, f64);
+
+macro_rules! data_outlier_no_args {
+    ($name:ident, $variant:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, distance))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, distance: &str,
+        ) -> PyResult<Py<PyAny>> {
+            let array = data.as_array();
+            let dist_fn = super::parse_distance_fn::<$dtype>(distance)?;
+            let dataset =
+                NdArrayDatasetWithDistance::<$dtype, _, _>::with_distance(&array, Euclidean);
+            let result =
+                crate::py_interruptible(py, || Ok(outlier::$variant(&dataset, &*dist_fn)))?;
+            result_to_py_outlier(py, result)
+        }
+    };
+    ($name:ident, $variant:ident, $dtype:ty, take_dataset) => {
+        #[pyfunction]
+        #[pyo3(signature = (data))]
+        fn $name<'py>(py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>) -> PyResult<Py<PyAny>> {
+            let array = data.as_array();
+            let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
+            let result =
+                crate::py_interruptible(py, || Ok(outlier::$variant::<_, $dtype>(dataset)))?;
+            result_to_py_outlier(py, result)
+        }
+    };
+    ($name:ident, $variant:ident, $dtype:ty, seed) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, seed=None))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, seed: Option<u64>,
+        ) -> PyResult<Py<PyAny>> {
+            let array = data.as_array();
+            let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
+            let result = crate::py_interruptible(py, || {
+                Ok(outlier::$variant::<_, $dtype>(dataset, seed.unwrap_or(0)))
+            })?;
+            result_to_py_outlier(py, result)
+        }
+    };
 }
 
-#[pyfunction]
-fn zero_f32<'py>(py: Python<'py>, data: PyReadonlyArray2<'py, f32>) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
-    let result = crate::py_interruptible(py, || Ok(outlier::zero::<_, f32>(dataset)))?;
-    result_to_py_outlier(py, result)
-}
+data_outlier_no_args!(zero_f32, zero, f32, take_dataset);
+data_outlier_no_args!(zero_f64, zero, f64, take_dataset);
 
-#[pyfunction]
-fn zero_f64<'py>(py: Python<'py>, data: PyReadonlyArray2<'py, f64>) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
-    let result = crate::py_interruptible(py, || Ok(outlier::zero::<_, f64>(dataset)))?;
-    result_to_py_outlier(py, result)
-}
+data_outlier_no_args!(random_f32, random, f32, seed);
+data_outlier_no_args!(random_f64, random, f64, seed);
 
-#[pyfunction]
-fn random_f32<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, seed: Option<u64>,
-) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
-    let result = crate::py_interruptible(py, || Ok(outlier::random::<_, f32>(dataset, seed.unwrap_or(0))))?;
-    result_to_py_outlier(py, result)
-}
+data_outlier_no_args!(distance_from_center_f32, distance_from_center, f32);
+data_outlier_no_args!(distance_from_center_f64, distance_from_center, f64);
 
-#[pyfunction]
-fn random_f64<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, seed: Option<u64>,
-) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = NdArrayDatasetWithDistance::with_distance(&array, Euclidean);
-    let result = crate::py_interruptible(py, || Ok(outlier::random::<_, f64>(dataset, seed.unwrap_or(0))))?;
-    result_to_py_outlier(py, result)
-}
+data_outlier_no_args!(distance_from_origin_f32, distance_from_origin, f32);
+data_outlier_no_args!(distance_from_origin_f64, distance_from_origin, f64);
 
 macro_rules! tree_outlier_rmax_nmin_alpha {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, rmax, nmin, alpha, seed=None, distance=None))]
+        #[pyo3(signature = (data, rmax, nmin, alpha, distance, *, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, rmax: $dtype, nmin: usize,
-            alpha: $dtype, seed: Option<u64>, distance: Option<&str>,
+            alpha: $dtype, distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
+            let tree = index.inner();
             let result = crate::py_interruptible(py, || {
-                outlier::$variant::<_, _, $dtype>(&tree, &dataset, rmax, nmin, alpha)
+                outlier::$variant::<_, _, $dtype>(tree, &dataset, rmax, nmin, alpha)
             })?;
             result_to_py_outlier(py, result)
         }
@@ -530,54 +525,48 @@ tree_outlier_d_p!(db_outlier_detection_f64, db_outlier_detection, f64);
 tree_outlier_k_delta!(dynamic_window_outlier_factor_f32, dynamic_window_outlier_factor, f32);
 tree_outlier_k_delta!(dynamic_window_outlier_factor_f64, dynamic_window_outlier_factor, f64);
 
-#[pyfunction]
-#[pyo3(signature = (data, k, kernel="poly2", seed=None, distance=None))]
-fn fast_angle_based_outlier_detection_f32<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, k: usize, kernel: &str, seed: Option<u64>,
-    distance: Option<&str>,
-) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = build_outlier_dataset::<f32>(&array, distance)?;
-    let tree = build_vptree(&dataset, seed);
-    let kfn = parse_abod_kernel::<f32>(kernel)?;
-    let result =
-        outlier::fast_angle_based_outlier_detection::<_, _, f32, _>(&tree, &dataset, k, kfn)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
-    result_to_py_outlier(py, result)
+macro_rules! fast_abod {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, k, kernel="poly2", *, distance, index))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, kernel: &str,
+            distance: &str, index: PyRef<'_, SearchIndex>,
+        ) -> PyResult<Py<PyAny>> {
+            let array = data.as_array();
+            let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
+            let tree = index.inner();
+            let kfn = parse_abod_kernel::<$dtype>(kernel)?;
+            let result = crate::py_interruptible(py, || {
+                outlier::fast_angle_based_outlier_detection::<_, _, $dtype, _>(
+                    &tree, &dataset, k, kfn,
+                )
+            })?;
+            result_to_py_outlier(py, result)
+        }
+    };
 }
 
-#[pyfunction]
-#[pyo3(signature = (data, k, kernel="poly2", seed=None, distance=None))]
-fn fast_angle_based_outlier_detection_f64<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, k: usize, kernel: &str, seed: Option<u64>,
-    distance: Option<&str>,
-) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = build_outlier_dataset::<f64>(&array, distance)?;
-    let tree = build_vptree(&dataset, seed);
-    let kfn = parse_abod_kernel::<f64>(kernel)?;
-    let result =
-        outlier::fast_angle_based_outlier_detection::<_, _, f64, _>(&tree, &dataset, k, kfn)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
-    result_to_py_outlier(py, result)
-}
+fast_abod!(fast_angle_based_outlier_detection_f32, f32);
+fast_abod!(fast_angle_based_outlier_detection_f64, f64);
 tree_outlier_k_m!(influence_outlier_f32, influence_outlier, f32);
 tree_outlier_k_m!(influence_outlier_f64, influence_outlier, f64);
 
 macro_rules! tree_outlier_k_h_c_kernel {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, k, h, c, kernel, seed=None, distance=None))]
+        #[pyo3(signature = (data, k, h, c, kernel, distance, *, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, h: f64, c: f64,
-            kernel: &str, seed: Option<u64>, distance: Option<&str>,
+            kernel: &str, distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
+            let tree = index.inner();
             let kernel = parse_kernel_density_function(kernel)?;
-            let result = outlier::$variant::<_, _, $dtype>(&tree, &dataset, k, h, c, kernel)
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
+            let result = crate::py_interruptible(py, || {
+                outlier::$variant::<_, _, $dtype>(tree, &dataset, k, h, c, kernel)
+            })?;
             result_to_py_outlier(py, result)
         }
     };
@@ -615,16 +604,16 @@ tree_outlier_k!(weighted_knn_f64, weighted_knn, f64);
 macro_rules! tree_outlier_krefer_kreach {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, krefer, kreach, seed=None, distance=None))]
+        #[pyo3(signature = (data, krefer, kreach, distance, *, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, krefer: usize, kreach: usize,
-            seed: Option<u64>, distance: Option<&str>,
+            distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
+            let tree = index.inner();
             let result = crate::py_interruptible(py, || {
-                outlier::$variant::<_, _, $dtype>(&tree, &dataset, krefer, kreach)
+                outlier::$variant::<_, _, $dtype>(tree, &dataset, krefer, kreach)
             })?;
             result_to_py_outlier(py, result)
         }
@@ -654,38 +643,29 @@ tree_outlier_k!(
 tree_outlier_k!(k_nearest_neighbors_sos_f32, k_nearest_neighbors_sos, f32);
 tree_outlier_k!(k_nearest_neighbors_sos_f64, k_nearest_neighbors_sos, f64);
 
-#[pyfunction]
-#[pyo3(signature = (data, kernel="poly2", distance=None))]
-fn angle_based_outlier_detection_f32<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, kernel: &str, distance: Option<&str>,
-) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = build_outlier_dataset::<f32>(&array, distance)?;
-    let kfn = parse_abod_kernel::<f32>(kernel)?;
-    let result = outlier::angle_based_outlier_detection::<_, f32, _>(&dataset, kfn);
-    result_to_py_outlier(py, result)
+macro_rules! abod {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, kernel="poly2", *, distance))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, kernel: &str, distance: &str,
+        ) -> PyResult<Py<PyAny>> {
+            let array = data.as_array();
+            let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
+            let kfn = parse_abod_kernel::<$dtype>(kernel)?;
+            let result = crate::py_interruptible(py, || {
+                Ok(outlier::angle_based_outlier_detection::<_, $dtype, _>(&dataset, kfn))
+            })?;
+            result_to_py_outlier(py, result)
+        }
+    };
 }
 
-#[pyfunction]
-#[pyo3(signature = (data, kernel="poly2", distance=None))]
-fn angle_based_outlier_detection_f64<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, kernel: &str, distance: Option<&str>,
-) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = build_outlier_dataset::<f64>(&array, distance)?;
-    let kfn = parse_abod_kernel::<f64>(kernel)?;
-    let result = outlier::angle_based_outlier_detection::<_, f64, _>(&dataset, kfn);
-    result_to_py_outlier(py, result)
-}
+abod!(angle_based_outlier_detection_f32, f32);
+abod!(angle_based_outlier_detection_f64, f64);
 
-data_outlier_no_args!(distance_from_center_f32, distance_from_center, f32);
-data_outlier_no_args!(distance_from_center_f64, distance_from_center, f64);
-
-data_outlier_no_args!(distance_from_origin_f32, distance_from_origin, f32);
-data_outlier_no_args!(distance_from_origin_f64, distance_from_origin, f64);
-
-data_outlier_k_l!(locality_based_abod_f32, locality_based_abod, f32);
-data_outlier_k_l!(locality_based_abod_f64, locality_based_abod, f64);
+data_outlier_k_l!(lb_abod_f32, lb_abod, f32);
+data_outlier_k_l!(lb_abod_f64, lb_abod, f64);
 
 data_outlier_n!(
     approximate_local_correlation_integral_f32,
@@ -713,18 +693,18 @@ tree_outlier_k!(variance_of_volume_f64, variance_of_volume, f64);
 macro_rules! tree_outlier_kdeos {
     ($name:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, kmin, kmax, kernel="gaussian", min_bandwidth=0.0, scale=1.0, idim=None, seed=None, distance=None))]
+        #[pyo3(signature = (data, kmin, kmax, kernel="gaussian", min_bandwidth=0.0, scale=1.0, idim=None, *, distance, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, kmin: usize, kmax: usize,
             kernel: &str, min_bandwidth: f64, scale: f64, idim: Option<usize>,
-            seed: Option<u64>, distance: Option<&str>,
+            distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
+            let tree = index.inner();
             let kernel = parse_kernel_density_function(kernel)?;
             let result = crate::py_interruptible(py, || {
-                outlier::kdeos::kdeos::<_, _, $dtype>(&tree, &dataset, kmin, kmax, kernel, min_bandwidth, scale, idim)
+                outlier::kdeos::kdeos::<_, _, $dtype>(tree, &dataset, kmin, kmax, kernel, min_bandwidth, scale, idim)
             })?;
             result_to_py_outlier(py, result)
         }
@@ -747,15 +727,15 @@ macro_rules! apply_isos {
 macro_rules! tree_outlier_isos {
     ($name:ident, $dtype:ty) => {
         #[pyfunction]
-        #[pyo3(signature = (data, k, estimator=None, seed=None, distance=None))]
+        #[pyo3(signature = (data, k, estimator=None, *, distance, index))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize,
-            estimator: Option<&str>, seed: Option<u64>, distance: Option<&str>,
+            estimator: Option<&str>, distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
             let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = build_vptree(&dataset, seed);
-            let result = dispatch_id_estimator!(estimator, apply_isos!(py, &tree, &dataset, k))?;
+            let tree = index.inner();
+            let result = dispatch_id_estimator!(estimator, apply_isos!(py, tree, &dataset, k))?;
             result_to_py_outlier(py, result)
         }
     };
@@ -766,31 +746,27 @@ tree_outlier_isos!(intrinsic_stochastic_outlier_selection_f64, f64);
 
 // ---- LBABOD kernel variant -------------------------------------------------
 
-#[pyfunction]
-#[pyo3(signature = (data, k, l, kernel="poly2", distance=None))]
-fn locality_based_abod_kernel_f32<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f32>, k: usize, l: usize, kernel: &str,
-    distance: Option<&str>,
-) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = build_outlier_dataset::<f32>(&array, distance)?;
-    let kfn = parse_abod_kernel::<f32>(kernel)?;
-    let result = outlier::locality_based_abod_kernel::<_, f32, _>(&dataset, k, l, kfn);
-    result_to_py_outlier(py, result)
+macro_rules! lb_abod_kernel {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, k, l, kernel="poly2", *, distance))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, l: usize, kernel: &str,
+            distance: &str,
+        ) -> PyResult<Py<PyAny>> {
+            let array = data.as_array();
+            let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
+            let kfn = parse_abod_kernel::<$dtype>(kernel)?;
+            let result = crate::py_interruptible(py, || {
+                Ok(outlier::lb_abod_kernel::<_, $dtype, _>(&dataset, k, l, kfn))
+            })?;
+            result_to_py_outlier(py, result)
+        }
+    };
 }
 
-#[pyfunction]
-#[pyo3(signature = (data, k, l, kernel="poly2", distance=None))]
-fn locality_based_abod_kernel_f64<'py>(
-    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, k: usize, l: usize, kernel: &str,
-    distance: Option<&str>,
-) -> PyResult<Py<PyAny>> {
-    let array = data.as_array();
-    let dataset = build_outlier_dataset::<f64>(&array, distance)?;
-    let kfn = parse_abod_kernel::<f64>(kernel)?;
-    let result = outlier::locality_based_abod_kernel::<_, f64, _>(&dataset, k, l, kfn);
-    result_to_py_outlier(py, result)
-}
+lb_abod_kernel!(lb_abod_kernel_f32, f32);
+lb_abod_kernel!(lb_abod_kernel_f64, f64);
 
 pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(angle_based_outlier_detection_f32))?;
@@ -843,8 +819,8 @@ pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(local_outlier_factor_f64))?;
     m.add_wrapped(wrap_pyfunction!(local_outlier_probabilities_f32))?;
     m.add_wrapped(wrap_pyfunction!(local_outlier_probabilities_f64))?;
-    m.add_wrapped(wrap_pyfunction!(locality_based_abod_f32))?;
-    m.add_wrapped(wrap_pyfunction!(locality_based_abod_f64))?;
+    m.add_wrapped(wrap_pyfunction!(lb_abod_f32))?;
+    m.add_wrapped(wrap_pyfunction!(lb_abod_f64))?;
     m.add_wrapped(wrap_pyfunction!(outlier_detection_independence_neighbor_f32))?;
     m.add_wrapped(wrap_pyfunction!(outlier_detection_independence_neighbor_f64))?;
     m.add_wrapped(wrap_pyfunction!(simple_kernel_density_lof_f32))?;
@@ -865,7 +841,7 @@ pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(kdeos_f64))?;
     m.add_wrapped(wrap_pyfunction!(intrinsic_stochastic_outlier_selection_f32))?;
     m.add_wrapped(wrap_pyfunction!(intrinsic_stochastic_outlier_selection_f64))?;
-    m.add_wrapped(wrap_pyfunction!(locality_based_abod_kernel_f32))?;
-    m.add_wrapped(wrap_pyfunction!(locality_based_abod_kernel_f64))?;
+    m.add_wrapped(wrap_pyfunction!(lb_abod_kernel_f32))?;
+    m.add_wrapped(wrap_pyfunction!(lb_abod_kernel_f64))?;
     Ok(())
 }

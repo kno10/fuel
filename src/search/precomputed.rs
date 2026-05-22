@@ -1,8 +1,9 @@
+use crate::DistanceSearch;
 use crate::api::data::DistanceData;
 use crate::api::float::Float;
 use crate::api::parallel::ParMap;
 use crate::api::query::IndexQuery;
-use crate::api::search::{DistPair, KnnSearch, RangeSearch};
+use crate::api::search::{DistPair, KnnSearch, PrioritySearcherFactory, RangeSearch};
 
 /// A wrapper that precomputes a kNN table for parameter sweeps.
 ///
@@ -12,32 +13,32 @@ use crate::api::search::{DistPair, KnnSearch, RangeSearch};
 /// k-th distance.
 ///
 /// Larger k requests are forwarded to the original searcher.
-pub struct PrecomputedKnnSearcher<'a, F, D, S>
+pub struct PrecomputedKnnSearcher<F, S>
 where
     F: Float,
-    D: DistanceData<F> + Sync,
-    S: KnnSearch<F, D::Query<'a>> + Sync,
-    D::Query<'a>: IndexQuery<F> + Send,
+    S: Sync,
 {
-    source: &'a S,
+    source: S,
     precomputed: Vec<Vec<DistPair<F>>>,
     max_k: usize,
-    _marker: std::marker::PhantomData<&'a D>,
 }
 
-impl<'a, F, D, S> PrecomputedKnnSearcher<'a, F, D, S>
+impl<F, S> PrecomputedKnnSearcher<F, S>
 where
     F: Float,
-    D: DistanceData<F> + Sync,
-    S: KnnSearch<F, D::Query<'a>> + Sync,
-    D::Query<'a>: IndexQuery<F> + Send,
+    S: Sync,
 {
     /// Build a new precomputed searcher.
     ///
     /// - `source` is the original searcher used for delegated large-k queries.
     /// - `data` is the dataset whose indexed points will be precomputed.
     /// - `max_k` is the maximum k value expected in parameter sweeps.
-    pub fn new(source: &'a S, data: &'a D, max_k: usize) -> Self {
+    pub fn new<'a, D>(source: S, data: &'a D, max_k: usize) -> Self
+    where
+        D: DistanceData<F> + Sync,
+        D::Query<'a>: IndexQuery<F> + Send,
+        S: KnnSearch<F, D::Query<'a>> + Sync,
+    {
         let n = data.len();
         let max_k = max_k.min(n);
         let precomputed = if n == 0 || max_k == 0 {
@@ -50,7 +51,7 @@ where
             })
         };
 
-        Self { source, precomputed, max_k, _marker: std::marker::PhantomData }
+        Self { source, precomputed, max_k }
     }
 
     /// Returns the maximum k precomputed by this proxy.
@@ -66,14 +67,13 @@ where
     }
 }
 
-impl<'a, F, D, S> KnnSearch<F, D::Query<'a>> for PrecomputedKnnSearcher<'a, F, D, S>
+impl<F, S, Q> KnnSearch<F, Q> for PrecomputedKnnSearcher<F, S>
 where
     F: Float,
-    D: DistanceData<F> + Sync,
-    S: KnnSearch<F, D::Query<'a>> + Sync,
-    D::Query<'a>: IndexQuery<F> + Send,
+    Q: DistanceSearch<F> + IndexQuery<F> + Send + ?Sized,
+    S: KnnSearch<F, Q> + Sync,
 {
-    fn search_knn(&self, query: &D::Query<'a>, k: usize) -> Vec<DistPair<F>> {
+    fn search_knn(&self, query: &Q, k: usize) -> Vec<DistPair<F>> {
         if k == 0 {
             return Vec::new();
         }
@@ -89,15 +89,35 @@ where
     }
 }
 
-impl<'a, F, D, S> RangeSearch<F, D::Query<'a>> for PrecomputedKnnSearcher<'a, F, D, S>
+impl<F, S, Q> RangeSearch<F, Q> for PrecomputedKnnSearcher<F, S>
 where
     F: Float,
-    D: DistanceData<F> + Sync,
-    S: KnnSearch<F, D::Query<'a>> + RangeSearch<F, D::Query<'a>> + Sync,
-    D::Query<'a>: IndexQuery<F> + Send,
+    Q: DistanceSearch<F> + IndexQuery<F> + Send + ?Sized,
+    S: KnnSearch<F, Q> + RangeSearch<F, Q> + Sync,
 {
-    fn search_range(&self, query: &D::Query<'a>, radius: F) -> Vec<DistPair<F>> {
+    fn search_range(&self, query: &Q, radius: F) -> Vec<DistPair<F>> {
         self.source.search_range(query, radius)
+    }
+}
+
+impl<F, S, Q> PrioritySearcherFactory<F, Q> for PrecomputedKnnSearcher<F, S>
+where
+    F: Float,
+    Q: DistanceSearch<F> + ?Sized,
+    S: PrioritySearcherFactory<F, Q> + Sync,
+{
+    type Searcher<'a>
+        = <S as PrioritySearcherFactory<F, Q>>::Searcher<'a>
+    where
+        S: 'a,
+        Q: 'a,
+        F: 'a;
+
+    fn priority_searcher<'a>(&'a self) -> Self::Searcher<'a>
+    where
+        Q: 'a,
+    {
+        self.source.priority_searcher()
     }
 }
 
@@ -108,6 +128,7 @@ mod tests {
 
     use super::*;
     use crate::api::data::Data;
+    use crate::api::search::linear_scan_knn;
     use crate::api::tabular::TableWithDistance;
     use crate::distance::Euclidean;
     use crate::search::vptree::VPTree;
@@ -120,19 +141,26 @@ mod tests {
             TableWithDistance::with_distance(&points, Euclidean);
         let mut rng = StdRng::seed_from_u64(42);
         let tree = VPTree::new(&table, 2, &mut rng);
-        let precomputed = PrecomputedKnnSearcher::new(&tree, &table, 2);
+
+        let precomputed = PrecomputedKnnSearcher::new(tree, &table, 2);
 
         for index in 0..table.len() {
             let mut query = table.query();
             query.set_index(index);
 
-            let direct = tree.search_knn(&query, 1);
+            let expected_row_k1 = linear_scan_knn(&table, &query, 1);
             let precomputed_result = precomputed.search_knn(&query, 1);
-            assert_eq!(direct, precomputed_result);
+            assert!(precomputed_result.len() >= 1);
+            let first_k_distance = precomputed_result[0].distance;
+            assert!(precomputed_result.iter().skip(1).all(|pair| pair.distance == first_k_distance));
+            assert_eq!(expected_row_k1, precomputed_result);
 
-            let direct2 = tree.search_knn(&query, 2);
+            let expected_row_k2 = linear_scan_knn(&table, &query, 2);
             let precomputed_result2 = precomputed.search_knn(&query, 2);
-            assert_eq!(direct2, precomputed_result2);
+            assert!(precomputed_result2.len() >= 2);
+            let second_k_distance = precomputed_result2[1].distance;
+            assert!(precomputed_result2.iter().skip(2).all(|pair| pair.distance == second_k_distance));
+            assert_eq!(expected_row_k2, precomputed_result2);
         }
     }
 }

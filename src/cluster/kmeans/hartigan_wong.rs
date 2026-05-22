@@ -516,7 +516,8 @@ mod tests {
         let mut init = FixedInit { centers: vec![[0.0, 0.0], [10.0, 0.0]] };
         let mut init2 = FixedInit { centers: vec![[0.0, 0.0], [10.0, 0.0]] };
 
-        let res_lloyd = crate::cluster::kmeans::lloyd::lloyd(&dataset, 2, &mut init, 100, 0.0).unwrap();
+        let res_lloyd =
+            crate::cluster::kmeans::lloyd::lloyd(&dataset, 2, &mut init, 100, 0.0).unwrap();
         let res_hw = hartigan_wong(&dataset, 2, &mut init2, 100, 0.0).unwrap();
 
         let _loss_lloyd = compute_loss(&dataset, &res_lloyd.centers, &res_lloyd.assignments);

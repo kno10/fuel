@@ -144,7 +144,6 @@ impl<F: Float> AnderbergState<F> {
 /// Perform hierarchical clustering using Anderberg's NN-cache acceleration.
 ///
 /// Input and output conventions are the same as [`crate::cluster::hierarchical::agnes`].
-#[must_use]
 pub fn anderberg<D, F: Float, L: Linkage<F> + Copy + Sync>(
     data: &D, linkage: L,
 ) -> Result<MergeHistory<F>, String>

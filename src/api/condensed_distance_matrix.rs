@@ -1,10 +1,10 @@
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+use crate::search::linear_scan::LinearScanPrioritySearcher;
 use crate::{
     Data, DistPair, DistanceData, DistanceSearch, Float, IndexQuery, KnnSearch,
-    LinearScanPrioritySearcher, PrioritySearcherFactory, RangeSearch, linear_scan_knn,
-    linear_scan_range,
+    PrioritySearcherFactory, RangeSearch, linear_scan_knn, linear_scan_range,
 };
 
 /// Helper that returns the starting offset in the flattened triangle for

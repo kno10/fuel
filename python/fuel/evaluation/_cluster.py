@@ -1,5 +1,9 @@
+from collections import namedtuple as _namedtuple
+
 import numpy as np
 from .. import _fuel as _fuel
+
+SilhouetteResult = _namedtuple('SilhouetteResult', ['mean', 'stddev', 'values'])
 
 
 def _ensure_f64(data):
@@ -115,22 +119,24 @@ def simplified_silhouette(data, labels, *, noise_label=None, noise_handling='ign
     """
     Simplified silhouette score (centroid-based approximation).
 
-    Returns a dict with 'mean', 'stddev', and 'values' (per-point array).
+    Returns a SilhouetteResult with 'mean', 'stddev', and 'values' (per-point array).
     """
-    return _fuel.simplified_silhouette_score(
+    r = _fuel.simplified_silhouette_score(
         _ensure_f64(data), _ensure_i64(labels), noise_label, noise_handling, penalize,
     )
+    return SilhouetteResult(r['mean'], r['stddev'], r['values'])
 
 
 def silhouette(data, labels, *, noise_label=None, noise_handling='ignore', penalize=False):
     """
     Full silhouette score (pairwise distances).
 
-    Returns a dict with 'mean', 'stddev', and 'values' (per-point array).
+    Returns a SilhouetteResult with 'mean', 'stddev', and 'values' (per-point array).
     """
-    return _fuel.silhouette_score(
+    r = _fuel.silhouette_score(
         _ensure_f64(data), _ensure_i64(labels), noise_label, noise_handling, penalize,
     )
+    return SilhouetteResult(r['mean'], r['stddev'], r['values'])
 
 
 def davies_bouldin(data, labels, *, noise_label=None, noise_handling='ignore', p=1.0):

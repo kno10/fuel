@@ -2,8 +2,10 @@
 //! distance updates.
 //!
 //! This approach is useful for linkages that cannot be expressed as a generic
-//! sparse Lance-Williams recurrence, such as `MedoidLinkage`, `MinimaxLinkage`,
-//! `MinimumSumLinkage`, and `HausdorffLinkage`.
+//! sparse Lance-Williams recurrence, such as [`crate::cluster::hierarchical::MedoidLinkage`],
+//! [`crate::cluster::hierarchical::MinimaxLinkage`],
+//! [`crate::cluster::hierarchical::MinimumSumLinkage`], and
+//! [`crate::cluster::hierarchical::HausdorffLinkage`].
 //!
 //! It is implemented by maintaining cluster member lists, cluster summaries,
 //! and recomputing distances through `SetLinkage::cluster_distance`.
