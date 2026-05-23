@@ -3,10 +3,10 @@ requires = ["maturin>=1.7,<3"]
 build-backend = "maturin"
 
 [project]
-name = "fuel"
+name = "pyfuel"
 version = "0.1.0"
 description = "Fast Unsupervised Learning"
-requires-python = ">=3.10"
+requires-python = ">=3.8"
 license = { file = "LICENSE" }
 dependencies = ["numpy"]
 classifier = [

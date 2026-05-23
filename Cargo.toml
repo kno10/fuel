@@ -4,6 +4,7 @@ name = "fuel"
 version = "0.1.0"
 authors = ["Erich Schubert <erich.schubert@tu-dortmund.de>"]
 autobins = false
+build = "build.rs"
 
 [lib]
 name = "fuel"
@@ -97,7 +98,6 @@ openblas-system = ["blas-src/openblas", "dep:openblas-src", "openblas-src/system
 openblas-system-static = ["blas-src/openblas", "dep:openblas-src", "openblas-src/system", "openblas-src/static", "ndarray-linalg/openblas-system"]
 accelerate = ["blas-src/accelerate"]
 
-
 [dependencies]
 num-traits = "0.2"
 ndarray = { version = "0.17", features = ["blas"] }
@@ -116,6 +116,9 @@ ndarray-npy = { version = "0.10.0", optional = true }
 pyo3 = { version = "0.28", optional = true, features = ["macros", "extension-module"] }
 numpy = { version = "0.28", optional = true }
 kmedoids = "0.5.5"
+
+[build-dependencies]
+vcpkg = "0.2"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

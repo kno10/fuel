@@ -62,13 +62,21 @@ Several estimators (MLE, TLE, GED, Zipf, ABID, RABID, ...).
 Build and install the Python package in your current environment:
 
 ```bash
-maturin develop --release
+maturin develop --release --features openblas-system
 ```
+
+The following BLAS variants can be used:
+
+- `openblas-system` is supposed to use existing libopenblas
+- `openblas` is supposed to compile OpenBLAS (this will take much longer once)
+- `accelerate` uses the OSX Accelerate library
 
 or install the packaged version using
 ```sh
 pip install pyfuel
 ```
+
+As we currently use Linux only, the OSX and Windows builds are untested.
 
 
 ### Quick start
