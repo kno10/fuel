@@ -89,14 +89,21 @@ harness = false
 [features]
 default = ["parallel"]
 benchmark = ["dep:csv"]
-parallel = []
+parallel = ["ndarray/rayon"]
 io = ["dep:csv", "dep:qsv-sniffer", "dep:flate2", "dep:ndarray-npy"]
 python = ["dep:numpy", "dep:pyo3"]
+openblas = ["blas-src/openblas", "dep:openblas-src", "openblas-src/static", "ndarray-linalg/openblas-static"]
+openblas-system = ["blas-src/openblas", "dep:openblas-src", "openblas-src/system", "ndarray-linalg/openblas-system"]
+openblas-system-static = ["blas-src/openblas", "dep:openblas-src", "openblas-src/system", "openblas-src/static", "ndarray-linalg/openblas-system"]
+accelerate = ["blas-src/accelerate"]
+
 
 [dependencies]
 num-traits = "0.2"
-ndarray = "0.17"
-ndarray-linalg = { version = "0.18", features = ["openblas-system"] }
+ndarray = { version = "0.17", features = ["blas"] }
+ndarray-linalg = { version = "0.18", features = ["blas"] }
+blas-src =  { version = "0.14", default-features = false }
+openblas-src = { version = "0.10", optional = true }
 rand = { version = "0.10", features = ["std", "std_rng", "sys_rng", "thread_rng"] }
 rand_distr = "0.6"
 rand_pcg = "0.10"
@@ -109,7 +116,6 @@ ndarray-npy = { version = "0.10.0", optional = true }
 pyo3 = { version = "0.28", optional = true, features = ["macros", "extension-module"] }
 numpy = { version = "0.28", optional = true }
 kmedoids = "0.5.5"
-
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
