@@ -4,7 +4,7 @@
 //! the compiler a fixed-width inner loop body suitable for auto-vectorisation
 //! (e.g. ARM NEON / VFPv4).
 
-use ndarray::{ArrayView1, ArrayView2};
+use ndarray::ArrayView2;
 
 use crate::Float;
 
@@ -158,13 +158,11 @@ where
     assert!(v1.len() >= d && v2.len() >= d);
     let sd = d & !(LANES - 1);
 
-    #[cfg(any(
+    if cfg!(any(
         target_feature = "fma",
         target_feature = "neon",
-        target_feature = "vfp4",
-        target_feature = "vfpv4"
-    ))]
-    {
+        target_feature = "vfp4"
+    )) {
         for i in (0..sd).step_by(LANES) {
             let (b1, b2) = (&mut v1[i..(i + LANES)], &v2[i..(i + LANES)]);
             for j in 0..LANES {

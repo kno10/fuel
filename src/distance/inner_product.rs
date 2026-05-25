@@ -1,6 +1,7 @@
 //! Right now, we do not yet have a similarity function trait
 //! So this only exposes an optimized dot product function.
 
+#[cfg(target_arch = "x86_64")]
 use std::any::TypeId;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{
