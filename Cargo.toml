@@ -3,6 +3,11 @@ edition = "2024"
 name = "fuel"
 version = "0.1.0"
 authors = ["Erich Schubert <erich.schubert@tu-dortmund.de>"]
+description = "Fast Unsupervised Learning"
+homepage = "https://codeberg.org/erich_schubert/fuel"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+repository = "https://codeberg.org/erich_schubert/fuel"
 autobins = false
 build = "build.rs"
 
