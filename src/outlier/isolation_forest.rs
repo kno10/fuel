@@ -8,7 +8,13 @@ use crate::{DistanceData, Float, VectorData};
 const EULER_MASCHERONI: f64 = 0.577_215_664_901_532_9;
 
 fn c_factor(n: f64) -> f64 {
-    if n <= 1.0 { 0.0 } else { 2.0 * ((n - 1.0).ln() + EULER_MASCHERONI) - (2.0 * (n - 1.0) / n) }
+    if n <= 1.0 {
+        0.0
+    } else if n == 2.0 {
+        1.0
+    } else {
+        2.0 * ((n - 1.0).ln() + EULER_MASCHERONI) - (2.0 * (n - 1.0) / n)
+    }
 }
 
 enum IsolationTreeNode {
@@ -49,22 +55,10 @@ where
         }
     }
 
-    if (0..dim).all(|d| maxv[d] <= minv[d]) {
+    let axis = rng.random_range(0..dim);
+    if maxv[axis] <= minv[axis] {
         return IsolationTreeNode::External(size);
     }
-
-    let mut active = Vec::new();
-    for d in 0..dim {
-        if maxv[d] > minv[d] {
-            active.push(d);
-        }
-    }
-
-    if active.is_empty() {
-        return IsolationTreeNode::External(size);
-    }
-
-    let axis = active[rng.random_range(0..active.len())];
     let split = minv[axis] + (maxv[axis] - minv[axis]) * rng.random_range(0.0..1.0);
 
     let mut left = Vec::new();
@@ -98,8 +92,11 @@ where
 {
     match node {
         IsolationTreeNode::External(size) => {
-            let depth = depth + 1.0;
-            if *size <= 1 { depth } else { depth + c_factor(*size as f64) }
+            if *size <= 1 {
+                depth
+            } else {
+                depth + c_factor(*size as f64)
+            }
         }
         IsolationTreeNode::Internal { axis, split, left, right } => {
             let query_coord = data.point(query_point)[*axis].to_f64().unwrap_or(0.0);
