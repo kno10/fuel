@@ -125,6 +125,25 @@ macro_rules! hdbscan_hierarchy_methods {
                 )?;
                 result.into_py_any(py)
             }
+
+            fn glosh<'py>(
+                &self, py: Python<'py>, min_cluster_size: usize,
+            ) -> PyResult<Py<PyAny>> {
+                use pyo3::types::PyDict;
+                let r = crate::outlier::glosh::glosh(&self.inner, min_cluster_size);
+                let scores: Vec<$float> = r.scores.into_iter().map(|v| v as $float).collect();
+                let scores = PyArray1::from_vec(py, scores);
+                let m = r.metadata;
+                let meta = PyDict::new(py);
+                meta.set_item("label", m.label)?;
+                meta.set_item("ascending", m.ascending)?;
+                meta.set_item("baseline", m.baseline as f64)?;
+                meta.set_item("minimum", m.minimum as f64)?;
+                meta.set_item("maximum", m.maximum as f64)?;
+                meta.set_item("theoretical_minimum", m.theoretical_minimum as f64)?;
+                meta.set_item("theoretical_maximum", m.theoretical_maximum as f64)?;
+                (scores, meta).into_py_any(py)
+            }
         }
     };
 }

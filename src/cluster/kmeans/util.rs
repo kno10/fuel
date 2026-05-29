@@ -43,6 +43,10 @@ pub struct KMeansResult<N> {
     /// A bound on the inertia (e.g. a cheap lower bound) when available and the
     /// exact value is not returned.  `None` if no such information is provided.
     pub inertia_bound: Option<N>,
+    /// Noise mask: `true` for points that were trimmed/excluded during fitting
+    /// (e.g. by tkmeans/k-means--). `None` for standard k-means variants that
+    /// have no trimming concept.
+    pub noise_mask: Option<Vec<bool>>,
 }
 
 impl<N> KMeansResult<N> {
@@ -50,19 +54,39 @@ impl<N> KMeansResult<N> {
     pub fn with_inertia(
         centers: Array2<N>, assignments: Vec<usize>, iterations: usize, inertia: N,
     ) -> Self {
-        Self { centers, assignments, iterations, inertia: Some(inertia), inertia_bound: None }
+        Self {
+            centers,
+            assignments,
+            iterations,
+            inertia: Some(inertia),
+            inertia_bound: None,
+            noise_mask: None,
+        }
     }
 
     /// Construct a result when only a bound on the loss is known.
     pub fn with_bound(
         centers: Array2<N>, assignments: Vec<usize>, iterations: usize, bound: N,
     ) -> Self {
-        Self { centers, assignments, iterations, inertia: None, inertia_bound: Some(bound) }
+        Self {
+            centers,
+            assignments,
+            iterations,
+            inertia: None,
+            inertia_bound: Some(bound),
+            noise_mask: None,
+        }
     }
 
     /// Construct a result when neither loss nor bound is available.
     pub fn without_inertia(centers: Array2<N>, assignments: Vec<usize>, iterations: usize) -> Self {
-        Self { centers, assignments, iterations, inertia: None, inertia_bound: None }
+        Self { centers, assignments, iterations, inertia: None, inertia_bound: None, noise_mask: None }
+    }
+
+    /// Attach a noise mask (trimmed-point flags) to the result.
+    pub fn with_noise_mask(mut self, mask: Vec<bool>) -> Self {
+        self.noise_mask = Some(mask);
+        self
     }
 }
 

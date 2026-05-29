@@ -1,21 +1,25 @@
-use std::collections::HashMap;
+use std::sync::Mutex;
 
 use rayon::prelude::*;
 
 use crate::api::{DistanceData, RangeSearch};
-use crate::cluster::dbscan::NOISE;
+use crate::cluster::dbscan::{DbscanResult, NOISE};
 use crate::{Float, IndexQuery};
 
-/// Run DBSCAN in parallel by finding connected components of core points.
+/// Run DBSCAN in parallel, querying each point's neighbors exactly once.
 ///
-/// The algorithm first identifies all core points whose epsilon-ball contains at
-/// least `min_points`. It then builds a union-find over the core points by
-/// connecting every pair of neighboring cores. After the union-find has merged
-/// connected components, every point is assigned either the cluster label of a
-/// nearby core point or `NOISE`.
+/// Follows the ELKI `ParallelGeneralizedDBSCAN` design: each worker thread
+/// computes the eps-neighborhood of its assigned point without any
+/// synchronization.  If the point is a core, it acquires a single shared
+/// lock to merge clusters and label unassigned neighbors as border in the
+/// same step.  A short sequential finalization resolves the union-find and
+/// renumbers the cluster labels.
+///
+/// Reference: ELKI `ParallelGeneralizedDBSCAN` (Schubert et al.).
+/// Related: Patwary et al., SC 2012 (<https://doi.org/10.1109/SC.2012.9>).
 pub fn parallel_dbscan<'a, S, D, F>(
     tree: &S, data: &'a D, eps: F, min_points: usize,
-) -> Result<Vec<isize>, String>
+) -> Result<DbscanResult, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -27,131 +31,136 @@ where
 
     let size = data.len();
     if size == 0 {
-        return Ok(Vec::new());
+        return Ok(DbscanResult { labels: Vec::new(), core: Vec::new() });
     }
 
-    // Identify core points in parallel.
-    let is_core: Vec<bool> = (0..size)
-        .into_par_iter()
-        .map_init(
-            || data.query(),
-            |query, idx| {
-                query.set_index(idx);
-                let mut neighbors = 0usize;
-                for _ in tree.search_range(query, eps) {
-                    neighbors += 1;
-                }
-                neighbors >= min_points
-            },
-        )
-        .collect();
+    // Shared mutable state protected by a single mutex.
+    // The mutex is only held for the labeling step (O(eps-neighbors)),
+    // not for the neighbor query (the dominant cost).
+    struct Shared {
+        /// -1 = unassigned, >= 0 = cluster ID (before union-find resolution).
+        assignments: Vec<isize>,
+        is_core: Vec<bool>,
+        /// Min-label union-find over cluster IDs (like ELKI's Core.num array).
+        cluster_parent: Vec<usize>,
+        next_cluster: usize,
+    }
 
-    let mut core_ids = vec![None; size];
-    let mut cores = Vec::new();
-    for (idx, &core) in is_core.iter().enumerate() {
-        if core {
-            core_ids[idx] = Some(cores.len());
-            cores.push(idx);
+    impl Shared {
+        fn alloc_cluster(&mut self) -> usize {
+            let id = self.next_cluster;
+            self.next_cluster += 1;
+            self.cluster_parent.push(id);
+            id
         }
-    }
 
-    if cores.is_empty() {
-        return Ok(vec![NOISE; size]);
-    }
+        /// Find root with path-halving compression.
+        fn find(&mut self, mut c: usize) -> usize {
+            while self.cluster_parent[c] != c {
+                self.cluster_parent[c] = self.cluster_parent[self.cluster_parent[c]];
+                c = self.cluster_parent[c];
+            }
+            c
+        }
 
-    let num_cores = cores.len();
-    let mut union_find = UnionFind::new(num_cores);
-    let core_id_by_point = core_ids;
-
-    let mut query = data.query();
-    for (core_idx, &point_idx) in cores.iter().enumerate() {
-        crate::poll_interrupted()?;
-        query.set_index(point_idx);
-        for pair in tree.search_range(&query, eps) {
-            if let Some(neighbor_core_idx) = core_id_by_point[pair.index] {
-                union_find.union(core_idx, neighbor_core_idx);
+        /// Union by min-label: the smaller ID becomes the representative.
+        fn union_clusters(&mut self, a: usize, b: usize) {
+            let ra = self.find(a);
+            let rb = self.find(b);
+            if ra != rb {
+                let (small, large) = if ra < rb { (ra, rb) } else { (rb, ra) };
+                self.cluster_parent[large] = small;
             }
         }
     }
 
-    let mut root_to_label = HashMap::with_capacity(num_cores);
+    let shared = Mutex::new(Shared {
+        assignments: vec![-1; size],
+        is_core: vec![false; size],
+        cluster_parent: Vec::new(),
+        next_cluster: 0,
+    });
+
+    // One parallel pass: each point's neighbors are queried exactly once.
+    (0..size).into_par_iter().for_each_init(
+        || data.query(),
+        |query, idx| {
+            query.set_index(idx);
+            // Collect neighbors outside the lock (the expensive part).
+            let neighbors: Vec<usize> =
+                tree.search_range(query, eps).into_iter().map(|p| p.index).collect();
+            if neighbors.len() < min_points {
+                return; // Not a core; may be labeled as border later.
+            }
+
+            // Core point: acquire the lock for the labeling step (like ELKI's
+            // synchronized block in processNeighbors).
+            let mut st = shared.lock().unwrap();
+
+            // Find and merge all clusters that already-processed core neighbors
+            // belong to.  After this loop `cluster` is a union-find root.
+            let mut cluster: Option<usize> = None;
+            for &nb in &neighbors {
+                if !st.is_core[nb] {
+                    continue;
+                }
+                let nb_root = {
+                    let nb_assign = st.assignments[nb] as usize;
+                    st.find(nb_assign)
+                };
+                cluster = Some(match cluster {
+                    None => nb_root,
+                    Some(c) => {
+                        // c is already a root (maintained by prior iterations).
+                        st.union_clusters(c, nb_root);
+                        c.min(nb_root)
+                    }
+                });
+            }
+
+            // Resolve the final representative (or create a new cluster).
+            let cid = match cluster {
+                Some(c) => st.find(c),
+                None => st.alloc_cluster(),
+            };
+
+            // Mark this point as a core and assign to the cluster.
+            st.is_core[idx] = true;
+            st.assignments[idx] = cid as isize;
+
+            // Label every unassigned neighbor as a border of this cluster.
+            // Already-assigned borders keep their first assignment (ELKI's
+            // behavior); already-processed cores were merged above.
+            for &nb in &neighbors {
+                if st.assignments[nb] < 0 {
+                    st.assignments[nb] = cid as isize;
+                }
+            }
+        },
+    );
+    crate::poll_interrupted()?;
+
+    // Sequential finalization: resolve union-find and remap to dense labels.
+    let mut st = shared.into_inner().unwrap();
+    let mut label_remap: Vec<isize> = vec![-1; st.next_cluster];
     let mut next_label: isize = 0;
-    let mut cluster_label_by_core = vec![NOISE; num_cores];
-    for (core_idx, slot) in cluster_label_by_core.iter_mut().enumerate().take(num_cores) {
-        let root = union_find.find(core_idx);
-        let label = *root_to_label.entry(root).or_insert_with(|| {
-            let label = next_label;
-            next_label += 1;
-            label
-        });
-        *slot = label;
-    }
 
-    crate::poll_interrupted()?;
-
-    // Assign every point to its cluster label (or noise).
-    let labels = (0..size)
-        .into_par_iter()
-        .map_init(
-            || data.query(),
-            |query, idx| {
-                if let Some(core_idx) = core_id_by_point[idx] {
-                    return cluster_label_by_core[core_idx];
-                }
-                let mut assigned = NOISE;
-                query.set_index(idx);
-                for pair in tree.search_range(query, eps) {
-                    if assigned != NOISE {
-                        break;
-                    }
-                    if let Some(neighbor_core_idx) = core_id_by_point[pair.index] {
-                        assigned = cluster_label_by_core[neighbor_core_idx];
-                    }
-                }
-                assigned
-            },
-        )
+    let labels: Vec<isize> = (0..size)
+        .map(|i| {
+            let a = st.assignments[i];
+            if a < 0 {
+                return NOISE;
+            }
+            let root = st.find(a as usize);
+            if label_remap[root] < 0 {
+                label_remap[root] = next_label;
+                next_label += 1;
+            }
+            label_remap[root]
+        })
         .collect();
-    crate::poll_interrupted()?;
-    Ok(labels)
-}
 
-#[derive(Debug)]
-struct UnionFind {
-    parent: Vec<usize>,
-    size: Vec<usize>,
-}
-
-impl UnionFind {
-    fn new(n: usize) -> Self { Self { parent: (0..n).collect(), size: vec![1; n] } }
-
-    fn find(&mut self, mut x: usize) -> usize {
-        while self.parent[x] != x {
-            x = self.parent[x];
-        }
-        let root = x;
-        let mut node = x;
-        while self.parent[node] != root {
-            let next = self.parent[node];
-            self.parent[node] = root;
-            node = next;
-        }
-        root
-    }
-
-    fn union(&mut self, a: usize, b: usize) -> usize {
-        let mut ra = self.find(a);
-        let mut rb = self.find(b);
-        if ra == rb {
-            return ra;
-        }
-        if self.size[ra] < self.size[rb] {
-            std::mem::swap(&mut ra, &mut rb);
-        }
-        self.parent[rb] = ra;
-        self.size[ra] += self.size[rb];
-        ra
-    }
+    Ok(DbscanResult { labels, core: st.is_core })
 }
 
 #[cfg(test)]
@@ -188,7 +197,7 @@ mod tests {
         let (data, tree) = build_tree(&points);
         let parallel_labels = parallel_dbscan(&tree, &data, 0.25, 3);
         let sequential_labels = dbscan(&tree, &data, 0.25, 3);
-        assert_eq!(parallel_labels, sequential_labels);
+        assert_eq!(parallel_labels.unwrap().labels, sequential_labels.unwrap().labels);
     }
 
     #[test]
@@ -204,7 +213,7 @@ mod tests {
         ];
         for (min_points, expected) in expected_cases {
             let parallel_labels = parallel_dbscan(&tree, &data, 1.0, min_points).unwrap();
-            assert_eq!(parallel_labels, expected);
+            assert_eq!(parallel_labels.labels, expected);
         }
     }
 }

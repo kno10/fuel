@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyModule;
 
 use crate::cluster::{dbscan, optics, parallel_dbscan};
+use crate::cluster::dbscan::DbscanResult;
 use crate::distance::DistanceFunction;
 use crate::python::search::SearchIndex;
 use crate::{Float, NdArrayDatasetWithDistance};
@@ -25,9 +26,14 @@ where
     Ok(NdArrayDatasetWithDistance::with_distance(array, dist_fn))
 }
 
-fn labels_to_py<'py>(py: Python<'py>, labels: Vec<isize>) -> PyResult<Py<PyAny>> {
-    let v: Vec<i64> = labels.iter().map(|&l| l as i64).collect();
-    PyArray1::from_vec(py, v).into_py_any(py)
+fn dbscan_result_to_py<'py>(py: Python<'py>, result: DbscanResult) -> PyResult<Py<PyAny>> {
+    use pyo3::types::PyDict;
+    let labels: Vec<i64> = result.labels.iter().map(|&l| l as i64).collect();
+    let core: Vec<u8> = result.core.iter().map(|&b| b as u8).collect();
+    let d = PyDict::new(py);
+    d.set_item("labels", PyArray1::from_vec(py, labels))?;
+    d.set_item("core", PyArray1::from_vec(py, core))?;
+    d.into_py_any(py)
 }
 
 // ---- DBSCAN ----------------------------------------------------------------
@@ -44,9 +50,9 @@ macro_rules! dbscan_fn {
             let dataset = build_dataset(&array, distance)?;
             let tree = index.inner();
             let eps = <$dtype as crate::Float>::cast(eps);
-            let labels =
+            let result =
                 crate::py_interruptible(py, || dbscan::dbscan(tree, &dataset, eps, min_points))?;
-            labels_to_py(py, labels)
+            dbscan_result_to_py(py, result)
         }
     };
 }
@@ -63,10 +69,10 @@ macro_rules! parallel_dbscan_fn {
             let dataset = build_dataset(&array, distance)?;
             let tree = index.inner();
             let eps = <$dtype as crate::Float>::cast(eps);
-            let labels = crate::py_interruptible(py, || {
+            let result = crate::py_interruptible(py, || {
                 parallel_dbscan::parallel_dbscan(tree, &dataset, eps, min_points)
             })?;
-            labels_to_py(py, labels)
+            dbscan_result_to_py(py, result)
         }
     };
 }

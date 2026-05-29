@@ -152,7 +152,9 @@ where
     for &d in &dist {
         inertia += d;
     }
-    Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, inertia))
+    let noise_mask: Vec<bool> = kept.into_iter().map(|k| !k).collect();
+    Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, inertia)
+        .with_noise_mask(noise_mask))
 }
 
 /// Select the smallest `keep` distances in `dist` and mark them as kept.

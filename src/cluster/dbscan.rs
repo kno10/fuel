@@ -6,14 +6,23 @@ use crate::{DistanceData, Float, IndexQuery};
 const UNVISITED: isize = -2;
 pub const NOISE: isize = -1;
 
+/// Result of a DBSCAN run.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DbscanResult {
+    /// Cluster label per point: `NOISE` (-1) or cluster id `0..`.
+    pub labels: Vec<isize>,
+    /// `true` for core points (neighborhood size >= min_points).
+    pub core: Vec<bool>,
+}
+
 /// Run DBSCAN using a generic range search index for neighborhood queries.
 ///
-/// Returns a label per point:
-/// - `NOISE` (-1) for noise points
-/// - `0..` for cluster ids
+/// Returns a [`DbscanResult`] with:
+/// - `labels`: `NOISE` (-1) for noise points, `0..` for cluster ids
+/// - `core`: `true` for core points (|Neps| >= min_points)
 pub fn dbscan<'a, S, D, F>(
     tree: &S, data: &'a D, eps: F, min_points: usize,
-) -> Result<Vec<isize>, String>
+) -> Result<DbscanResult, String>
 where
     F: Float,
     D: DistanceData<F> + 'a,
@@ -23,6 +32,7 @@ where
 
     let size = data.len();
     let mut labels = vec![UNVISITED; size];
+    let mut core = vec![false; size];
     let mut cluster_id: isize = 0;
     let mut frontier = HashSet::new();
     let mut neighbors = Vec::with_capacity(min_points);
@@ -41,11 +51,11 @@ where
         }
         if frontier.len() < min_points {
             labels[point_idx] = NOISE;
-
             continue;
         }
 
-        // Start new cluster
+        // point_idx is a core point
+        core[point_idx] = true;
         labels[point_idx] = cluster_id;
 
         while let Some(&current_idx) = frontier.iter().next() {
@@ -65,6 +75,7 @@ where
                 neighbors.push(pair.index);
             }
             if neighbors.len() >= min_points {
+                core[current_idx] = true;
                 for &neighbor_idx in &neighbors {
                     if labels[neighbor_idx] == NOISE {
                         labels[neighbor_idx] = cluster_id;
@@ -79,7 +90,7 @@ where
         cluster_id += 1;
     }
 
-    Ok(labels)
+    Ok(DbscanResult { labels, core })
 }
 
 #[cfg(test)]
@@ -110,7 +121,8 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(7);
         let tree = VPTree::new(&data, 2, &mut rng);
 
-        let labels = dbscan(&tree, &data, 0.25, 3).unwrap();
+        let result = dbscan(&tree, &data, 0.25, 3).unwrap();
+        let labels = &result.labels;
 
         assert_eq!(labels.len(), points.len());
         assert_eq!(labels[6], NOISE);
@@ -128,6 +140,11 @@ mod tests {
 
         let clusters: HashSet<isize> = labels.iter().copied().filter(|&label| label >= 0).collect();
         assert_eq!(clusters.len(), 2);
+
+        // All three points in each cluster that triggered expansion are core
+        assert!(result.core[0] && result.core[1] && result.core[2]);
+        assert!(result.core[3] && result.core[4] && result.core[5]);
+        assert!(!result.core[6]);
     }
 
     #[test]
@@ -147,8 +164,8 @@ mod tests {
             let mut rng = StdRng::seed_from_u64(7);
             let tree = VPTree::new(&data, 2, &mut rng);
 
-            let labels = dbscan(&tree, &data, 1.0, min_points).unwrap();
-            assert_eq!(labels, expected_labels);
+            let result = dbscan(&tree, &data, 1.0, min_points).unwrap();
+            assert_eq!(result.labels, expected_labels);
         }
     }
 }

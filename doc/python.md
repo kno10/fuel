@@ -621,6 +621,7 @@ Z          = result.to_scipy_linkage()                            # (n-1, 4) flo
 labels     = result.extract_clusters_with_noise(num_clusters, min_cluster_size)
 info       = result.extract_simplified(min_cluster_size)          # dict
 info       = result.extract_hdbscan(min_cluster_size, hierarchical) # dict
+scores     = result.glosh(min_cluster_size)                       # GLOSH outlier scores, 1-D float array
 ```
 
 ---
@@ -792,6 +793,22 @@ The function signatures below show the available parameters. Common arguments ar
 | Function | Parameters |
 |----------|-----------|
 | `isolation_forest(data, num_trees, subsample_size, *, seed=None)` | No `distance` parameter |
+
+### Cluster-based
+
+Outlier scores derived from clustering structure. All methods accept a `seed` parameter.
+
+| Function | Notes |
+|----------|-------|
+| `kmeans_outlier(data, k, *, rule='distance', max_iter=300, tol=1e-4, seed=None)` | k-means; `rule`: `'distance'`, `'distance_singletons'`, `'variance'` |
+| `cblof(data, k, alpha=0.9, beta=3.0, *, max_iter=300, tol=1e-4, seed=None)` | Cluster-Based LOF |
+| `tkmeans_outlier(data, k, alpha=0.05, *, max_iter=300, tol=1e-4, seed=None)` | Trimmed k-means; `alpha` = trimmed noise fraction |
+| `tkmeans_star_outlier(data, k, alpha=0.05, *, max_iter=300, tol=1e-4, seed=None)` | Trimmed k-means* (distance-based variant) |
+| `em_outlier(data, k, *, model='diagonal', max_iter=200, tol=1e-5, prior=0.0, noise_ratio=0.0, seed=None)` | EM mixture model; `model`: `'diagonal'`, `'spherical'`, `'multivariate'`; `prior` > 0 enables MAP regularization; `noise_ratio` > 0 adds a noise component |
+| `glosh_from_data(data, min_points, min_cluster_size, *, distance='euclidean')` | GLOSH (brute-force O(n^2), deterministic); see also `HdbscanHierarchy.glosh()` |
+| `dbscan_outlier(data, eps, min_points, *, distance='euclidean', index=None)` | Score points as noise / border / core via DBSCAN |
+| `noise_as_outliers(labels)` | Binary score from DBSCAN labels; noise points (`-1`) score 1.0 |
+| `silhouette_outlier(data, labels, *, noise_label=None)` | Silhouette-based outlier score given precomputed cluster labels |
 
 ### Baselines
 

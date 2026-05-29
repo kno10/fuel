@@ -1,4 +1,4 @@
-use numpy::{Element, PyArray1, PyReadonlyArray2};
+use numpy::{Element, PyArray1, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -12,7 +12,9 @@ use crate::kernel::polynomial::PolynomialKernel;
 use crate::outlier::cop::CopDistanceDist;
 use crate::outlier::kernel::KernelDensityFunction;
 use crate::python::search::SearchIndex;
-use crate::{Float, NdArrayDatasetWithDistance, outlier};
+use crate::cluster;
+use crate::outlier::kmeans_outlier::KMeansOutlierRule;
+use crate::{Float, NdArrayDataset, NdArrayDatasetWithDistance, outlier};
 
 fn parse_abod_kernel<F>(kernel: &str) -> PyResult<Box<dyn Fn(&[F], &[F]) -> F + Sync + Send>>
 where
@@ -768,6 +770,253 @@ macro_rules! lb_abod_kernel {
 lb_abod_kernel!(lb_abod_kernel_f32, f32);
 lb_abod_kernel!(lb_abod_kernel_f64, f64);
 
+// ---- cluster-based outlier methods ----------------------------------------
+
+fn parse_kmeans_outlier_rule(rule: &str) -> PyResult<KMeansOutlierRule> {
+    match rule {
+        "distance" => Ok(KMeansOutlierRule::Distance),
+        "distance_singletons" => Ok(KMeansOutlierRule::DistanceSingletons),
+        "variance" => Ok(KMeansOutlierRule::Variance),
+        other => Err(PyValueError::new_err(format!(
+            "unknown kmeans outlier rule '{}', valid values are 'distance', 'distance_singletons', 'variance'",
+            other
+        ))),
+    }
+}
+
+#[pyfunction]
+fn noise_as_outliers_f64<'py>(
+    py: Python<'py>, labels: PyReadonlyArray1<'_, i64>,
+) -> PyResult<Py<PyAny>> {
+    let labels_isize: Vec<isize> = labels.as_slice()?.iter().map(|&l| l as isize).collect();
+    let result = outlier::dbscan_outlier::noise_as_outliers::<f64>(&labels_isize);
+    result_to_py_outlier(py, result)
+}
+
+#[pyfunction]
+fn silhouette_outlier_f64<'py>(
+    py: Python<'py>, data: PyReadonlyArray2<'py, f64>, labels: PyReadonlyArray1<'_, i64>,
+    noise_label: Option<i64>,
+) -> PyResult<Py<PyAny>> {
+    let array = data.as_array();
+    let data_vec: Vec<Vec<f64>> = array.rows().into_iter().map(|r| r.to_vec()).collect();
+    let labels_isize: Vec<isize> = labels.as_slice()?.iter().map(|&l| l as isize).collect();
+    let result = outlier::silhouette_outlier::silhouette_outlier(
+        &data_vec, &labels_isize, noise_label.map(|v| v as isize),
+    );
+    result_to_py_outlier(py, result)
+}
+
+macro_rules! dbscan_outlier_fn {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, eps, min_points, distance, *, index))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, eps: f64, min_points: usize,
+            distance: &str, index: PyRef<'_, SearchIndex>,
+        ) -> PyResult<Py<PyAny>> {
+            use crate::cluster::dbscan::dbscan as run_dbscan;
+            let array = data.as_array();
+            let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
+            let tree = index.inner();
+            let eps = <$dtype as Float>::cast(eps);
+            let dbscan_result =
+                crate::py_interruptible(py, || run_dbscan(tree, &dataset, eps, min_points))?;
+            let result = outlier::dbscan_outlier::dbscan_outlier::<$dtype>(&dbscan_result);
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+dbscan_outlier_fn!(dbscan_outlier_f32, f32);
+dbscan_outlier_fn!(dbscan_outlier_f64, f64);
+
+macro_rules! glosh_from_data_fn {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, min_points, min_cluster_size, distance = "euclidean"))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, min_points: usize,
+            min_cluster_size: usize, distance: &str,
+        ) -> PyResult<Py<PyAny>> {
+            let array = data.as_array();
+            let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
+            let hierarchy = crate::py_interruptible(py, || {
+                crate::cluster::hdbscan::hdbscan_prim(&dataset, min_points)
+            })?;
+            let result = outlier::glosh::glosh(&hierarchy, min_cluster_size);
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+glosh_from_data_fn!(glosh_from_data_f32, f32);
+glosh_from_data_fn!(glosh_from_data_f64, f64);
+
+macro_rules! kmeans_outlier_fn {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, k, rule = "distance", max_iter = 300, tol = 1e-4, seed = None))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, rule: &str,
+            max_iter: usize, tol: f64, seed: Option<u64>,
+        ) -> PyResult<Py<PyAny>> {
+            use cluster::kmeans::init::RandomSample;
+            use cluster::kmeans::lloyd;
+            let array = data.as_array();
+            let dataset = NdArrayDataset::new(&array);
+            let rule = parse_kmeans_outlier_rule(rule)?;
+            let mut init = RandomSample::new(super::make_rng(seed));
+            let km = crate::py_interruptible(py, || {
+                lloyd(&dataset, k, &mut init, max_iter, <$dtype as Float>::cast(tol))
+            })?;
+            let result = outlier::kmeans_outlier::kmeans_outlier::<_, $dtype>(&dataset, &km, rule);
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+kmeans_outlier_fn!(kmeans_outlier_f32, f32);
+kmeans_outlier_fn!(kmeans_outlier_f64, f64);
+
+macro_rules! cblof_fn {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, k, alpha = 0.9, beta = 3.0, max_iter = 300, tol = 1e-4, seed = None))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, alpha: f64,
+            beta: f64, max_iter: usize, tol: f64, seed: Option<u64>,
+        ) -> PyResult<Py<PyAny>> {
+            use cluster::kmeans::init::RandomSample;
+            use cluster::kmeans::lloyd;
+            let array = data.as_array();
+            let dataset = NdArrayDataset::new(&array);
+            let mut init = RandomSample::new(super::make_rng(seed));
+            let km = crate::py_interruptible(py, || {
+                lloyd(&dataset, k, &mut init, max_iter, <$dtype as Float>::cast(tol))
+            })?;
+            let result = outlier::cblof::cblof::<_, $dtype>(
+                &dataset, &km, <$dtype as Float>::cast(alpha), <$dtype as Float>::cast(beta),
+            );
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+cblof_fn!(cblof_f32, f32);
+cblof_fn!(cblof_f64, f64);
+
+macro_rules! tkmeans_outlier_fn {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, k, alpha = 0.05, max_iter = 300, tol = 1e-4, seed = None))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, alpha: f64,
+            max_iter: usize, tol: f64, seed: Option<u64>,
+        ) -> PyResult<Py<PyAny>> {
+            use cluster::kmeans::init::RandomSample;
+            use cluster::kmeans::tkmeans;
+            let array = data.as_array();
+            let dataset = NdArrayDataset::new(&array);
+            let mut init = RandomSample::new(super::make_rng(seed));
+            let km = crate::py_interruptible(py, || {
+                tkmeans(&dataset, k, &mut init, max_iter, <$dtype as Float>::cast(tol), alpha as f32)
+            })?;
+            let result = outlier::tkmeans_outlier::tkmeans_outlier::<$dtype>(&km)
+                .map_err(PyValueError::new_err)?;
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+tkmeans_outlier_fn!(tkmeans_outlier_f32, f32);
+tkmeans_outlier_fn!(tkmeans_outlier_f64, f64);
+
+macro_rules! tkmeans_star_outlier_fn {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, k, alpha = 0.05, max_iter = 300, tol = 1e-4, seed = None))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, alpha: f64,
+            max_iter: usize, tol: f64, seed: Option<u64>,
+        ) -> PyResult<Py<PyAny>> {
+            use cluster::kmeans::init::RandomSample;
+            use cluster::kmeans::tkmeans;
+            let array = data.as_array();
+            let dataset = NdArrayDataset::new(&array);
+            let mut init = RandomSample::new(super::make_rng(seed));
+            let km = crate::py_interruptible(py, || {
+                tkmeans(&dataset, k, &mut init, max_iter, <$dtype as Float>::cast(tol), alpha as f32)
+            })?;
+            let result =
+                outlier::tkmeans_outlier::tkmeans_star_outlier::<_, $dtype>(&dataset, &km)
+                    .map_err(PyValueError::new_err)?;
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+tkmeans_star_outlier_fn!(tkmeans_star_outlier_f32, f32);
+tkmeans_star_outlier_fn!(tkmeans_star_outlier_f64, f64);
+
+macro_rules! em_outlier_fn {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, k, model = "diagonal", max_iter = 200, tol = 1e-5, prior = 0.0, noise_ratio = 0.0, seed = None))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, model: &str,
+            max_iter: usize, tol: f64, prior: f64, noise_ratio: f64, seed: Option<u64>,
+        ) -> PyResult<Py<PyAny>> {
+            use cluster::em::{DiagonalGaussianModelFactory, SphericalGaussianModelFactory};
+            use cluster::kmeans::init::RandomSample;
+            let array = data.as_array();
+            let dataset = NdArrayDataset::new(&array);
+            let config = cluster::em::EmConfig {
+                delta: <$dtype as Float>::cast(tol),
+                maxiter: max_iter,
+                prior: <$dtype as Float>::cast(prior),
+                noise_ratio: <$dtype as Float>::cast(noise_ratio),
+                ..Default::default()
+            };
+            macro_rules! run_em {
+                ($factory_expr:expr) => {{
+                    let models = $factory_expr;
+                    let em_result = crate::py_interruptible(py, || {
+                        cluster::em::expectation_maximization::<$dtype, _, _>(
+                            &dataset, k, models, config,
+                        )
+                    })?;
+                    let result =
+                        outlier::em_outlier::em_outlier::<$dtype, _, _>(&dataset, &em_result);
+                    result_to_py_outlier(py, result)
+                }};
+            }
+            match model {
+                "spherical" => run_em!(
+                    SphericalGaussianModelFactory::new(RandomSample::new(super::make_rng(seed)))
+                        .build_initial_models(&dataset, k)
+                ),
+                "multivariate" => {
+                    use cluster::em::MultivariateGaussianModelFactory;
+                    run_em!(
+                        MultivariateGaussianModelFactory::new(
+                            RandomSample::new(super::make_rng(seed)),
+                        )
+                        .build_initial_models(&dataset, k)
+                    )
+                }
+                _ => run_em!(
+                    DiagonalGaussianModelFactory::new(RandomSample::new(super::make_rng(seed)))
+                        .build_initial_models(&dataset, k)
+                ),
+            }
+        }
+    };
+}
+
+em_outlier_fn!(em_outlier_f32, f32);
+em_outlier_fn!(em_outlier_f64, f64);
+
 pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(angle_based_outlier_detection_f32))?;
     m.add_wrapped(wrap_pyfunction!(angle_based_outlier_detection_f64))?;
@@ -843,5 +1092,21 @@ pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(intrinsic_stochastic_outlier_selection_f64))?;
     m.add_wrapped(wrap_pyfunction!(lb_abod_kernel_f32))?;
     m.add_wrapped(wrap_pyfunction!(lb_abod_kernel_f64))?;
+    m.add_wrapped(wrap_pyfunction!(noise_as_outliers_f64))?;
+    m.add_wrapped(wrap_pyfunction!(silhouette_outlier_f64))?;
+    m.add_wrapped(wrap_pyfunction!(dbscan_outlier_f32))?;
+    m.add_wrapped(wrap_pyfunction!(dbscan_outlier_f64))?;
+    m.add_wrapped(wrap_pyfunction!(glosh_from_data_f32))?;
+    m.add_wrapped(wrap_pyfunction!(glosh_from_data_f64))?;
+    m.add_wrapped(wrap_pyfunction!(kmeans_outlier_f32))?;
+    m.add_wrapped(wrap_pyfunction!(kmeans_outlier_f64))?;
+    m.add_wrapped(wrap_pyfunction!(cblof_f32))?;
+    m.add_wrapped(wrap_pyfunction!(cblof_f64))?;
+    m.add_wrapped(wrap_pyfunction!(tkmeans_outlier_f32))?;
+    m.add_wrapped(wrap_pyfunction!(tkmeans_outlier_f64))?;
+    m.add_wrapped(wrap_pyfunction!(tkmeans_star_outlier_f32))?;
+    m.add_wrapped(wrap_pyfunction!(tkmeans_star_outlier_f64))?;
+    m.add_wrapped(wrap_pyfunction!(em_outlier_f32))?;
+    m.add_wrapped(wrap_pyfunction!(em_outlier_f64))?;
     Ok(())
 }
