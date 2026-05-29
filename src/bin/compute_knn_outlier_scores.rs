@@ -97,7 +97,7 @@ fn run_for_each_k<W, R>(
 ) -> std::io::Result<()>
 where
     W: Write,
-    R: Fn(usize) -> OutlierResult<f64>,
+    R: Fn(usize) -> Result<OutlierResult<f64>, String>,
 {
     if options.is_disabled(prefix) {
         return Ok(());
@@ -107,7 +107,7 @@ where
 
     for k in allowed_ks {
         let start = Instant::now();
-        let result = runner(k);
+        let result = runner(k).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         let elapsed = start.elapsed();
 
         write_outlier_result_line(writer, prefix, k, &result, None)?;
@@ -141,6 +141,7 @@ struct Config {
     header: Option<bool>,
     disable: Vec<String>,
     ksquare_max: usize,
+    no_precompute: bool,
     time_limit: Option<Duration>,
     distance: String,
 }
@@ -281,6 +282,7 @@ fn print_usage(program_name: &str) {
     eprintln!("      --no-header           Do not treat the first line as a header");
     eprintln!("      --disable <patterns>  Disable methods by substring or comma-separated list");
     eprintln!("      --ksquare-max <n>     Maximum k for quadratic-cost methods (default 1000)");
+    eprintln!("      --no-precompute        Disable precomputed kNN cache and search directly on the VP-tree");
     eprintln!(
         "      --distance <name>     Distance function: euclidean, manhattan, chebyshev, cosine, arccosine, canberra, braycurtis, hellinger, squared_euclidean"
     );
@@ -297,8 +299,7 @@ fn parse_args() -> Result<Config, String> {
         format: None,
         header: None,
         disable: Vec::new(),
-        ksquare_max: 1000,
-        time_limit: None,
+        ksquare_max: 1000,        no_precompute: false,        time_limit: None,
         distance: "euclidean".to_string(),
     };
 
@@ -367,6 +368,9 @@ fn parse_args() -> Result<Config, String> {
                     return Err("time-limit must be non-negative".to_string());
                 }
                 config.time_limit = Some(Duration::from_secs_f64(secs));
+            }
+            "--no-precompute" => {
+                config.no_precompute = true;
             }
             _ if arg.starts_with('-') => {
                 return Err(format!("Unknown option: {}", arg));
@@ -449,11 +453,11 @@ where
     })?;
 
     run_for_each_k(writer, &options, &ks, "LID", 2, max_k, |k| {
-        local_intrinsic_dimensionality::<_, _, _, AggregatedHillID>(tree, data, k)
+        Ok(local_intrinsic_dimensionality::<_, _, _, AggregatedHillID>(tree, data, k))
     })?;
 
     run_for_each_k(writer, &options, &ks, "ABID", 2, max_k, |k| {
-        local_intrinsic_dimensionality::<_, _, _, ABID>(tree, data, k)
+        Ok(local_intrinsic_dimensionality::<_, _, _, ABID>(tree, data, k))
     })?;
 
     run_for_each_k(writer, &options, &ks, "IDOS", 2, max_k, |k| {
@@ -548,11 +552,18 @@ where
     let tree = fuel::search::vptree::VPTree::new(&data, 2, &mut rng);
     let ks = build_sorted_ks(config.ks.clone());
     let max_k = ks.iter().copied().max().unwrap_or(0).min(data.len().saturating_sub(1));
-    let precomputed = PrecomputedKnnSearcher::new(tree, &data, max_k + 2);
+
     let index_time = index_start.elapsed();
     eprintln!("Data indexing time ({}): {:.3}s", distance_name, index_time.as_secs_f64());
 
-    compute_knn_outlier_scores(writer, &precomputed, &data, ks, options).map_err(|e| e.to_string())
+    if config.no_precompute {
+        compute_knn_outlier_scores(writer, &tree, &data, ks, options).map_err(|e| e.to_string())
+    } else {
+        let precompute_start = Instant::now();
+        let precomputed = PrecomputedKnnSearcher::new(tree, &data, max_k + 2);
+        eprintln!("kNN precomputation time ({}): {:.3}s", distance_name, precompute_start.elapsed().as_secs_f64());
+        compute_knn_outlier_scores(writer, &precomputed, &data, ks, options).map_err(|e| e.to_string())
+    }
 }
 
 fn main() {
