@@ -7,6 +7,7 @@
 - `em_outlier` Python binding exposes `EmConfig::prior` (MAP regularization) and `EmConfig::noise_ratio`
 - `HdbscanHierarchy` Python class exposes `glosh(min_cluster_size)`
 - Redesigned `cluster::parallel_dbscan`
+- Parallelism for EM
 
 ## fuel 0.1.0 (2026-05-22)
 

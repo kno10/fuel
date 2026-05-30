@@ -37,7 +37,7 @@ pub fn silhouette_outlier(
     make_outlier_result(
         stats.values,
         "SilhouetteOutlier",
-        true,  // ascending: low silhouette = outlier
+        true, // ascending: low silhouette = outlier
         0.5,
         -1.0,
         1.0,
@@ -54,9 +54,15 @@ mod tests {
         // Three perfect clusters of 3 points each on a line:
         // cluster 0: 0.0 0.1 0.2   cluster 1: 5.0 5.1 5.2   cluster 2: 10.0 10.1 10.2
         let data: Vec<Vec<f64>> = vec![
-            vec![0.0], vec![0.1], vec![0.2],
-            vec![5.0], vec![5.1], vec![5.2],
-            vec![10.0], vec![10.1], vec![10.2],
+            vec![0.0],
+            vec![0.1],
+            vec![0.2],
+            vec![5.0],
+            vec![5.1],
+            vec![5.2],
+            vec![10.0],
+            vec![10.1],
+            vec![10.2],
         ];
         let labels: Vec<isize> = vec![0, 0, 0, 1, 1, 1, 2, 2, 2];
         let scores = silhouette_outlier(&data, &labels, None);
@@ -70,11 +76,8 @@ mod tests {
     fn noise_point_treated_as_singleton_scores_lower() {
         // Same clusters but point 3 is declared noise; as a singleton its
         // silhouette is defined as 0 by TreatNoiseAsSingletons.
-        let data: Vec<Vec<f64>> = vec![
-            vec![0.0], vec![0.1], vec![0.2],
-            vec![5.0],
-            vec![10.0], vec![10.1], vec![10.2],
-        ];
+        let data: Vec<Vec<f64>> =
+            vec![vec![0.0], vec![0.1], vec![0.2], vec![5.0], vec![10.0], vec![10.1], vec![10.2]];
         let labels: Vec<isize> = vec![0, 0, 0, NOISE, 1, 1, 1];
         let scores = silhouette_outlier(&data, &labels, Some(NOISE));
 

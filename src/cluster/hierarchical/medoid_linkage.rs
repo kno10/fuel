@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::cluster::hierarchical::extraction::cut_dendrogram_by_number_of_clusters;
-    use crate::cluster::hierarchical::{MedoidLinkage, set_agnes};
     use crate::cluster::hierarchical::test::{ScalarDistance, test_clustering_table};
+    use crate::cluster::hierarchical::{MedoidLinkage, set_agnes};
 
     #[test]
     fn medoid_linkage_produces_valid_history() {

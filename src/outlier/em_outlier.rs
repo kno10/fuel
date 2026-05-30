@@ -31,12 +31,12 @@ where
     let mut log_densities = vec![N::zero(); k];
     let mut scores = vec![N::zero(); n];
 
-    for i in 0..n {
+    for (i, score) in scores.iter_mut().enumerate() {
         data.load_into(i, &mut scratch, d);
         for (j, model) in result.models.iter().enumerate() {
             log_densities[j] = model.estimate_log_density(&scratch);
         }
-        scores[i] = log_sum_exp(&log_densities);
+        *score = log_sum_exp(&log_densities);
     }
 
     // Use the observed max as baseline (typical inlier log-likelihood)
@@ -54,10 +54,11 @@ where
 
 #[cfg(test)]
 mod tests {
+    use ndarray::Array2;
+
     use super::*;
     use crate::NdArrayDataset;
     use crate::cluster::em::{EmResult, MultivariateGaussianModel};
-    use ndarray::Array2;
 
     #[test]
     fn outlier_has_lower_log_likelihood() {
@@ -67,8 +68,7 @@ mod tests {
         let cov = vec![0.1_f64, 0.0, 0.0, 0.1];
         let model_a =
             MultivariateGaussianModel::<f64>::new(0.5, vec![0.0, 0.0], cov.clone(), 1e-10);
-        let model_b =
-            MultivariateGaussianModel::<f64>::new(0.5, vec![10.0, 0.0], cov, 1e-10);
+        let model_b = MultivariateGaussianModel::<f64>::new(0.5, vec![10.0, 0.0], cov, 1e-10);
         let result: EmResult<f64, MultivariateGaussianModel<f64>> = EmResult {
             models: vec![model_a, model_b],
             assignments: vec![0; 9],

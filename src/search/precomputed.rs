@@ -152,14 +152,18 @@ mod tests {
             let precomputed_result = precomputed.search_knn(&query, 1);
             assert!(precomputed_result.len() >= 1);
             let first_k_distance = precomputed_result[0].distance;
-            assert!(precomputed_result.iter().skip(1).all(|pair| pair.distance == first_k_distance));
+            assert!(
+                precomputed_result.iter().skip(1).all(|pair| pair.distance == first_k_distance)
+            );
             assert_eq!(expected_row_k1, precomputed_result);
 
             let expected_row_k2 = linear_scan_knn(&table, &query, 2);
             let precomputed_result2 = precomputed.search_knn(&query, 2);
             assert!(precomputed_result2.len() >= 2);
             let second_k_distance = precomputed_result2[1].distance;
-            assert!(precomputed_result2.iter().skip(2).all(|pair| pair.distance == second_k_distance));
+            assert!(
+                precomputed_result2.iter().skip(2).all(|pair| pair.distance == second_k_distance)
+            );
             assert_eq!(expected_row_k2, precomputed_result2);
         }
     }

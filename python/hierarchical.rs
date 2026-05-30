@@ -113,26 +113,22 @@ merge_history_methods!(MergeHistoryF64, f64);
 
 macro_rules! dispatch_linkage {
     ($py:expr, $algo:path, $data_ref:expr, $linkage:expr, $wrapper:ident) => {{
-        let history = crate::py_interruptible($py, || {
-            match $linkage.as_str() {
-                "single" => $algo($data_ref, hierarchical::SingleLinkage),
-                "complete" => $algo($data_ref, hierarchical::CompleteLinkage),
-                "average" | "group_average" => $algo($data_ref, hierarchical::GroupAverageLinkage),
-                "weighted_average" => $algo($data_ref, hierarchical::WeightedAverageLinkage),
-                "centroid" => $algo($data_ref, hierarchical::CentroidLinkage),
-                "median" => $algo($data_ref, hierarchical::MedianLinkage),
-                "ward" | "missq" => $algo($data_ref, hierarchical::WardLinkage),
-                "minimum_sum_squares" | "mnssq" => {
-                    $algo($data_ref, hierarchical::MinimumSumSquaresLinkage)
-                }
-                "minimum_variance_increase" | "mivar" => {
-                    $algo($data_ref, hierarchical::MinimumVarianceIncreaseLinkage)
-                }
-                "minimum_variance" | "mnvar" => {
-                    $algo($data_ref, hierarchical::MinimumVarianceLinkage)
-                }
-                _ => unreachable!("validated above"),
+        let history = crate::py_interruptible($py, || match $linkage.as_str() {
+            "single" => $algo($data_ref, hierarchical::SingleLinkage),
+            "complete" => $algo($data_ref, hierarchical::CompleteLinkage),
+            "average" | "group_average" => $algo($data_ref, hierarchical::GroupAverageLinkage),
+            "weighted_average" => $algo($data_ref, hierarchical::WeightedAverageLinkage),
+            "centroid" => $algo($data_ref, hierarchical::CentroidLinkage),
+            "median" => $algo($data_ref, hierarchical::MedianLinkage),
+            "ward" | "missq" => $algo($data_ref, hierarchical::WardLinkage),
+            "minimum_sum_squares" | "mnssq" => {
+                $algo($data_ref, hierarchical::MinimumSumSquaresLinkage)
             }
+            "minimum_variance_increase" | "mivar" => {
+                $algo($data_ref, hierarchical::MinimumVarianceIncreaseLinkage)
+            }
+            "minimum_variance" | "mnvar" => $algo($data_ref, hierarchical::MinimumVarianceLinkage),
+            _ => unreachable!("validated above"),
         })?;
         Ok(Py::new($py, $wrapper { history })?.into())
     }};
@@ -324,8 +320,7 @@ fn precomputed_to_condensed<N: Float + Element>(
         1 => {
             let arr = data.cast::<PyArray1<N>>()?;
             let readonly = arr.readonly();
-            let slice =
-                readonly.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
+            let slice = readonly.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
             let len = slice.len();
             // n*(n-1)/2 == len  =>  n = (1 + sqrt(1 + 8*len)) / 2
             let n = (1 + ((1 + 8 * len) as f64).sqrt() as usize) / 2;
@@ -355,9 +350,7 @@ fn precomputed_to_condensed<N: Float + Element>(
             let array = readonly.as_array();
             let n = array.shape()[0];
             if array.shape()[1] != n {
-                return Err(PyValueError::new_err(
-                    "precomputed distance matrix must be square",
-                ));
+                return Err(PyValueError::new_err("precomputed distance matrix must be square"));
             }
             // Extract lower triangle, consistent with Python _square_to_condensed (tril_indices)
             let mut condensed = Vec::with_capacity(n * (n - 1) / 2);
@@ -373,10 +366,6 @@ fn precomputed_to_condensed<N: Float + Element>(
         )),
     }
 }
-
-
-
-
 
 macro_rules! search_single_link_wrapper {
     ($name:ident, $algo:path, $dtype:ty, $wrapper:ident) => {
@@ -593,52 +582,38 @@ fn incremental_nn_chain_f64<'py>(
 
 macro_rules! dispatch_set_linkage {
     ($py:expr, $algo:ident, $data_ref:expr, $linkage:expr, $wrapper:ident) => {{
-        let history = crate::py_interruptible($py, || {
-            match $linkage.as_str() {
-                "single" => {
-                    hierarchical::$algo::<_, hierarchical::SingleLinkage, _, _>($data_ref)
-                }
-                "complete" => {
-                    hierarchical::$algo::<_, hierarchical::CompleteLinkage, _, _>($data_ref)
-                }
-                "average" | "group_average" => {
-                    hierarchical::$algo::<_, hierarchical::GroupAverageLinkage, _, _>($data_ref)
-                }
-                "ward" | "missq" => {
-                    hierarchical::$algo::<_, hierarchical::WardLinkage, _, _>($data_ref)
-                }
-                "minimum_sum_squares" | "mnssq" => {
-                    hierarchical::$algo::<_, hierarchical::MinimumSumSquaresLinkage, _, _>(
-                        $data_ref,
-                    )
-                }
-                "minimum_variance_increase" | "mivar" => {
-                    hierarchical::$algo::<_, hierarchical::MinimumVarianceIncreaseLinkage, _, _>(
-                        $data_ref,
-                    )
-                }
-                "minimum_variance" | "mnvar" => {
-                    hierarchical::$algo::<_, hierarchical::MinimumVarianceLinkage, _, _>($data_ref)
-                }
-                "minimax" => {
-                    hierarchical::$algo::<_, hierarchical::MinimaxLinkage, _, _>($data_ref)
-                }
-                "hausdorff" => {
-                    hierarchical::$algo::<_, hierarchical::HausdorffLinkage, _, _>($data_ref)
-                }
-                "medoid" => {
-                    hierarchical::$algo::<_, hierarchical::MedoidLinkage, _, _>($data_ref)
-                }
-                "minimum_sum" | "mnsum" => {
-                    hierarchical::$algo::<_, hierarchical::MinimumSumLinkage, _, _>($data_ref)
-                }
-                "minimum_sum_increase" | "misum" => {
-                    hierarchical::$algo::<_, hierarchical::MinimumSumIncreaseLinkage, _, _>(
-                        $data_ref,
-                    )
-                }
-                _ => unreachable!("validated above"),
+        let history = crate::py_interruptible($py, || match $linkage.as_str() {
+            "single" => hierarchical::$algo::<_, hierarchical::SingleLinkage, _, _>($data_ref),
+            "complete" => hierarchical::$algo::<_, hierarchical::CompleteLinkage, _, _>($data_ref),
+            "average" | "group_average" => {
+                hierarchical::$algo::<_, hierarchical::GroupAverageLinkage, _, _>($data_ref)
             }
+            "ward" | "missq" => {
+                hierarchical::$algo::<_, hierarchical::WardLinkage, _, _>($data_ref)
+            }
+            "minimum_sum_squares" | "mnssq" => {
+                hierarchical::$algo::<_, hierarchical::MinimumSumSquaresLinkage, _, _>($data_ref)
+            }
+            "minimum_variance_increase" | "mivar" => {
+                hierarchical::$algo::<_, hierarchical::MinimumVarianceIncreaseLinkage, _, _>(
+                    $data_ref,
+                )
+            }
+            "minimum_variance" | "mnvar" => {
+                hierarchical::$algo::<_, hierarchical::MinimumVarianceLinkage, _, _>($data_ref)
+            }
+            "minimax" => hierarchical::$algo::<_, hierarchical::MinimaxLinkage, _, _>($data_ref),
+            "hausdorff" => {
+                hierarchical::$algo::<_, hierarchical::HausdorffLinkage, _, _>($data_ref)
+            }
+            "medoid" => hierarchical::$algo::<_, hierarchical::MedoidLinkage, _, _>($data_ref),
+            "minimum_sum" | "mnsum" => {
+                hierarchical::$algo::<_, hierarchical::MinimumSumLinkage, _, _>($data_ref)
+            }
+            "minimum_sum_increase" | "misum" => {
+                hierarchical::$algo::<_, hierarchical::MinimumSumIncreaseLinkage, _, _>($data_ref)
+            }
+            _ => unreachable!("validated above"),
         })?;
         Ok(Py::new($py, $wrapper { history })?.into())
     }};

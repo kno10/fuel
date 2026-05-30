@@ -89,8 +89,16 @@ pub(crate) enum SearchIndexInner {
     PrecomputedCoverTreeF64(PrecomputedKnnSearcher<f64, CoverTree<f64>>),
     KdTreeF32(KdTree<f32>, Array2<f32>, KdTreeDistanceFn<f32>),
     KdTreeF64(KdTree<f64>, Array2<f64>, KdTreeDistanceFn<f64>),
-    PrecomputedKdTreeF32(PrecomputedKnnSearcher<f32, KdTree<f32>>, Array2<f32>, KdTreeDistanceFn<f32>),
-    PrecomputedKdTreeF64(PrecomputedKnnSearcher<f64, KdTree<f64>>, Array2<f64>, KdTreeDistanceFn<f64>),
+    PrecomputedKdTreeF32(
+        PrecomputedKnnSearcher<f32, KdTree<f32>>,
+        Array2<f32>,
+        KdTreeDistanceFn<f32>,
+    ),
+    PrecomputedKdTreeF64(
+        PrecomputedKnnSearcher<f64, KdTree<f64>>,
+        Array2<f64>,
+        KdTreeDistanceFn<f64>,
+    ),
 }
 
 // SearchIndexInner is only ever shared immutably between threads.

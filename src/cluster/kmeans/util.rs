@@ -80,7 +80,14 @@ impl<N> KMeansResult<N> {
 
     /// Construct a result when neither loss nor bound is available.
     pub fn without_inertia(centers: Array2<N>, assignments: Vec<usize>, iterations: usize) -> Self {
-        Self { centers, assignments, iterations, inertia: None, inertia_bound: None, noise_mask: None }
+        Self {
+            centers,
+            assignments,
+            iterations,
+            inertia: None,
+            inertia_bound: None,
+            noise_mask: None,
+        }
     }
 
     /// Attach a noise mask (trimmed-point flags) to the result.

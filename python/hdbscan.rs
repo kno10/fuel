@@ -126,9 +126,7 @@ macro_rules! hdbscan_hierarchy_methods {
                 result.into_py_any(py)
             }
 
-            fn glosh<'py>(
-                &self, py: Python<'py>, min_cluster_size: usize,
-            ) -> PyResult<Py<PyAny>> {
+            fn glosh<'py>(&self, py: Python<'py>, min_cluster_size: usize) -> PyResult<Py<PyAny>> {
                 use pyo3::types::PyDict;
                 let r = crate::outlier::glosh::glosh(&self.inner, min_cluster_size);
                 let scores: Vec<$float> = r.scores.into_iter().map(|v| v as $float).collect();

@@ -130,7 +130,13 @@ fn benchmark_variant(
                 };
                 let distance_after_algorithm = distance.count() as u64;
                 let elapsed = start.elapsed();
-                ("vp".to_string(), distance_after_index, labels.expect("dbscan failed").labels, distance_after_algorithm, elapsed)
+                (
+                    "vp".to_string(),
+                    distance_after_index,
+                    labels.expect("dbscan failed").labels,
+                    distance_after_algorithm,
+                    elapsed,
+                )
             }
             TreeKind::Kd => {
                 let kd_metric = CountingDistance::new(Euclidean);
@@ -144,7 +150,13 @@ fn benchmark_variant(
                 };
                 let distance_after_algorithm = kd_metric.count() as u64;
                 let elapsed = start.elapsed();
-                ("kd".to_string(), distance_after_index, labels.expect("dbscan failed").labels, distance_after_algorithm, elapsed)
+                (
+                    "kd".to_string(),
+                    distance_after_index,
+                    labels.expect("dbscan failed").labels,
+                    distance_after_algorithm,
+                    elapsed,
+                )
             }
         };
 

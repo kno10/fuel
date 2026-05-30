@@ -56,13 +56,14 @@ pub fn noise_as_outliers<F: Float>(labels: &[isize]) -> OutlierResult<F> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::cluster::dbscan::{dbscan, NOISE};
-    use crate::TableWithDistance;
-    use crate::distance::Euclidean;
-    use crate::search::vptree::VPTree;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
+
+    use super::*;
+    use crate::TableWithDistance;
+    use crate::cluster::dbscan::{NOISE, dbscan};
+    use crate::distance::Euclidean;
+    use crate::search::vptree::VPTree;
 
     fn make_tree(
         points: &[Vec<f64>],
@@ -75,9 +76,13 @@ mod tests {
 
     fn two_cluster_points() -> Vec<Vec<f64>> {
         vec![
-            vec![0.0, 0.0], vec![0.1, 0.0], vec![0.0, 0.1], // cluster 0
-            vec![5.0, 5.0], vec![5.1, 5.0], vec![5.0, 5.1], // cluster 1
-            vec![10.0, 0.0],                                   // noise
+            vec![0.0, 0.0],
+            vec![0.1, 0.0],
+            vec![0.0, 0.1], // cluster 0
+            vec![5.0, 5.0],
+            vec![5.1, 5.0],
+            vec![5.0, 5.1],  // cluster 1
+            vec![10.0, 0.0], // noise
         ]
     }
 

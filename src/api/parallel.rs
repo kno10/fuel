@@ -105,6 +105,18 @@ pub trait ParChunksMut<T: Send> {
     where
         F: Fn(usize, &mut [T]) -> R + Sync + Send,
         R: Send;
+
+    /// Like `par_chunks_map_mut`, but chunks are aligned to `stride` elements
+    /// so that `i0` is always a multiple of `stride` and `chunk.len()` is a
+    /// multiple of `stride` (except possibly the last chunk). The closure
+    /// receives `(row_start, chunk)` where `row_start = i0 / stride` is the
+    /// 0-based index of the first logical row in the chunk.
+    ///
+    /// Checks `SHUTDOWN_REQUESTED` before each chunk and returns `Err` if set.
+    fn par_row_chunks_try_map_mut<F, R>(self, stride: usize, f: F) -> Result<Vec<R>, String>
+    where
+        F: Fn(usize, &mut [T]) -> Result<R, String> + Sync + Send,
+        R: Send;
 }
 
 impl<T: Send> ParChunksMut<T> for &mut [T] {
@@ -125,6 +137,36 @@ impl<T: Send> ParChunksMut<T> for &mut [T] {
         #[cfg(not(feature = "parallel"))]
         {
             vec![f(0, self)]
+        }
+    }
+
+    #[inline]
+    fn par_row_chunks_try_map_mut<F, R>(self, stride: usize, f: F) -> Result<Vec<R>, String>
+    where
+        F: Fn(usize, &mut [T]) -> Result<R, String> + Sync + Send,
+        R: Send,
+    {
+        let n_rows = self.len() / stride;
+        #[cfg(feature = "parallel")]
+        {
+            let chunk_rows = n_rows.div_ceil(rayon::current_num_threads()).max(1);
+            let chunk_size = chunk_rows * stride;
+            self.par_chunks_mut(chunk_size)
+                .enumerate()
+                .map(|(ti, chunk)| {
+                    if crate::SHUTDOWN_REQUESTED.load(Relaxed) {
+                        return Err("interrupted".to_string());
+                    }
+                    f(ti * chunk_rows, chunk)
+                })
+                .collect()
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            if crate::SHUTDOWN_REQUESTED.load(Relaxed) {
+                return Err("interrupted".to_string());
+            }
+            Ok(vec![f(0, self)?])
         }
     }
 }
@@ -198,5 +240,41 @@ where
     #[cfg(not(feature = "parallel"))]
     {
         vec![f(0, a, b)]
+    }
+}
+
+/// Interruptible variant of [`par_zip_chunks_map_mut`]. Like that function but
+/// the closure returns `Result<R, String>`, and `SHUTDOWN_REQUESTED` is checked
+/// before each chunk. Returns `Err("interrupted")` if the flag is set.
+pub fn par_zip_chunks_try_map_mut<T, U, F, R>(
+    a: &mut [T], b: &mut [U], b_per_a: usize, f: F,
+) -> Result<Vec<R>, String>
+where
+    T: Send,
+    U: Send,
+    F: Fn(usize, &mut [T], &mut [U]) -> Result<R, String> + Sync + Send,
+    R: Send,
+{
+    #[cfg(feature = "parallel")]
+    {
+        use rayon::prelude::*;
+        let chunk_size = a.len().div_ceil(rayon::current_num_threads()).max(1);
+        a.par_chunks_mut(chunk_size)
+            .zip(b.par_chunks_mut(chunk_size * b_per_a))
+            .enumerate()
+            .map(|(ti, (a_chunk, b_chunk))| {
+                if crate::SHUTDOWN_REQUESTED.load(Relaxed) {
+                    return Err("interrupted".to_string());
+                }
+                f(ti * chunk_size, a_chunk, b_chunk)
+            })
+            .collect()
+    }
+    #[cfg(not(feature = "parallel"))]
+    {
+        if crate::SHUTDOWN_REQUESTED.load(Relaxed) {
+            return Err("interrupted".to_string());
+        }
+        Ok(vec![f(0, a, b)?])
     }
 }

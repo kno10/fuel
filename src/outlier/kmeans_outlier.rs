@@ -7,10 +7,9 @@
 /// center, optionally adjusted for cluster size.  Three scoring rules are
 /// provided to handle singleton clusters differently.
 use crate::Float;
-use crate::VectorData;
 use crate::cluster::kmeans::util::KMeansResult;
-use crate::math;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::{VectorData, math};
 
 /// Scoring rule for [`kmeans_outlier`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -60,15 +59,13 @@ where
     // Pre-compute centers as owned vecs (row() returns a temporary view)
     let centers: Vec<Vec<F>> = (0..k).map(|j| result.centers.row(j).to_vec()).collect();
 
-    for i in 0..n {
+    for (i, score) in scores.iter_mut().enumerate() {
         data.load_into(i, &mut scratch, d);
         let a = result.assignments[i];
         let center_a = &centers[a];
 
-        scores[i] = match rule {
-            KMeansOutlierRule::Distance => {
-                math::sqdist(center_a, &scratch, d)
-            }
+        *score = match rule {
+            KMeansOutlierRule::Distance => math::sqdist(center_a, &scratch, d),
             KMeansOutlierRule::DistanceSingletons => {
                 if sizes[a] == 1 {
                     // min distance to any center
@@ -104,20 +101,28 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::NdArrayDataset;
-    use crate::cluster::kmeans::lloyd;
-    use crate::cluster::kmeans::init::RandomSample;
+    use ndarray::Array2;
     use rand::SeedableRng;
     use rand_pcg::Pcg32;
-    use ndarray::Array2;
+
+    use super::*;
+    use crate::NdArrayDataset;
+    use crate::cluster::kmeans::init::RandomSample;
+    use crate::cluster::kmeans::lloyd;
 
     fn make_data() -> Array2<f64> {
         // Two tight clusters at 0 and 10, plus an outlier at 5
         let mut rows: Vec<f64> = Vec::new();
-        for i in 0..8 { rows.push(i as f64 * 0.05); rows.push(0.0); }
-        for i in 0..8 { rows.push(10.0 + i as f64 * 0.05); rows.push(0.0); }
-        rows.push(5.0); rows.push(0.0); // outlier at index 16
+        for i in 0..8 {
+            rows.push(i as f64 * 0.05);
+            rows.push(0.0);
+        }
+        for i in 0..8 {
+            rows.push(10.0 + i as f64 * 0.05);
+            rows.push(0.0);
+        }
+        rows.push(5.0);
+        rows.push(0.0); // outlier at index 16
         Array2::from_shape_vec((17, 2), rows).unwrap()
     }
 

@@ -23,27 +23,20 @@ pub fn glosh<F: Float>(
     hierarchy: &HdbscanHierarchy<F>, min_cluster_size: usize,
 ) -> OutlierResult<F> {
     let result = extract_hdbscan_hierarchy_hdbscan(hierarchy, min_cluster_size, false);
-    make_outlier_result(
-        result.glosh,
-        "GLOSH",
-        false,
-        F::zero(),
-        F::zero(),
-        F::one(),
-    )
+    make_outlier_result(result.glosh, "GLOSH", false, F::zero(), F::zero(), F::one())
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::hdbscan::slink_hdbscan::slink_hdbscan;
-    use crate::cluster::hdbscan::extraction::extract_hdbscan_hierarchy_hdbscan;
     use super::*;
+    use crate::cluster::hdbscan::extraction::extract_hdbscan_hierarchy_hdbscan;
+    use crate::cluster::hdbscan::slink_hdbscan::slink_hdbscan;
 
     fn make_two_cluster_data() -> Vec<Vec<f64>> {
         // Two tight clusters plus an obvious isolated outlier
         let mut pts = Vec::new();
         for i in 0..8 {
-            pts.push(vec![i as f64 * 0.1, 0.0]);        // cluster A: 0.0 - 0.7
+            pts.push(vec![i as f64 * 0.1, 0.0]); // cluster A: 0.0 - 0.7
         }
         for i in 0..8 {
             pts.push(vec![10.0 + i as f64 * 0.1, 0.0]); // cluster B: 10.0 - 10.7
@@ -58,7 +51,8 @@ mod tests {
         use crate::distance::Euclidean;
 
         let pts = make_two_cluster_data();
-        let data: TableWithDistance<f64, Vec<f64>, Euclidean, f64> = TableWithDistance::with_distance(&pts, Euclidean);
+        let data: TableWithDistance<f64, Vec<f64>, Euclidean, f64> =
+            TableWithDistance::with_distance(&pts, Euclidean);
         let hierarchy = slink_hdbscan(&data, 2).unwrap();
         let result = glosh(&hierarchy, 2);
 
@@ -81,7 +75,8 @@ mod tests {
         use crate::distance::Euclidean;
 
         let pts = make_two_cluster_data();
-        let data: TableWithDistance<f64, Vec<f64>, Euclidean, f64> = TableWithDistance::with_distance(&pts, Euclidean);
+        let data: TableWithDistance<f64, Vec<f64>, Euclidean, f64> =
+            TableWithDistance::with_distance(&pts, Euclidean);
         let hierarchy = slink_hdbscan(&data, 2).unwrap();
         let result = glosh(&hierarchy, 2);
 
@@ -96,7 +91,8 @@ mod tests {
         use crate::distance::Euclidean;
 
         let pts = make_two_cluster_data();
-        let data: TableWithDistance<f64, Vec<f64>, Euclidean, f64> = TableWithDistance::with_distance(&pts, Euclidean);
+        let data: TableWithDistance<f64, Vec<f64>, Euclidean, f64> =
+            TableWithDistance::with_distance(&pts, Euclidean);
         let hierarchy = slink_hdbscan(&data, 2).unwrap();
         let result = glosh(&hierarchy, 2);
         let direct = extract_hdbscan_hierarchy_hdbscan(&hierarchy, 2, false);

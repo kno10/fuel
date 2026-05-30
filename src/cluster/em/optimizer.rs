@@ -3,7 +3,7 @@ use std::ops::{AddAssign, MulAssign, SubAssign};
 
 use ndarray::Array2;
 
-use crate::{Float, VectorData as Dataset, math};
+use crate::{Float, ParChunksMut, VectorData as Dataset, math, par_zip_chunks_try_map_mut};
 
 /// Pluggable cluster model for expectation-maximization.
 pub trait EmModel<N>
@@ -132,48 +132,68 @@ where
 }
 
 fn assign_probabilities_to_instances<N, A, Mo>(
-    data: &A, models: &[Mo], probs: &mut [N], scratch: &mut [N], min_log_likelihood: N,
-    noise_log_density: Option<N>, mut noise_probs: Option<&mut [N]>,
+    data: &A, models: &[Mo], probs: &mut [N], min_log_likelihood: N, noise_log_density: Option<N>,
+    mut noise_probs: Option<&mut [N]>,
 ) -> Result<(N, Option<N>), String>
 where
     N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    A: Dataset<N>,
-    Mo: EmModel<N>,
+    A: Dataset<N> + Sync,
+    Mo: EmModel<N> + Sync,
 {
     let (n, d) = (data.nrows(), data.ncols());
     let k = models.len();
-    let mut em_sum = N::zero();
     let local_len = k + if noise_log_density.is_some() { 1 } else { 0 };
-    let mut local = vec![N::zero(); local_len];
-    let mut noise_sum = N::zero();
 
-    for i in 0..n {
-        crate::check_interrupted()?;
-        data.load_into(i, scratch, d);
-        for j in 0..k {
-            let v = models[j].estimate_log_density(scratch);
-            local[j] = if v > min_log_likelihood { v } else { min_log_likelihood };
-        }
-        if let Some(log_noise) = noise_log_density {
-            local[k] = log_noise.max(min_log_likelihood);
-        }
-        let logp = log_sum_exp(&local);
-        for j in 0..k {
-            probs[i * k + j] = (local[j] - logp).exp();
-        }
-        if noise_log_density.is_some() {
-            let noise_prob = (local[k] - logp).exp();
-            if let Some(noise_vec) = noise_probs.as_mut() {
-                (*noise_vec)[i] = noise_prob;
+    let partial: Vec<(N, N)> = if let Some(np) = noise_probs.as_mut() {
+        par_zip_chunks_try_map_mut(np, probs, k, |i0, np_chunk, probs_chunk| {
+            let chunk_rows = np_chunk.len();
+            let mut sc = vec![N::zero(); d];
+            let mut local = vec![N::zero(); local_len];
+            let mut em_sum = N::zero();
+            let mut noise_sum = N::zero();
+            for ri in 0..chunk_rows {
+                data.load_into(i0 + ri, &mut sc, d);
+                for j in 0..k {
+                    local[j] = models[j].estimate_log_density(&sc).max(min_log_likelihood);
+                }
+                local[k] = noise_log_density.unwrap().max(min_log_likelihood);
+                let logp = log_sum_exp(&local);
+                for j in 0..k {
+                    probs_chunk[ri * k + j] = (local[j] - logp).exp();
+                }
+                let nv = (local[k] - logp).exp();
+                np_chunk[ri] = nv;
+                noise_sum += nv;
+                em_sum += logp;
             }
-            noise_sum += noise_prob;
-        }
-        em_sum += logp;
-    }
+            Ok((em_sum, noise_sum))
+        })
+    } else {
+        probs.par_row_chunks_try_map_mut(k, |row_start, probs_chunk| {
+            let chunk_rows = probs_chunk.len() / k;
+            let mut sc = vec![N::zero(); d];
+            let mut local = vec![N::zero(); k];
+            let mut em_sum = N::zero();
+            for ri in 0..chunk_rows {
+                data.load_into(row_start + ri, &mut sc, d);
+                for j in 0..k {
+                    local[j] = models[j].estimate_log_density(&sc).max(min_log_likelihood);
+                }
+                let logp = log_sum_exp(&local);
+                for j in 0..k {
+                    probs_chunk[ri * k + j] = (local[j] - logp).exp();
+                }
+                em_sum += logp;
+            }
+            Ok((em_sum, N::zero()))
+        })
+    }?;
 
+    let (em_total, noise_total) =
+        partial.into_iter().fold((N::zero(), N::zero()), |(a, b), (c, e)| (a + c, b + e));
     Ok((
-        em_sum / N::from(n).unwrap(),
-        if noise_log_density.is_some() { Some(noise_sum / N::from(n).unwrap()) } else { None },
+        em_total / N::from(n).unwrap(),
+        if noise_log_density.is_some() { Some(noise_total / N::from(n).unwrap()) } else { None },
     ))
 }
 
@@ -311,8 +331,8 @@ pub fn expectation_maximization<N, A, Mo>(
 ) -> Result<EmResult<N, Mo>, String>
 where
     N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    A: Dataset<N>,
-    Mo: EmModel<N>,
+    A: Dataset<N> + Sync,
+    Mo: EmModel<N> + Sync,
 {
     assert!(k > 0, "k must be positive");
     assert!(data.nrows() > 0, "dataset must not be empty");
@@ -332,7 +352,6 @@ where
         data,
         &models,
         &mut probs,
-        &mut scratch,
         config.min_log_likelihood,
         noise_density,
         noise_slice,
@@ -381,7 +400,6 @@ where
             data,
             &models,
             &mut probs,
-            &mut scratch,
             config.min_log_likelihood,
             if config.noise_ratio > N::zero() {
                 Some(log_noise.max(config.min_log_likelihood))

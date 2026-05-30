@@ -62,7 +62,7 @@ Several estimators (MLE, TLE, GED, Zipf, ABID, RABID, ...).
 Build and install the Python package in your current environment:
 
 ```bash
-maturin develop --release --features openblas-system
+maturin develop --release --features python,openblas-system
 ```
 
 The following BLAS variants can be used:

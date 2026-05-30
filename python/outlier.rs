@@ -11,10 +11,9 @@ use crate::intrinsicdimensionality::{
 use crate::kernel::polynomial::PolynomialKernel;
 use crate::outlier::cop::CopDistanceDist;
 use crate::outlier::kernel::KernelDensityFunction;
-use crate::python::search::SearchIndex;
-use crate::cluster;
 use crate::outlier::kmeans_outlier::KMeansOutlierRule;
-use crate::{Float, NdArrayDataset, NdArrayDatasetWithDistance, outlier};
+use crate::python::search::SearchIndex;
+use crate::{Float, NdArrayDataset, NdArrayDatasetWithDistance, cluster, outlier};
 
 fn parse_abod_kernel<F>(kernel: &str) -> PyResult<Box<dyn Fn(&[F], &[F]) -> F + Sync + Send>>
 where
@@ -802,7 +801,9 @@ fn silhouette_outlier_f64<'py>(
     let data_vec: Vec<Vec<f64>> = array.rows().into_iter().map(|r| r.to_vec()).collect();
     let labels_isize: Vec<isize> = labels.as_slice()?.iter().map(|&l| l as isize).collect();
     let result = outlier::silhouette_outlier::silhouette_outlier(
-        &data_vec, &labels_isize, noise_label.map(|v| v as isize),
+        &data_vec,
+        &labels_isize,
+        noise_label.map(|v| v as isize),
     );
     result_to_py_outlier(py, result)
 }
@@ -920,7 +921,14 @@ macro_rules! tkmeans_outlier_fn {
             let dataset = NdArrayDataset::new(&array);
             let mut init = RandomSample::new(super::make_rng(seed));
             let km = crate::py_interruptible(py, || {
-                tkmeans(&dataset, k, &mut init, max_iter, <$dtype as Float>::cast(tol), alpha as f32)
+                tkmeans(
+                    &dataset,
+                    k,
+                    &mut init,
+                    max_iter,
+                    <$dtype as Float>::cast(tol),
+                    alpha as f32,
+                )
             })?;
             let result = outlier::tkmeans_outlier::tkmeans_outlier::<$dtype>(&km)
                 .map_err(PyValueError::new_err)?;
@@ -946,11 +954,17 @@ macro_rules! tkmeans_star_outlier_fn {
             let dataset = NdArrayDataset::new(&array);
             let mut init = RandomSample::new(super::make_rng(seed));
             let km = crate::py_interruptible(py, || {
-                tkmeans(&dataset, k, &mut init, max_iter, <$dtype as Float>::cast(tol), alpha as f32)
+                tkmeans(
+                    &dataset,
+                    k,
+                    &mut init,
+                    max_iter,
+                    <$dtype as Float>::cast(tol),
+                    alpha as f32,
+                )
             })?;
-            let result =
-                outlier::tkmeans_outlier::tkmeans_star_outlier::<_, $dtype>(&dataset, &km)
-                    .map_err(PyValueError::new_err)?;
+            let result = outlier::tkmeans_outlier::tkmeans_star_outlier::<_, $dtype>(&dataset, &km)
+                .map_err(PyValueError::new_err)?;
             result_to_py_outlier(py, result)
         }
     };

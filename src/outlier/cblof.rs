@@ -10,10 +10,9 @@
 /// center.  All distances are squared Euclidean, consistent with the k-means
 /// objective; the score is further multiplied by the point's cluster size.
 use crate::Float;
-use crate::VectorData;
 use crate::cluster::kmeans::util::KMeansResult;
-use crate::math;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::{VectorData, math};
 
 /// Cluster-based local outlier factor.
 ///
@@ -29,9 +28,7 @@ use crate::outlier::common::{OutlierResult, make_outlier_result};
 ///   - size of current cluster >= beta * size of next cluster
 ///
 /// Returns scores with `ascending=false` (higher score = more outlier-like).
-pub fn cblof<D, F>(
-    data: &D, result: &KMeansResult<F>, alpha: F, beta: F,
-) -> OutlierResult<F>
+pub fn cblof<D, F>(data: &D, result: &KMeansResult<F>, alpha: F, beta: F) -> OutlierResult<F>
 where
     F: Float,
     D: VectorData<F>,
@@ -80,21 +77,21 @@ where
     let mut scratch = vec![F::zero(); d];
     let mut scores = vec![F::zero(); n];
 
-    for i in 0..n {
+    for (i, score) in scores.iter_mut().enumerate() {
         data.load_into(i, &mut scratch, d);
         let a = result.assignments[i];
         let sz = F::from_usize(sizes[a]).unwrap();
 
-        if is_large[a] {
-            scores[i] = sz * math::sqdist(&all_centers[a], &scratch, d);
+        *score = if is_large[a] {
+            sz * math::sqdist(&all_centers[a], &scratch, d)
         } else {
             // minimum squared distance to any large cluster center
             let min_dist = large_centers
                 .iter()
                 .map(|c| math::sqdist(c, &scratch, d))
                 .fold(F::infinity(), |acc, v| if v < acc { v } else { acc });
-            scores[i] = sz * min_dist;
-        }
+            sz * min_dist
+        };
     }
 
     make_outlier_result(scores, "CBLOF", false, F::one(), F::zero(), F::infinity())
@@ -102,21 +99,29 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::NdArrayDataset;
-    use crate::cluster::kmeans::lloyd;
-    use crate::cluster::kmeans::init::RandomSample;
+    use ndarray::Array2;
     use rand::SeedableRng;
     use rand_pcg::Pcg32;
-    use ndarray::Array2;
+
+    use super::*;
+    use crate::NdArrayDataset;
+    use crate::cluster::kmeans::init::RandomSample;
+    use crate::cluster::kmeans::lloyd;
 
     fn make_data() -> Array2<f64> {
         // 10 points in cluster A (near 0), 10 in cluster B (near 10),
         // 1 isolated outlier at 5
         let mut rows: Vec<f64> = Vec::new();
-        for i in 0..10 { rows.push(i as f64 * 0.05); rows.push(0.0); }
-        for i in 0..10 { rows.push(10.0 + i as f64 * 0.05); rows.push(0.0); }
-        rows.push(5.0); rows.push(0.0); // index 20
+        for i in 0..10 {
+            rows.push(i as f64 * 0.05);
+            rows.push(0.0);
+        }
+        for i in 0..10 {
+            rows.push(10.0 + i as f64 * 0.05);
+            rows.push(0.0);
+        }
+        rows.push(5.0);
+        rows.push(0.0); // index 20
         Array2::from_shape_vec((21, 2), rows).unwrap()
     }
 

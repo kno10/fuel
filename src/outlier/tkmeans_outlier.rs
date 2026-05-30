@@ -12,10 +12,9 @@
 ///
 /// [`tkmeans`]: crate::cluster::kmeans::tkmeans
 use crate::Float;
-use crate::VectorData;
 use crate::cluster::kmeans::util::KMeansResult;
-use crate::math;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::{VectorData, math};
 
 /// Binary outlier labeling from k-means-- (KMeansMinusMinusOutlierDetection).
 ///
@@ -23,10 +22,9 @@ use crate::outlier::common::{OutlierResult, make_outlier_result};
 ///
 /// Returns an error if `result.noise_mask` is `None`.
 pub fn tkmeans_outlier<F: Float>(result: &KMeansResult<F>) -> Result<OutlierResult<F>, String> {
-    let mask = result
-        .noise_mask
-        .as_ref()
-        .ok_or_else(|| "tkmeans_outlier requires a KMeansResult with a noise_mask; use tkmeans()".to_string())?;
+    let mask = result.noise_mask.as_ref().ok_or_else(|| {
+        "tkmeans_outlier requires a KMeansResult with a noise_mask; use tkmeans()".to_string()
+    })?;
 
     let scores: Vec<F> =
         mask.iter().map(|&noise| if noise { F::one() } else { F::zero() }).collect();
@@ -47,10 +45,9 @@ where
     F: Float,
     D: VectorData<F>,
 {
-    let mask = result
-        .noise_mask
-        .as_ref()
-        .ok_or_else(|| "tkmeans_star_outlier requires a KMeansResult with a noise_mask; use tkmeans()".to_string())?;
+    let mask = result.noise_mask.as_ref().ok_or_else(|| {
+        "tkmeans_star_outlier requires a KMeansResult with a noise_mask; use tkmeans()".to_string()
+    })?;
 
     let n = data.nrows();
     let d = data.ncols();
@@ -81,20 +78,28 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::NdArrayDataset;
-    use crate::cluster::kmeans::{tkmeans, lloyd};
-    use crate::cluster::kmeans::init::RandomSample;
+    use ndarray::Array2;
     use rand::SeedableRng;
     use rand_pcg::Pcg32;
-    use ndarray::Array2;
+
+    use super::*;
+    use crate::NdArrayDataset;
+    use crate::cluster::kmeans::init::RandomSample;
+    use crate::cluster::kmeans::{lloyd, tkmeans};
 
     fn make_data() -> Array2<f64> {
         // 8 points near 0, 8 near 10, 1 outlier at 5
         let mut rows: Vec<f64> = Vec::new();
-        for i in 0..8 { rows.push(i as f64 * 0.05); rows.push(0.0); }
-        for i in 0..8 { rows.push(10.0 + i as f64 * 0.05); rows.push(0.0); }
-        rows.push(5.0); rows.push(0.0); // index 16
+        for i in 0..8 {
+            rows.push(i as f64 * 0.05);
+            rows.push(0.0);
+        }
+        for i in 0..8 {
+            rows.push(10.0 + i as f64 * 0.05);
+            rows.push(0.0);
+        }
+        rows.push(5.0);
+        rows.push(0.0); // index 16
         Array2::from_shape_vec((17, 2), rows).unwrap()
     }
 

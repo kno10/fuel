@@ -282,7 +282,9 @@ fn print_usage(program_name: &str) {
     eprintln!("      --no-header           Do not treat the first line as a header");
     eprintln!("      --disable <patterns>  Disable methods by substring or comma-separated list");
     eprintln!("      --ksquare-max <n>     Maximum k for quadratic-cost methods (default 1000)");
-    eprintln!("      --no-precompute        Disable precomputed kNN cache and search directly on the VP-tree");
+    eprintln!(
+        "      --no-precompute        Disable precomputed kNN cache and search directly on the VP-tree"
+    );
     eprintln!(
         "      --distance <name>     Distance function: euclidean, manhattan, chebyshev, cosine, arccosine, canberra, braycurtis, hellinger, squared_euclidean"
     );
@@ -299,7 +301,9 @@ fn parse_args() -> Result<Config, String> {
         format: None,
         header: None,
         disable: Vec::new(),
-        ksquare_max: 1000,        no_precompute: false,        time_limit: None,
+        ksquare_max: 1000,
+        no_precompute: false,
+        time_limit: None,
         distance: "euclidean".to_string(),
     };
 
@@ -561,8 +565,13 @@ where
     } else {
         let precompute_start = Instant::now();
         let precomputed = PrecomputedKnnSearcher::new(tree, &data, max_k + 2);
-        eprintln!("kNN precomputation time ({}): {:.3}s", distance_name, precompute_start.elapsed().as_secs_f64());
-        compute_knn_outlier_scores(writer, &precomputed, &data, ks, options).map_err(|e| e.to_string())
+        eprintln!(
+            "kNN precomputation time ({}): {:.3}s",
+            distance_name,
+            precompute_start.elapsed().as_secs_f64()
+        );
+        compute_knn_outlier_scores(writer, &precomputed, &data, ks, options)
+            .map_err(|e| e.to_string())
     }
 }
 

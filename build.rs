@@ -33,14 +33,10 @@ fn find_lapack_via_vcpkg() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(triplet) = vcpkg_triplet_from_env() {
         config.target_triplet(triplet);
     }
-    config
-        .find_package("lapack")
-        .map_err(|err| format!("vcpkg failed to find lapack: {err}"))?;
+    config.find_package("lapack").map_err(|err| format!("vcpkg failed to find lapack: {err}"))?;
     Ok(())
 }
 
 fn vcpkg_triplet_from_env() -> Option<String> {
-    env::var("VCPKGRS_TRIPLET")
-        .or_else(|_| env::var("VCPKG_DEFAULT_TRIPLET"))
-        .ok()
+    env::var("VCPKGRS_TRIPLET").or_else(|_| env::var("VCPKG_DEFAULT_TRIPLET")).ok()
 }
