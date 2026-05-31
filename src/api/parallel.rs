@@ -214,6 +214,48 @@ where
     })
 }
 
+/// Maps over row-aligned chunks of an immutable slice, where each logical row
+/// has `stride` elements. Analogous to `par_row_chunks_try_map_mut` but for
+/// shared references, so the slice needs no exclusive borrow.
+///
+/// The closure receives `(row_start, chunk)` where `row_start` is the 0-based
+/// index of the first row in the chunk and `chunk` is a shared slice of
+/// `chunk_rows * stride` elements.
+///
+/// Checks `SHUTDOWN_REQUESTED` before each chunk and returns `Err` if set.
+pub fn par_row_chunks_try_map<T, F, R>(
+    data: &[T], stride: usize, f: F,
+) -> Result<Vec<R>, String>
+where
+    T: Sync,
+    F: Fn(usize, &[T]) -> Result<R, String> + Sync + Send,
+    R: Send,
+{
+    let n_rows = data.len() / stride;
+    #[cfg(feature = "parallel")]
+    {
+        use rayon::prelude::*;
+        let chunk_rows = n_rows.div_ceil(rayon::current_num_threads()).max(1);
+        let chunk_size = chunk_rows * stride;
+        data.par_chunks(chunk_size)
+            .enumerate()
+            .map(|(ti, chunk)| {
+                if crate::SHUTDOWN_REQUESTED.load(Relaxed) {
+                    return Err("interrupted".to_string());
+                }
+                f(ti * chunk_rows, chunk)
+            })
+            .collect()
+    }
+    #[cfg(not(feature = "parallel"))]
+    {
+        if crate::SHUTDOWN_REQUESTED.load(Relaxed) {
+            return Err("interrupted".to_string());
+        }
+        Ok(vec![f(0, data)?])
+    }
+}
+
 /// Maps over paired chunks of two mutable slices, where `b` has `b_per_a` elements
 /// for each element of `a`. With `parallel` enabled, processes chunks in parallel
 /// via rayon. Without `parallel`, processes the entire pair as a single chunk.

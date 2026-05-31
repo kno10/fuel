@@ -123,6 +123,16 @@ impl<F: Float> EmModel<F> for VonMisesFisherModel<F> {
         self.weight = weight.max(F::epsilon());
         self.update_log_norm();
     }
+
+    fn merge_estep(&mut self, other: &Self)
+    where
+        Self: Sized,
+    {
+        self.wsum += other.wsum;
+        for (s, o) in self.nsum.iter_mut().zip(other.nsum.iter()) {
+            *s += *o;
+        }
+    }
 }
 
 /// Factory for von Mises–Fisher mixtures.

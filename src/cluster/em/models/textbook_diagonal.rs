@@ -119,6 +119,19 @@ impl<N: Float> EmModel<N> for TextbookDiagonalGaussianModel<N> {
         self.weight = weight.max(N::epsilon());
         self.update_log_norm_det();
     }
+
+    fn merge_estep(&mut self, other: &Self)
+    where
+        Self: Sized,
+    {
+        self.wsum += other.wsum;
+        for (s, o) in self.mean.iter_mut().zip(other.mean.iter()) {
+            *s += *o;
+        }
+        for (s, o) in self.sumsq.iter_mut().zip(other.sumsq.iter()) {
+            *s += *o;
+        }
+    }
 }
 
 /// Factory for textbook (numerically weaker) diagonal Gaussian mixture models.

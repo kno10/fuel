@@ -106,6 +106,28 @@ impl<N: Float> EmModel<N> for SphericalGaussianModel<N> {
         self.weight = weight.max(N::epsilon());
         self.update_log_norm_det();
     }
+
+    /// Chan's parallel algorithm for spherical (scalar) Welford variance.
+    fn merge_estep(&mut self, other: &Self)
+    where
+        Self: Sized,
+    {
+        let wa = self.wsum;
+        let wb = other.wsum;
+        let wab = wa + wb;
+        if wab <= N::zero() {
+            return;
+        }
+        let scale = wa * wb / wab;
+        let mut delta_sq = N::zero();
+        for j in 0..self.mean.len() {
+            let delta = other.mean[j] - self.mean[j];
+            delta_sq += delta * delta;
+            self.mean[j] = (wa * self.mean[j] + wb * other.mean[j]) / wab;
+        }
+        self.variance += other.variance + delta_sq * scale;
+        self.wsum = wab;
+    }
 }
 
 /// Factory for numerically stable spherical Gaussian mixture models.

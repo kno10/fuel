@@ -17,20 +17,24 @@ class KMeansResult:
         Final inertia objective.
     inertia_bound : float
         Bound on inertia used during optimization.
+    noise_mask : ndarray of uint8, optional
+        Trimmed-point mask returned by tkmeans (1=trimmed/outlier, 0=inlier).
+        None for plain k-means results.
     """
 
-    def __init__(self, centers, labels, n_iter, inertia, inertia_bound):
+    def __init__(self, centers, labels, n_iter, inertia, inertia_bound, noise_mask=None):
         self.centers = centers
         self.labels = labels
         self.n_iter = n_iter
         self.inertia = inertia
         self.inertia_bound = inertia_bound
+        self.noise_mask = noise_mask
 
     def __repr__(self):
         return (
             f"KMeansResult(centers={self.centers}, labels={self.labels}, "
             f"n_iter={self.n_iter}, inertia={self.inertia}, "
-            f"inertia_bound={self.inertia_bound})"
+            f"inertia_bound={self.inertia_bound}, noise_mask={self.noise_mask})"
         )
 
 
@@ -84,6 +88,9 @@ def _build_kmeans_result(result):
     if len(result) == 5:
         centers, labels, n_iter, inertia, inertia_bound = result
         return KMeansResult(centers, labels, n_iter, inertia, inertia_bound)
+    if len(result) == 6:
+        centers, labels, n_iter, inertia, inertia_bound, noise_mask = result
+        return KMeansResult(centers, labels, n_iter, inertia, inertia_bound, noise_mask)
     return result
 
 

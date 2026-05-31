@@ -907,6 +907,68 @@ macro_rules! cblof_fn {
 cblof_fn!(cblof_f32, f32);
 cblof_fn!(cblof_f64, f64);
 
+macro_rules! kmeans_outlier_from_km_fn {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, centers, labels, rule = "distance"))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>,
+            centers: PyReadonlyArray2<'py, $dtype>, labels: PyReadonlyArray1<'py, i64>,
+            rule: &str,
+        ) -> PyResult<Py<PyAny>> {
+            use cluster::kmeans::util::KMeansResult;
+            let array = data.as_array();
+            let dataset = NdArrayDataset::new(&array);
+            let km = KMeansResult {
+                centers: centers.as_array().to_owned(),
+                assignments: labels.as_array().iter().map(|&x| x as usize).collect(),
+                iterations: 0,
+                inertia: None,
+                inertia_bound: None,
+                noise_mask: None,
+            };
+            let rule = parse_kmeans_outlier_rule(rule)?;
+            let result =
+                outlier::kmeans_outlier::kmeans_outlier::<_, $dtype>(&dataset, &km, rule);
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+kmeans_outlier_from_km_fn!(kmeans_outlier_from_km_f32, f32);
+kmeans_outlier_from_km_fn!(kmeans_outlier_from_km_f64, f64);
+
+macro_rules! cblof_from_km_fn {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, centers, labels, alpha = 0.9, beta = 3.0))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>,
+            centers: PyReadonlyArray2<'py, $dtype>, labels: PyReadonlyArray1<'py, i64>,
+            alpha: f64, beta: f64,
+        ) -> PyResult<Py<PyAny>> {
+            use cluster::kmeans::util::KMeansResult;
+            let array = data.as_array();
+            let dataset = NdArrayDataset::new(&array);
+            let km = KMeansResult {
+                centers: centers.as_array().to_owned(),
+                assignments: labels.as_array().iter().map(|&x| x as usize).collect(),
+                iterations: 0,
+                inertia: None,
+                inertia_bound: None,
+                noise_mask: None,
+            };
+            let result = outlier::cblof::cblof::<_, $dtype>(
+                &dataset, &km, <$dtype as Float>::cast(alpha), <$dtype as Float>::cast(beta),
+            );
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+cblof_from_km_fn!(cblof_from_km_f32, f32);
+cblof_from_km_fn!(cblof_from_km_f64, f64);
+
 macro_rules! tkmeans_outlier_fn {
     ($name:ident, $dtype:ty) => {
         #[pyfunction]
@@ -972,6 +1034,59 @@ macro_rules! tkmeans_star_outlier_fn {
 
 tkmeans_star_outlier_fn!(tkmeans_star_outlier_f32, f32);
 tkmeans_star_outlier_fn!(tkmeans_star_outlier_f64, f64);
+
+macro_rules! tkmeans_outlier_from_km_fn {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        fn $name<'py>(py: Python<'py>, noise_mask: PyReadonlyArray1<'py, bool>) -> PyResult<Py<PyAny>> {
+            use cluster::kmeans::util::KMeansResult;
+            let km = KMeansResult::<$dtype> {
+                centers: ndarray::Array2::zeros((0, 0)),
+                assignments: Vec::new(),
+                iterations: 0,
+                inertia: None,
+                inertia_bound: None,
+                noise_mask: Some(noise_mask.as_array().iter().copied().collect()),
+            };
+            let result = outlier::tkmeans_outlier::tkmeans_outlier::<$dtype>(&km)
+                .map_err(PyValueError::new_err)?;
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+tkmeans_outlier_from_km_fn!(tkmeans_outlier_from_km_f32, f32);
+tkmeans_outlier_from_km_fn!(tkmeans_outlier_from_km_f64, f64);
+
+macro_rules! tkmeans_star_outlier_from_km_fn {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>,
+            centers: PyReadonlyArray2<'py, $dtype>, labels: PyReadonlyArray1<'py, i64>,
+            noise_mask: PyReadonlyArray1<'py, bool>,
+        ) -> PyResult<Py<PyAny>> {
+            use cluster::kmeans::util::KMeansResult;
+            let array = data.as_array();
+            let dataset = NdArrayDataset::new(&array);
+            let km = KMeansResult {
+                centers: centers.as_array().to_owned(),
+                assignments: labels.as_array().iter().map(|&x| x as usize).collect(),
+                iterations: 0,
+                inertia: None,
+                inertia_bound: None,
+                noise_mask: Some(noise_mask.as_array().iter().copied().collect()),
+            };
+            let result =
+                outlier::tkmeans_outlier::tkmeans_star_outlier::<_, $dtype>(&dataset, &km)
+                    .map_err(PyValueError::new_err)?;
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+tkmeans_star_outlier_from_km_fn!(tkmeans_star_outlier_from_km_f32, f32);
+tkmeans_star_outlier_from_km_fn!(tkmeans_star_outlier_from_km_f64, f64);
 
 macro_rules! em_outlier_fn {
     ($name:ident, $dtype:ty) => {
@@ -1116,10 +1231,18 @@ pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(kmeans_outlier_f64))?;
     m.add_wrapped(wrap_pyfunction!(cblof_f32))?;
     m.add_wrapped(wrap_pyfunction!(cblof_f64))?;
+    m.add_wrapped(wrap_pyfunction!(kmeans_outlier_from_km_f32))?;
+    m.add_wrapped(wrap_pyfunction!(kmeans_outlier_from_km_f64))?;
+    m.add_wrapped(wrap_pyfunction!(cblof_from_km_f32))?;
+    m.add_wrapped(wrap_pyfunction!(cblof_from_km_f64))?;
     m.add_wrapped(wrap_pyfunction!(tkmeans_outlier_f32))?;
     m.add_wrapped(wrap_pyfunction!(tkmeans_outlier_f64))?;
     m.add_wrapped(wrap_pyfunction!(tkmeans_star_outlier_f32))?;
     m.add_wrapped(wrap_pyfunction!(tkmeans_star_outlier_f64))?;
+    m.add_wrapped(wrap_pyfunction!(tkmeans_outlier_from_km_f32))?;
+    m.add_wrapped(wrap_pyfunction!(tkmeans_outlier_from_km_f64))?;
+    m.add_wrapped(wrap_pyfunction!(tkmeans_star_outlier_from_km_f32))?;
+    m.add_wrapped(wrap_pyfunction!(tkmeans_star_outlier_from_km_f64))?;
     m.add_wrapped(wrap_pyfunction!(em_outlier_f32))?;
     m.add_wrapped(wrap_pyfunction!(em_outlier_f64))?;
     Ok(())

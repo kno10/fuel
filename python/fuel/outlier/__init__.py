@@ -1063,70 +1063,94 @@ def dbscan_outlier(data, eps, min_points, *, distance='euclidean', index=None):
                  data, eps, min_points, distance, index=index))
 
 
-def kmeans_outlier(data, k, *, rule='distance', max_iter=300, tol=1e-4, seed=None):
+def kmeans_outlier(data, k_or_km, *, rule='distance', max_iter=300, tol=1e-4, seed=None):
     """k-means clustering outlier score.
+
+    Can be called in two ways:
+
+    1. ``kmeans_outlier(data, k, ...)`` -- runs k-means (lloyd) internally.
+    2. ``kmeans_outlier(data, km)`` -- uses a precomputed ``KMeansResult``.
 
     Parameters
     ----------
     data : array of shape (n, d)
-    k : int
-        Number of clusters.
+    k_or_km : int or KMeansResult
+        Number of clusters, or a precomputed k-means result.
     rule : {'distance', 'distance_singletons', 'variance'}
         Scoring rule.
     max_iter : int
-        Maximum k-means iterations.
+        Maximum k-means iterations (only used when k is an int).
     tol : float
-        Convergence tolerance.
+        Convergence tolerance (only used when k is an int).
     seed : int or None
-        Random seed.
+        Random seed (only used when k is an int).
 
     Returns
     -------
-    scores : 1-D float array (ascending=True).
-    metadata : dict
+    result : OutlierResult
     """
+    if hasattr(k_or_km, 'centers'):
+        km = k_or_km
+        return _wrap(_call(_fuel.kmeans_outlier_from_km_f32, _fuel.kmeans_outlier_from_km_f64,
+                     data, km.centers, km.labels, rule))
     return _wrap(_call(_fuel.kmeans_outlier_f32, _fuel.kmeans_outlier_f64,
-                 data, k, rule, max_iter, tol, seed))
+                 data, k_or_km, rule, max_iter, tol, seed))
 
 
-def cblof(data, k, alpha=0.9, beta=3.0, *, max_iter=300, tol=1e-4, seed=None):
+def cblof(data, k_or_km, alpha=0.9, beta=3.0, *, max_iter=300, tol=1e-4, seed=None):
     """Cluster-Based Local Outlier Factor (CBLOF).
+
+    Can be called in two ways:
+
+    1. ``cblof(data, k, ...)`` -- runs k-means (lloyd) internally.
+    2. ``cblof(data, km)`` -- uses a precomputed ``KMeansResult``.
 
     Parameters
     ----------
     data : array of shape (n, d)
-    k : int
-        Number of clusters.
+    k_or_km : int or KMeansResult
+        Number of clusters, or a precomputed k-means result.
     alpha : float
         Large-cluster fraction threshold (0 < alpha < 1).
     beta : float
         Size ratio threshold for small-to-large cluster boundary.
     max_iter : int
-        Maximum k-means iterations.
+        Maximum k-means iterations (only used when k is an int).
     tol : float
-        Convergence tolerance.
+        Convergence tolerance (only used when k is an int).
     seed : int or None
-        Random seed.
+        Random seed (only used when k is an int).
 
     Returns
     -------
-    scores : 1-D float array (ascending=True).
-    metadata : dict
+    result : OutlierResult
     """
+    if hasattr(k_or_km, 'centers'):
+        km = k_or_km
+        return _wrap(_call(_fuel.cblof_from_km_f32, _fuel.cblof_from_km_f64,
+                     data, km.centers, km.labels, alpha, beta))
     return _wrap(_call(_fuel.cblof_f32, _fuel.cblof_f64,
-                 data, k, alpha, beta, max_iter, tol, seed))
+                 data, k_or_km, alpha, beta, max_iter, tol, seed))
 
 
-def tkmeans_outlier(data, k, alpha=0.05, *, max_iter=300, tol=1e-4, seed=None):
+def tkmeans_outlier(data_or_km, k=None, alpha=0.05, *, max_iter=300, tol=1e-4, seed=None):
     """Trimmed k-means outlier score.
 
-    Points in the trimmed fraction are scored as outliers.
+    Points in the trimmed fraction are scored as outliers (score 1), inliers as 0.
+
+    Can be called in two ways:
+
+    1. ``tkmeans_outlier(data, k, alpha=0.05, ...)`` -- runs tkmeans internally.
+    2. ``tkmeans_outlier(km)`` -- uses a precomputed ``KMeansResult`` from
+       ``tkmeans()``.  The result must have a ``noise_mask`` (i.e. it must come
+       from ``tkmeans``, not plain ``kmeans``).
 
     Parameters
     ----------
-    data : array of shape (n, d)
-    k : int
-        Number of clusters.
+    data_or_km : array of shape (n, d) or KMeansResult
+        Input data or a precomputed tkmeans result.
+    k : int, optional
+        Number of clusters (only used when data is passed).
     alpha : float
         Trimming fraction (fraction of points treated as outliers).
     max_iter : int
@@ -1138,40 +1162,63 @@ def tkmeans_outlier(data, k, alpha=0.05, *, max_iter=300, tol=1e-4, seed=None):
 
     Returns
     -------
-    scores : 1-D float array (ascending=True).
-    metadata : dict
+    result : OutlierResult
+        Binary tkmeans outlier scores (trimmed=1, inlier=0).
     """
+    if hasattr(data_or_km, 'noise_mask'):
+        km = data_or_km
+        if km.noise_mask is None:
+            raise ValueError(
+                "tkmeans_outlier requires a KMeansResult with noise_mask; use tkmeans()"
+            )
+        if _f32(km.centers):
+            return _wrap(_fuel.tkmeans_outlier_from_km_f32(km.noise_mask))
+        return _wrap(_fuel.tkmeans_outlier_from_km_f64(km.noise_mask))
     return _wrap(_call(_fuel.tkmeans_outlier_f32, _fuel.tkmeans_outlier_f64,
-                 data, k, alpha, max_iter, tol, seed))
+                 data_or_km, k, alpha, max_iter, tol, seed))
 
 
-def tkmeans_star_outlier(data, k, alpha=0.05, *, max_iter=300, tol=1e-4, seed=None):
+def tkmeans_star_outlier(data, k_or_km, alpha=0.05, *, max_iter=300, tol=1e-4, seed=None):
     """Trimmed k-means* outlier score.
 
     Like tkmeans_outlier but uses distance-to-nearest-cluster-center for
     non-trimmed points, and noise-mask-based trimmed assignment for outliers.
 
+    Can be called in two ways:
+
+    1. ``tkmeans_star_outlier(data, k, alpha=0.05, ...)`` -- runs tkmeans internally.
+    2. ``tkmeans_star_outlier(data, km)`` -- uses a precomputed ``KMeansResult``
+       from ``tkmeans()``.  The result must have a ``noise_mask``.
+
     Parameters
     ----------
     data : array of shape (n, d)
-    k : int
-        Number of clusters.
+    k_or_km : int or KMeansResult
+        Number of clusters, or a precomputed tkmeans result.
     alpha : float
         Trimming fraction.
     max_iter : int
-        Maximum k-means iterations.
+        Maximum k-means iterations (only used when k is an int).
     tol : float
-        Convergence tolerance.
+        Convergence tolerance (only used when k is an int).
     seed : int or None
-        Random seed.
+        Random seed (only used when k is an int).
 
     Returns
     -------
-    scores : 1-D float array (ascending=True).
-    metadata : dict
+    result : OutlierResult
     """
+    if hasattr(k_or_km, 'noise_mask'):
+        km = k_or_km
+        if km.noise_mask is None:
+            raise ValueError(
+                "tkmeans_star_outlier requires a KMeansResult with noise_mask; use tkmeans()"
+            )
+        return _wrap(_call(_fuel.tkmeans_star_outlier_from_km_f32,
+                           _fuel.tkmeans_star_outlier_from_km_f64,
+                     data, km.centers, km.labels, km.noise_mask))
     return _wrap(_call(_fuel.tkmeans_star_outlier_f32, _fuel.tkmeans_star_outlier_f64,
-                 data, k, alpha, max_iter, tol, seed))
+                 data, k_or_km, alpha, max_iter, tol, seed))
 
 
 def em_outlier(data, k, *, model='diagonal', max_iter=200, tol=1e-5,

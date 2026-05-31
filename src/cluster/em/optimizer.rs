@@ -3,7 +3,7 @@ use std::ops::{AddAssign, MulAssign, SubAssign};
 
 use ndarray::Array2;
 
-use crate::{Float, ParChunksMut, VectorData as Dataset, math, par_zip_chunks_try_map_mut};
+use crate::{Float, ParChunksMut, VectorData as Dataset, par_row_chunks_try_map, par_zip_chunks_try_map_mut};
 
 /// Pluggable cluster model for expectation-maximization.
 pub trait EmModel<N>
@@ -36,6 +36,29 @@ where
 
     /// Set mixture weight.
     fn set_weight(&mut self, weight: N);
+
+    /// Merge the partial M-step accumulation state from `other` into `self`.
+    ///
+    /// Called after `update_estep` on a parallel chunk to combine per-thread
+    /// partial results. For single-pass models (Welford or textbook) this
+    /// merges the full state including `wsum`, `mean`, and the variance/
+    /// covariance accumulator. For two-pass models it merges only the
+    /// second-pass accumulator (variance or covariance), because `wsum` and
+    /// `mean` are already fixed after the first pass.
+    fn merge_estep(&mut self, other: &Self)
+    where
+        Self: Sized;
+
+    /// Merge the first-pass accumulation state from `other` into `self`.
+    ///
+    /// Only meaningful for two-pass models; the default no-op is correct for
+    /// all single-pass models. After all partial first-pass results are merged
+    /// in, `finalize_first_pass_estep` is called on `self`.
+    fn merge_first_pass_estep(&mut self, _other: &Self)
+    where
+        Self: Sized,
+    {
+    }
 }
 
 /// Factory for creating initial EM models.
@@ -198,31 +221,43 @@ where
 }
 
 fn recompute_models_soft<N, A, Mo>(
-    data: &A, probs: &[N], models: &mut [Mo], prior: N, scratch: &mut [N],
+    data: &A, probs: &[N], models: &mut [Mo], prior: N,
 ) -> Result<(), String>
 where
     N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    A: Dataset<N>,
-    Mo: EmModel<N>,
+    A: Dataset<N> + Sync,
+    Mo: EmModel<N> + Clone + Send + Sync,
 {
     let (n, d) = (data.nrows(), data.ncols());
     let k = models.len();
+    let needs_two_pass = models.iter().any(|m| m.needs_two_pass());
 
-    let mut needs_two_pass = false;
     for model in models.iter_mut() {
         model.begin_estep();
-        needs_two_pass |= model.needs_two_pass();
     }
 
     if needs_two_pass {
-        for i in 0..n {
-            crate::check_interrupted()?;
-            data.load_into(i, scratch, d);
-            for j in 0..k {
-                let p = probs[i * k + j];
-                if p > N::from(1e-10).unwrap() {
-                    models[j].first_pass_estep(scratch, p);
+        // Parallel first pass: each thread clones the zero-state models and
+        // accumulates first-pass statistics (unnormalized weighted mean sums).
+        let first_pass: Vec<Vec<Mo>> =
+            par_row_chunks_try_map(probs, k, |row_start, probs_chunk| {
+                let chunk_rows = probs_chunk.len() / k;
+                let mut local: Vec<Mo> = models.iter().cloned().collect();
+                let mut sc = vec![N::zero(); d];
+                for ri in 0..chunk_rows {
+                    data.load_into(row_start + ri, &mut sc, d);
+                    for j in 0..k {
+                        let p = probs_chunk[ri * k + j];
+                        if p > N::from(1e-10).unwrap() {
+                            local[j].first_pass_estep(&sc, p);
+                        }
+                    }
                 }
+                Ok(local)
+            })?;
+        for partial in first_pass {
+            for j in 0..k {
+                models[j].merge_first_pass_estep(&partial[j]);
             }
         }
         for model in models.iter_mut() {
@@ -230,16 +265,33 @@ where
         }
     }
 
-    // accumulate weights; use math backend to clear the buffer
+    // Parallel main update pass: each thread clones the current model state
+    // (zero for single-pass models; finalized-first-pass state for two-pass
+    // models) and accumulates per-chunk update statistics.
+    let update: Vec<(Vec<Mo>, Vec<N>)> =
+        par_row_chunks_try_map(probs, k, |row_start, probs_chunk| {
+            let chunk_rows = probs_chunk.len() / k;
+            let mut local: Vec<Mo> = models.iter().cloned().collect();
+            let mut partial_wsum = vec![N::zero(); k];
+            let mut sc = vec![N::zero(); d];
+            for ri in 0..chunk_rows {
+                data.load_into(row_start + ri, &mut sc, d);
+                for j in 0..k {
+                    let p = probs_chunk[ri * k + j];
+                    local[j].update_estep(&sc, p);
+                    partial_wsum[j] += p;
+                }
+            }
+            Ok((local, partial_wsum))
+        })?;
+
+    // Merge partial results: single-pass models use Chan's parallel algorithm
+    // inside merge_estep; two-pass models add only the second-pass accumulator.
     let mut wsum = vec![N::zero(); k];
-    math::fill(&mut wsum, N::zero(), k);
-    for i in 0..n {
-        crate::check_interrupted()?;
-        data.load_into(i, scratch, d);
+    for (partial_models, partial_wsum) in update {
         for j in 0..k {
-            let p = probs[i * k + j];
-            models[j].update_estep(scratch, p);
-            wsum[j] += p;
+            models[j].merge_estep(&partial_models[j]);
+            wsum[j] += partial_wsum[j];
         }
     }
 
@@ -258,58 +310,76 @@ where
 
 fn recompute_models_hard<N, A, Mo>(
     data: &A, probs: &[N], noise_probs: Option<&[N]>, models: &mut [Mo], prior: N,
-    scratch: &mut [N],
 ) -> Result<(), String>
 where
     N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
-    A: Dataset<N>,
-    Mo: EmModel<N>,
+    A: Dataset<N> + Sync,
+    Mo: EmModel<N> + Clone + Send + Sync,
 {
     let (n, d) = (data.nrows(), data.ncols());
     let k = models.len();
+    let needs_two_pass = models.iter().any(|m| m.needs_two_pass());
 
-    let mut needs_two_pass = false;
     for model in models.iter_mut() {
         model.begin_estep();
-        needs_two_pass |= model.needs_two_pass();
     }
 
     if needs_two_pass {
-        for i in 0..n {
-            crate::check_interrupted()?;
-            data.load_into(i, scratch, d);
-            let slice = &probs[i * k..(i + 1) * k];
-            let best = argmax(slice);
-            if let Some(noise) = noise_probs
-                && noise[i] > slice[best]
-            {
-                continue;
+        let first_pass: Vec<Vec<Mo>> =
+            par_row_chunks_try_map(probs, k, |row_start, probs_chunk| {
+                let chunk_rows = probs_chunk.len() / k;
+                let mut local: Vec<Mo> = models.iter().cloned().collect();
+                let mut sc = vec![N::zero(); d];
+                for ri in 0..chunk_rows {
+                    data.load_into(row_start + ri, &mut sc, d);
+                    let slice = &probs_chunk[ri * k..(ri + 1) * k];
+                    let best = argmax(slice);
+                    if let Some(noise) = noise_probs {
+                        if noise[row_start + ri] > slice[best] {
+                            continue;
+                        }
+                    }
+                    local[best].first_pass_estep(&sc, N::one());
+                }
+                Ok(local)
+            })?;
+        for partial in first_pass {
+            for j in 0..k {
+                models[j].merge_first_pass_estep(&partial[j]);
             }
-            models[best].first_pass_estep(scratch, N::one());
         }
         for model in models.iter_mut() {
             model.finalize_first_pass_estep();
         }
     }
 
-    // accumulate weights; we could reuse an existing buffer and clear
-    // it with the math kernel's `fill` helper, demonstrating how EM
-    // algorithms can lean on `Math` for basic vector operations.
-    // e.g. Math::<N>::fill(&mut wsum, N::zero(), k);
+    let update: Vec<(Vec<Mo>, Vec<N>)> =
+        par_row_chunks_try_map(probs, k, |row_start, probs_chunk| {
+            let chunk_rows = probs_chunk.len() / k;
+            let mut local: Vec<Mo> = models.iter().cloned().collect();
+            let mut partial_wsum = vec![N::zero(); k];
+            let mut sc = vec![N::zero(); d];
+            for ri in 0..chunk_rows {
+                data.load_into(row_start + ri, &mut sc, d);
+                let slice = &probs_chunk[ri * k..(ri + 1) * k];
+                let best = argmax(slice);
+                if let Some(noise) = noise_probs {
+                    if noise[row_start + ri] > slice[best] {
+                        continue;
+                    }
+                }
+                local[best].update_estep(&sc, N::one());
+                partial_wsum[best] += N::one();
+            }
+            Ok((local, partial_wsum))
+        })?;
+
     let mut wsum = vec![N::zero(); k];
-    math::fill(&mut wsum, N::zero(), k);
-    for i in 0..n {
-        crate::check_interrupted()?;
-        data.load_into(i, scratch, d);
-        let slice = &probs[i * k..(i + 1) * k];
-        let best = argmax(slice);
-        if let Some(noise) = noise_probs
-            && noise[i] > slice[best]
-        {
-            continue;
+    for (partial_models, partial_wsum) in update {
+        for j in 0..k {
+            models[j].merge_estep(&partial_models[j]);
+            wsum[j] += partial_wsum[j];
         }
-        models[best].update_estep(scratch, N::one());
-        wsum[best] += N::one();
     }
 
     let nf = N::from(n).unwrap();
@@ -332,16 +402,14 @@ pub fn expectation_maximization<N, A, Mo>(
 where
     N: Float + Copy + AddAssign + SubAssign + MulAssign + Sum,
     A: Dataset<N> + Sync,
-    Mo: EmModel<N> + Sync,
+    Mo: EmModel<N> + Clone + Send + Sync,
 {
     assert!(k > 0, "k must be positive");
     assert!(data.nrows() > 0, "dataset must not be empty");
     assert!(data.ncols() > 0, "dataset dimensionality must be positive");
 
-    let (n, d) = (data.nrows(), data.ncols());
+    let n = data.nrows();
     assert_eq!(models.len(), k, "wrong number of initial models");
-
-    let mut scratch = vec![N::zero(); d];
     let mut probs = vec![N::zero(); n * k];
     let mut noise_probs =
         if config.noise_ratio > N::zero() { Some(vec![N::zero(); n]) } else { None };
@@ -374,7 +442,6 @@ where
                 noise_probs.as_deref(),
                 &mut models,
                 config.prior,
-                &mut scratch,
             )?;
         } else {
             recompute_models_soft::<N, A, Mo>(
@@ -382,7 +449,6 @@ where
                 &probs,
                 &mut models,
                 config.prior,
-                &mut scratch,
             )?;
         }
 

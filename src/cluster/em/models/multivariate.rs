@@ -160,6 +160,33 @@ where
         self.weight = weight.max(N::epsilon());
         self.refresh_cholesky();
     }
+
+    /// Chan's parallel algorithm for the lower-triangular Welford covariance.
+    fn merge_estep(&mut self, other: &Self)
+    where
+        Self: Sized,
+    {
+        let wa = self.wsum;
+        let wb = other.wsum;
+        let wab = wa + wb;
+        if wab <= N::zero() {
+            return;
+        }
+        let scale = wa * wb / wab;
+        let dim = self.mean.len();
+        let mut delta = vec![N::zero(); dim];
+        for i in 0..dim {
+            delta[i] = other.mean[i] - self.mean[i];
+            self.mean[i] = (wa * self.mean[i] + wb * other.mean[i]) / wab;
+        }
+        for i in 0..dim {
+            for j in 0..=i {
+                let idx = i * dim + j;
+                self.covariance[idx] += other.covariance[idx] + delta[i] * delta[j] * scale;
+            }
+        }
+        self.wsum = wab;
+    }
 }
 
 /// Factory for multivariate Gaussian mixture models.

@@ -35,6 +35,30 @@ pub(super) fn result_to_py_f64<'py>(
     Ok(result.into())
 }
 
+pub(super) fn tkmeans_result_to_py_f32<'py>(
+    py: Python<'py>, res: cluster::kmeans::util::KMeansResult<f32>,
+) -> PyResult<Py<PyAny>> {
+    let centers = PyArray2::from_owned_array(py, res.centers);
+    let assignments = res.assignments.into_iter().map(|v| v as i64).collect::<Vec<_>>();
+    let assignments = PyArray1::from_vec(py, assignments);
+    let noise_mask = res.noise_mask.map(|m| PyArray1::from_vec(py, m));
+    let result = (centers, assignments, res.iterations, res.inertia, res.inertia_bound, noise_mask)
+        .into_pyobject(py)?;
+    Ok(result.into())
+}
+
+pub(super) fn tkmeans_result_to_py_f64<'py>(
+    py: Python<'py>, res: cluster::kmeans::util::KMeansResult<f64>,
+) -> PyResult<Py<PyAny>> {
+    let centers = PyArray2::from_owned_array(py, res.centers);
+    let assignments = res.assignments.into_iter().map(|v| v as i64).collect::<Vec<_>>();
+    let assignments = PyArray1::from_vec(py, assignments);
+    let noise_mask = res.noise_mask.map(|m| PyArray1::from_vec(py, m));
+    let result = (centers, assignments, res.iterations, res.inertia, res.inertia_bound, noise_mask)
+        .into_pyobject(py)?;
+    Ok(result.into())
+}
+
 /// Shared parameters for all k-means variants.
 ///
 /// Not all variants use every field: `steps`, if exposed, is algorithm-specific and passed
@@ -376,8 +400,8 @@ variant_call_steps!(kgeometric_sh_f32, kgeometric_sh, f32, result_to_py_f32);
 variant_call_steps!(kgeometric_sh_f64, kgeometric_sh, f64, result_to_py_f64);
 variant_call_p!(kharmonic_f32, kharmonic, f32, result_to_py_f32);
 variant_call_p!(kharmonic_f64, kharmonic, f64, result_to_py_f64);
-variant_call_alpha!(tkmeans_f32, tkmeans, f32, result_to_py_f32);
-variant_call_alpha!(tkmeans_f64, tkmeans, f64, result_to_py_f64);
+variant_call_alpha!(tkmeans_f32, tkmeans, f32, tkmeans_result_to_py_f32);
+variant_call_alpha!(tkmeans_f64, tkmeans, f64, tkmeans_result_to_py_f64);
 variant_call!(lloyd_blas_f32, lloyd_blas, f32, result_to_py_f32);
 variant_call!(lloyd_blas_f64, lloyd_blas, f64, result_to_py_f64);
 variant_call!(lloyd_naive_f32, lloyd_naive, f32, result_to_py_f32);

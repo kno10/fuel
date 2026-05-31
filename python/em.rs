@@ -39,7 +39,7 @@ fn run_em_model<'py, N, D, Mo, F, C>(
 where
     N: Float + Element + Copy + AddAssign + SubAssign + MulAssign + Sum,
     D: crate::VectorData<N> + Sync,
-    Mo: cluster::em::EmModel<N> + Send + Sync,
+    Mo: cluster::em::EmModel<N> + Clone + Send + Sync,
     F: FnOnce(cluster::kmeans::init::RandomSample<N, Pcg32>, &D) -> Vec<Mo>,
     C: FnOnce(Python<'py>, cluster::em::EmResult<N, Mo>) -> PyResult<Py<PyAny>>,
 {

@@ -124,6 +124,32 @@ impl<N: Float> EmModel<N> for DiagonalGaussianModel<N> {
         self.weight = weight.max(N::epsilon());
         self.update_log_norm_det();
     }
+
+    /// Merge the parallel partial accumulation state from `other` using
+    /// Chan's parallel algorithm for weighted Welford variance.
+    ///
+    /// Both `self` and `other` must be in an accumulation state produced by
+    /// zero or more `update_estep` calls after `begin_estep`. After merging,
+    /// `self` holds the combined state as if all data points had been
+    /// processed in a single sequential run.
+    fn merge_estep(&mut self, other: &Self)
+    where
+        Self: Sized,
+    {
+        let wa = self.wsum;
+        let wb = other.wsum;
+        let wab = wa + wb;
+        if wab <= N::zero() {
+            return;
+        }
+        let scale = wa * wb / wab;
+        for j in 0..self.mean.len() {
+            let delta = other.mean[j] - self.mean[j];
+            self.variance[j] += other.variance[j] + delta * delta * scale;
+            self.mean[j] = (wa * self.mean[j] + wb * other.mean[j]) / wab;
+        }
+        self.wsum = wab;
+    }
 }
 
 /// Factory for diagonal Gaussian mixture models.
