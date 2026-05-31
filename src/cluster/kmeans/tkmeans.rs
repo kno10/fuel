@@ -4,7 +4,7 @@ use std::ops::*;
 
 use crate::cluster::kmeans::init::*;
 use crate::cluster::kmeans::util::*;
-use crate::{Float, VectorData as Dataset, math};
+use crate::{Float, ParChunksMut, VectorData as Dataset, math};
 
 /// Truncated k-means (t-kmeans) clustering aka k-means--.
 ///
@@ -25,13 +25,12 @@ pub fn tkmeans<N, I, A>(
 where
     N: Float + AddAssign + SubAssign + MulAssign + Sum + Copy + std::fmt::Display,
     I: Initialization<N>,
-    A: Dataset<N>,
+    A: Dataset<N> + Sync,
 {
     assert!(k > 0);
     let alpha = if alpha < 0.0 { 0.0 } else { alpha }; // negative values treated as 0
 
     let (n, d) = (data.nrows(), data.ncols());
-    let mut scratch = vec![N::zero(); d];
     let mut cent = Centers::<N>::new(k, d);
 
     // Initialize cluster centers
@@ -68,22 +67,38 @@ where
     loop {
         iter += 1;
 
-        // Assign points to nearest center and record squared distances
-        for i in 0..n {
-            data.load_into(i, &mut scratch, d);
-            let mut best = 0;
-            let mut best_d = math::sqdist(cent.center(0), &scratch, d);
-            for j in 1..k {
-                let tmp = math::sqdist(cent.center(j), &scratch, d);
-                if tmp < best_d {
-                    (best, best_d) = (j, tmp);
+        // Parallel E-step: assign each point to its nearest center and record
+        // the squared distance.  Returns one Vec<N> of distances per thread chunk.
+        let dist_chunks: Vec<Vec<N>> =
+            assign.as_mut_slice().par_chunks_map_mut(|i0, assign_chunk| {
+                let mut dist_chunk = vec![N::zero(); assign_chunk.len()];
+                let mut point = vec![N::zero(); d];
+                for (ci, aa) in assign_chunk.iter_mut().enumerate() {
+                    let i = i0 + ci;
+                    data.load_into(i, &mut point, d);
+                    let mut best = 0;
+                    let mut best_d = math::sqdist(cent.center(0), &point, d);
+                    for j in 1..k {
+                        let tmp = math::sqdist(cent.center(j), &point, d);
+                        if tmp < best_d {
+                            (best, best_d) = (j, tmp);
+                        }
+                    }
+                    *aa = best;
+                    dist_chunk[ci] = best_d;
                 }
+                dist_chunk
+            });
+        {
+            let mut offset = 0;
+            for chunk in dist_chunks {
+                dist[offset..offset + chunk.len()].copy_from_slice(&chunk);
+                offset += chunk.len();
             }
-            assign[i] = best;
-            dist[i] = best_d;
         }
+        crate::check_interrupted()?;
 
-        // Determine which points are kept (not trimmed)
+        // Determine which points are kept (not trimmed) -- sequential global sort
         select_keep(&dist, keep, &mut kept);
 
         // Convergence check: if both assignments and trim mask did not change,
@@ -100,23 +115,35 @@ where
         let old_cent = cent.clone();
         let old_norm = if tol > N::zero() { cent.frobenius_norm() } else { N::zero() };
 
-        // Compute new centers using only kept points.
-        // Reset accumulators from previous iterations.
+        // Parallel M-step: sum contributions from kept points per thread chunk.
+        let deltas: Vec<(Vec<usize>, Vec<N>)> =
+            assign.as_mut_slice().par_chunks_map_mut(|i0, assign_chunk| {
+                let mut delta_counts = vec![0usize; k];
+                let mut delta_sums = vec![N::zero(); k * d];
+                let mut point = vec![N::zero(); d];
+                for (ci, &a) in assign_chunk.iter().enumerate() {
+                    let i = i0 + ci;
+                    if !kept[i] {
+                        continue;
+                    }
+                    delta_counts[a] += 1;
+                    data.load_into(i, &mut point, d);
+                    math::add_assign(&mut delta_sums[a * d..a * d + d], &point, d);
+                }
+                (delta_counts, delta_sums)
+            });
+
         counts.fill(0);
         for j in 0..k {
             for v in sums.center_mut(j).iter_mut() {
                 *v = N::zero();
             }
         }
-
-        for i in 0..n {
-            if !kept[i] {
-                continue;
+        for (dc, ds) in deltas {
+            for j in 0..k {
+                counts[j] += dc[j];
+                math::add_assign(sums.center_mut(j), &ds[j * d..j * d + d], d);
             }
-            let a = assign[i];
-            counts[a] += 1;
-            data.load_into(i, &mut scratch, d);
-            math::add_assign(sums.center_mut(a), &scratch, d);
         }
 
         for (j, &count) in counts.iter().enumerate() {
