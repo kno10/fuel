@@ -1,4 +1,4 @@
-use super::helpers::{BasicDistanceStats, NoiseHandling, build_clusters, centroid, euc};
+use super::helpers::{BasicDistanceStats, NoiseHandling, centroid, euc, group_by_label};
 
 /// Compute sum-of-squared errors and related statistics for clustering.
 #[must_use]
@@ -10,20 +10,20 @@ pub fn squared_errors(
         return BasicDistanceStats { mean: 0.0, sum_of_squares: 0.0, rmsd: 0.0 };
     }
 
-    let (clusters, ignored) = build_clusters(labels, noise_label, nh);
+    let (clusters, ignored) = group_by_label(labels, noise_label, nh);
     let mut sum = 0.0;
     let mut ssq = 0.0;
 
-    for cluster in clusters {
-        if cluster.members.len() <= 1 || cluster.is_noise {
+    for (members, is_noise) in &clusters {
+        if members.len() <= 1 || *is_noise {
             match nh {
                 NoiseHandling::IgnoreNoise => continue,
                 NoiseHandling::TreatNoiseAsSingletons => continue,
                 NoiseHandling::MergeNoise => {}
             }
         }
-        let c = centroid(data, &cluster.members);
-        for &i in &cluster.members {
+        let c = centroid(data, members);
+        for &i in members {
             let d = euc(&c, &data[i]);
             sum += d;
             ssq += d * d;

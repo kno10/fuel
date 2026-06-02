@@ -1,4 +1,4 @@
-use super::helpers::{NoiseHandling, build_clusters, cluster_centroids, euc};
+use super::helpers::{NoiseHandling, cluster_centroids, euc, group_by_label};
 
 /// Pakhira-Bandyopadhyay-Maulik (PBM) index.
 #[must_use]
@@ -9,7 +9,7 @@ pub fn pbm_index(
     if data.is_empty() {
         return 0.0;
     }
-    let (clusters, _) = build_clusters(labels, noise_label, nh);
+    let (clusters, _) = group_by_label(labels, noise_label, nh);
     if clusters.is_empty() {
         return 0.0;
     }
@@ -38,18 +38,18 @@ pub fn pbm_index(
             match (&centroids[i], &centroids[j]) {
                 (Some(ci), Some(cj)) => maxd = maxd.max(euc(ci, cj)),
                 (None, Some(cj)) => {
-                    for &m in &clusters[i].members {
+                    for &m in &clusters[i].0 {
                         maxd = maxd.max(euc(&data[m], cj));
                     }
                 }
                 (Some(ci), None) => {
-                    for &m in &clusters[j].members {
+                    for &m in &clusters[j].0 {
                         maxd = maxd.max(euc(ci, &data[m]));
                     }
                 }
                 (None, None) => {
-                    for &a in &clusters[i].members {
-                        for &b in &clusters[j].members {
+                    for &a in &clusters[i].0 {
+                        for &b in &clusters[j].0 {
                             maxd = maxd.max(euc(&data[a], &data[b]));
                         }
                     }
@@ -62,25 +62,25 @@ pub fn pbm_index(
     let mut b = 0.0;
     let mut n_cl = clusters.len() as f64;
 
-    for (i, cl) in clusters.iter().enumerate() {
-        if cl.members.len() <= 1 || cl.is_noise {
+    for (i, (members, is_noise)) in clusters.iter().enumerate() {
+        if members.len() <= 1 || *is_noise {
             match nh {
                 NoiseHandling::IgnoreNoise => {
                     n_cl -= 1.0;
                     continue;
                 }
                 NoiseHandling::TreatNoiseAsSingletons => {
-                    for &m in &cl.members {
+                    for &m in members {
                         b += euc(&overall, &data[m]);
                     }
-                    n_cl += cl.members.len() as f64 - 1.0;
+                    n_cl += members.len() as f64 - 1.0;
                     continue;
                 }
                 NoiseHandling::MergeNoise => {}
             }
         }
         if let Some(c) = &centroids[i] {
-            for &m in &cl.members {
+            for &m in members {
                 a += euc(c, &data[m]);
                 b += euc(&overall, &data[m]);
             }

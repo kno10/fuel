@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use super::helpers::{NoiseHandling, build_clusters, euc};
+use super::helpers::{NoiseHandling, count_labels, euc};
 
 /// C-index measure for clustering compactness.
 #[must_use]
@@ -8,46 +8,50 @@ pub fn c_index(
     data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>, nh: NoiseHandling,
 ) -> f64 {
     assert_eq!(data.len(), labels.len());
-    let (clusters, _) = build_clusters(labels, noise_label, nh);
+    let n = data.len();
+
+    // Under IgnoreNoise, singleton non-noise clusters are also excluded (matching the
+    // original cluster-loop behaviour where size-1 clusters were skipped).
+    let label_count =
+        if nh == NoiseHandling::IgnoreNoise { count_labels(labels) } else { Default::default() };
+
+    let is_noise = |l: isize| noise_label == Some(l);
+    let excluded = |l: isize| -> bool {
+        nh == NoiseHandling::IgnoreNoise
+            && (is_noise(l) || label_count.get(&l).copied().unwrap_or(0) <= 1)
+    };
+    // Under TreatNoiseAsSingletons every noise point is its own cluster of size 1,
+    // so two noise points with the same label are NOT in the same cluster.
+    let same_cluster = |la: isize, lb: isize| -> bool {
+        la == lb && !(is_noise(la) && nh == NoiseHandling::TreatNoiseAsSingletons)
+    };
 
     let mut w = 0usize;
     let mut theta = 0.0;
-    for cl in &clusters {
-        if (cl.members.len() <= 1 || cl.is_noise) && nh == NoiseHandling::IgnoreNoise {
+    let mut dists = Vec::new();
+
+    for i in 0..n {
+        if excluded(labels[i]) {
             continue;
         }
-        w += cl.members.len() * cl.members.len().saturating_sub(1) / 2;
-        for i in 0..cl.members.len() {
-            for j in (i + 1)..cl.members.len() {
-                theta += euc(&data[cl.members[i]], &data[cl.members[j]]);
+        for j in (i + 1)..n {
+            if excluded(labels[j]) {
+                continue;
+            }
+            let d = euc(&data[i], &data[j]);
+            dists.push(d);
+            if same_cluster(labels[i], labels[j]) {
+                w += 1;
+                theta += d;
             }
         }
     }
-    if w == 0 {
+
+    if w == 0 || dists.is_empty() {
         return 1.0;
     }
 
-    let mut considered = Vec::new();
-    for cl in &clusters {
-        if (cl.members.len() <= 1 || cl.is_noise) && nh == NoiseHandling::IgnoreNoise {
-            continue;
-        }
-        considered.extend_from_slice(&cl.members);
-    }
-    considered.sort_unstable();
-    considered.dedup();
-
-    let mut dists = Vec::new();
-    for i in 0..considered.len() {
-        for j in (i + 1)..considered.len() {
-            dists.push(euc(&data[considered[i]], &data[considered[j]]));
-        }
-    }
-    if dists.is_empty() {
-        return 1.0;
-    }
     dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
-
     let min = dists.iter().take(w).sum::<f64>();
     let max = dists.iter().rev().take(w).sum::<f64>();
     if max > min { (theta - min) / (max - min) } else { 1.0 }

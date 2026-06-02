@@ -1,4 +1,4 @@
-use super::helpers::{NoiseHandling, build_clusters, cluster_centroids, sq_euc};
+use super::helpers::{NoiseHandling, cluster_centroids, group_by_label, sq_euc};
 
 /// Variance ratio criterion (Calinski-Harabasz index).
 #[must_use]
@@ -11,7 +11,7 @@ pub fn variance_ratio_criterion(
     if n <= 1 {
         return 0.0;
     }
-    let (clusters, ignored) = build_clusters(labels, noise_label, nh);
+    let (clusters, ignored) = group_by_label(labels, noise_label, nh);
     if clusters.len() <= 1 {
         return 0.0;
     }
@@ -22,18 +22,18 @@ pub fn variance_ratio_criterion(
     let mut overall_count = 0usize;
     let mut clustercount = 0usize;
 
-    for (i, cl) in clusters.iter().enumerate() {
-        if cl.members.len() <= 1 || cl.is_noise {
+    for (i, (members, is_noise)) in clusters.iter().enumerate() {
+        if members.len() <= 1 || *is_noise {
             match nh {
                 NoiseHandling::IgnoreNoise => continue,
                 NoiseHandling::TreatNoiseAsSingletons => {
-                    clustercount += cl.members.len();
-                    for &p in &cl.members {
+                    clustercount += members.len();
+                    for &p in members {
                         for (d, val) in data[p].iter().enumerate() {
                             overall[d] += *val;
                         }
                     }
-                    overall_count += cl.members.len();
+                    overall_count += members.len();
                     continue;
                 }
                 NoiseHandling::MergeNoise => {}
@@ -42,9 +42,9 @@ pub fn variance_ratio_criterion(
         if let Some(c) = &centroids[i] {
             clustercount += 1;
             for d in 0..dim {
-                overall[d] += c[d] * cl.members.len() as f64;
+                overall[d] += c[d] * members.len() as f64;
             }
-            overall_count += cl.members.len();
+            overall_count += members.len();
         }
     }
 
@@ -58,12 +58,12 @@ pub fn variance_ratio_criterion(
     let mut a = 0.0;
     let mut b = 0.0;
 
-    for (i, cl) in clusters.iter().enumerate() {
-        if cl.members.len() <= 1 || cl.is_noise {
+    for (i, (members, is_noise)) in clusters.iter().enumerate() {
+        if members.len() <= 1 || *is_noise {
             match nh {
                 NoiseHandling::IgnoreNoise => continue,
                 NoiseHandling::TreatNoiseAsSingletons => {
-                    for &p in &cl.members {
+                    for &p in members {
                         b += sq_euc(&overall, &data[p]);
                     }
                     continue;
@@ -72,7 +72,7 @@ pub fn variance_ratio_criterion(
             }
         }
         let c = centroids[i].as_ref().expect("centroid required");
-        for &p in &cl.members {
+        for &p in members {
             a += sq_euc(c, &data[p]);
             b += sq_euc(&overall, &data[p]);
         }

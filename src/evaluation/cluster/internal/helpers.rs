@@ -12,13 +12,6 @@ pub enum NoiseHandling {
     IgnoreNoise,
 }
 
-/// Internal representation of a cluster built from a label vector.
-#[derive(Clone, Debug)]
-pub struct Cluster {
-    pub members: Vec<usize>,
-    pub is_noise: bool,
-}
-
 /// Result returned by [`squared_errors`](super::squared_errors).
 #[derive(Debug, Clone, Copy)]
 pub struct BasicDistanceStats<F: Float> {
@@ -99,15 +92,27 @@ pub fn centroid(data: &[Vec<f64>], members: &[usize]) -> Vec<f64> {
     c
 }
 
-pub fn build_clusters(
+/// Count the number of occurrences of each label.
+pub fn count_labels(labels: &[isize]) -> std::collections::BTreeMap<isize, usize> {
+    let mut m = std::collections::BTreeMap::new();
+    for &l in labels {
+        *m.entry(l).or_insert(0) += 1;
+    }
+    m
+}
+
+/// Group a label array into `(members, is_noise)` pairs, applying `nh` for the
+/// noise label.  The returned `usize` is the number of points that were ignored
+/// (only non-zero when `nh == NoiseHandling::IgnoreNoise`).
+pub fn group_by_label(
     labels: &[isize], noise_label: Option<isize>, nh: NoiseHandling,
-) -> (Vec<Cluster>, usize) {
+) -> (Vec<(Vec<usize>, bool)>, usize) {
     let mut map: std::collections::BTreeMap<isize, Vec<usize>> = std::collections::BTreeMap::new();
     for (i, &l) in labels.iter().enumerate() {
         map.entry(l).or_default().push(i);
     }
 
-    let mut clusters = Vec::new();
+    let mut clusters: Vec<(Vec<usize>, bool)> = Vec::new();
     let mut ignored = 0usize;
 
     for (label, members) in map {
@@ -120,32 +125,32 @@ pub fn build_clusters(
                 }
                 NoiseHandling::TreatNoiseAsSingletons => {
                     for idx in members {
-                        clusters.push(Cluster { members: vec![idx], is_noise: true });
+                        clusters.push((vec![idx], true));
                     }
                     continue;
                 }
                 NoiseHandling::MergeNoise => {}
             }
         }
-        clusters.push(Cluster { members, is_noise });
+        clusters.push((members, is_noise));
     }
 
     (clusters, ignored)
 }
 
 pub fn cluster_centroids(
-    data: &[Vec<f64>], clusters: &[Cluster], nh: NoiseHandling,
+    data: &[Vec<f64>], clusters: &[(Vec<usize>, bool)], nh: NoiseHandling,
 ) -> Vec<Option<Vec<f64>>> {
     clusters
         .iter()
-        .map(|cl| {
-            if cl.members.len() <= 1 || cl.is_noise {
+        .map(|(members, is_noise)| {
+            if members.len() <= 1 || *is_noise {
                 match nh {
                     NoiseHandling::IgnoreNoise => None,
                     NoiseHandling::TreatNoiseAsSingletons | NoiseHandling::MergeNoise => None,
                 }
             } else {
-                Some(centroid(data, &cl.members))
+                Some(centroid(data, members))
             }
         })
         .collect()

@@ -1,6 +1,6 @@
 #![allow(clippy::cast_precision_loss, clippy::too_many_lines)]
 
-use super::helpers::{NoiseHandling, build_clusters, euc, prim_mst_dense};
+use super::helpers::{NoiseHandling, euc, group_by_label, prim_mst_dense};
 
 /// Density-based cluster validity (DBCV) index.
 #[must_use]
@@ -10,20 +10,20 @@ pub fn dbcv(data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>) -> 
         return 0.0;
     }
 
-    let (clusters, _) = build_clusters(labels, noise_label, NoiseHandling::MergeNoise);
+    let (clusters, _) = group_by_label(labels, noise_label, NoiseHandling::MergeNoise);
     let dim = data[0].len() as f64;
     let numc = clusters.len();
 
     let mut core_dists: Vec<Option<Vec<f64>>> = vec![None; numc];
-    for (c, cl) in clusters.iter().enumerate() {
-        if cl.is_noise || cl.members.len() < 2 {
+    for (c, (members, is_noise)) in clusters.iter().enumerate() {
+        if *is_noise || members.len() < 2 {
             continue;
         }
-        let mut d = vec![0.0; cl.members.len()];
-        for (i, &p) in cl.members.iter().enumerate() {
+        let mut d = vec![0.0; members.len()];
+        for (i, &p) in members.iter().enumerate() {
             let mut sum = 0.0;
             let mut neighbors = 0usize;
-            for &q in &cl.members {
+            for &q in members {
                 if p == q {
                     continue;
                 }
@@ -47,23 +47,23 @@ pub fn dbcv(data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>) -> 
     let mut internal_edges = vec![false; numc];
 
     for c in 0..numc {
-        let cl = &clusters[c];
-        if cl.is_noise || cl.members.len() < 2 {
+        let (members, is_noise) = &clusters[c];
+        if *is_noise || members.len() < 2 {
             continue;
         }
         let core = core_dists[c].as_ref().expect("core distances present");
-        let mut matrix = vec![vec![0.0; cl.members.len()]; cl.members.len()];
+        let mut matrix = vec![vec![0.0; members.len()]; members.len()];
 
-        for i in 0..cl.members.len() {
-            for j in (i + 1)..cl.members.len() {
-                let mr = core[i].max(core[j]).max(euc(&data[cl.members[i]], &data[cl.members[j]]));
+        for i in 0..members.len() {
+            for j in (i + 1)..members.len() {
+                let mr = core[i].max(core[j]).max(euc(&data[members[i]], &data[members[j]]));
                 matrix[i][j] = mr;
                 matrix[j][i] = mr;
             }
         }
 
         let edges = prim_mst_dense(&matrix);
-        let mut deg = vec![0usize; cl.members.len()];
+        let mut deg = vec![0usize; members.len()];
         for &(a, b) in &edges {
             deg[a] += 1;
             deg[b] += 1;
@@ -86,8 +86,8 @@ pub fn dbcv(data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>) -> 
 
     let mut dbcv_sum = 0.0;
     for c in 0..numc {
-        let cl = &clusters[c];
-        if cl.is_noise || cl.members.len() < 2 {
+        let (members, is_noise) = &clusters[c];
+        if *is_noise || members.len() < 2 {
             continue;
         }
         let current_dsc = cluster_dsc_max[c];
@@ -95,23 +95,23 @@ pub fn dbcv(data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>) -> 
         let deg = cluster_degrees[c].as_ref().expect("degrees present");
 
         let mut dspc_min = f64::INFINITY;
-        for (i, &p) in cl.members.iter().enumerate() {
-            if deg[i] < 2 && cl.members.len() > 2 {
+        for (i, &p) in members.iter().enumerate() {
+            if deg[i] < 2 && members.len() > 2 {
                 continue;
             }
             for oc in 0..numc {
                 if oc == c {
                     continue;
                 }
-                let ocl = &clusters[oc];
-                if ocl.is_noise || ocl.members.len() < 2 {
+                let (omembers, ois_noise) = &clusters[oc];
+                if *ois_noise || omembers.len() < 2 {
                     continue;
                 }
                 let ocore = core_dists[oc].as_ref().expect("core distances present");
                 let odeg = cluster_degrees[oc].as_ref().expect("degrees present");
 
-                for (j, &q) in ocl.members.iter().enumerate() {
-                    if odeg[j] < 2 && cl.members.len() > 2 {
+                for (j, &q) in omembers.iter().enumerate() {
+                    if odeg[j] < 2 && members.len() > 2 {
                         continue;
                     }
                     let mr = core[i].max(ocore[j]).max(euc(&data[p], &data[q]));
@@ -121,7 +121,7 @@ pub fn dbcv(data: &[Vec<f64>], labels: &[isize], noise_label: Option<isize>) -> 
         }
 
         let vc = (dspc_min - current_dsc) / dspc_min.max(current_dsc);
-        dbcv_sum += cl.members.len() as f64 / data.len() as f64 * vc;
+        dbcv_sum += members.len() as f64 / data.len() as f64 * vc;
     }
 
     dbcv_sum

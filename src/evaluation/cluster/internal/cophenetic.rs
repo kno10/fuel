@@ -1,5 +1,5 @@
-use crate::Float;
 use crate::cluster::hierarchical::MergeHistory;
+use crate::{Float, ParMap};
 
 /// Compute pairwise cophenetic distances from a dendrogram.
 ///
@@ -77,18 +77,36 @@ fn pearson_correlation(x: &[f64], y: &[f64]) -> f64 {
     if len == 0 {
         return 1.0;
     }
+
+    let (sum_x, sum_y) = (0..len)
+        .par_map(|i| {
+            let xi = x[i];
+            let yi = y[i];
+            (xi, yi)
+        })
+        .into_iter()
+        .fold((0.0, 0.0), |(sx, sy), (xi, yi)| (sx + xi, sy + yi));
+
     let nf = len as f64;
-    let sum_x: f64 = x.iter().sum();
-    let sum_y: f64 = y.iter().sum();
-    let sum_xy: f64 = x.iter().zip(y.iter()).map(|(&a, &b)| a * b).sum();
-    let sum_x2: f64 = x.iter().map(|&a| a * a).sum();
-    let sum_y2: f64 = y.iter().map(|&b| b * b).sum();
-    let numerator = nf * sum_xy - sum_x * sum_y;
-    let denom_sq = (nf * sum_x2 - sum_x * sum_x) * (nf * sum_y2 - sum_y * sum_y);
+    let mean_x = sum_x / nf;
+    let mean_y = sum_y / nf;
+
+    let (sum_xy, sum_x2, sum_y2) = (0..len)
+        .par_map(|i| {
+            let dx = x[i] - mean_x;
+            let dy = y[i] - mean_y;
+            (dx * dy, dx * dx, dy * dy)
+        })
+        .into_iter()
+        .fold((0.0, 0.0, 0.0), |(sxy, sx2, sy2), (dxy, dx2, dy2)| {
+            (sxy + dxy, sx2 + dx2, sy2 + dy2)
+        });
+
+    let denom_sq = sum_x2 * sum_y2;
     if denom_sq <= 0.0 {
         return 0.0;
     }
-    numerator / denom_sq.sqrt()
+    sum_xy / denom_sq.sqrt()
 }
 
 #[cfg(test)]
