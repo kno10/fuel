@@ -14,7 +14,7 @@
 use crate::Float;
 use crate::cluster::kmeans::util::KMeansResult;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
-use crate::{VectorData, math};
+use crate::{ParMap, VectorData, math};
 
 /// Binary outlier labeling from k-means-- (KMeansMinusMinusOutlierDetection).
 ///
@@ -26,8 +26,8 @@ pub fn tkmeans_outlier<F: Float>(result: &KMeansResult<F>) -> Result<OutlierResu
         "tkmeans_outlier requires a KMeansResult with a noise_mask; use tkmeans()".to_string()
     })?;
 
-    let scores: Vec<F> =
-        mask.iter().map(|&noise| if noise { F::one() } else { F::zero() }).collect();
+    let n = mask.len();
+    let scores: Vec<F> = (0..n).par_map(|i| if mask[i] { F::one() } else { F::zero() });
 
     Ok(make_outlier_result(scores, "tkmeans", false, F::zero(), F::zero(), F::one()))
 }
@@ -43,7 +43,7 @@ pub fn tkmeans_star_outlier<D, F>(
 ) -> Result<OutlierResult<F>, String>
 where
     F: Float,
-    D: VectorData<F>,
+    D: VectorData<F> + Sync,
 {
     let mask = result.noise_mask.as_ref().ok_or_else(|| {
         "tkmeans_star_outlier requires a KMeansResult with a noise_mask; use tkmeans()".to_string()
@@ -56,22 +56,20 @@ where
     // Copy centers into owned vecs (row() returns a temporary view)
     let centers: Vec<Vec<F>> = (0..k).map(|j| result.centers.row(j).to_vec()).collect();
 
-    let mut scratch = vec![F::zero(); d];
-    let mut scores = vec![F::zero(); n];
-
-    for i in 0..n {
+    let scores: Vec<F> = (0..n).par_map(|i| {
+        let mut scratch = vec![F::zero(); d];
         data.load_into(i, &mut scratch, d);
         if mask[i] {
             // Noise point: minimum squared distance to any cluster center
-            scores[i] = centers
+            centers
                 .iter()
                 .map(|c| math::sqdist(c, &scratch, d))
-                .fold(F::infinity(), |acc, v| if v < acc { v } else { acc });
+                .fold(F::infinity(), |acc, v| if v < acc { v } else { acc })
         } else {
             let a = result.assignments[i];
-            scores[i] = math::sqdist(&centers[a], &scratch, d);
+            math::sqdist(&centers[a], &scratch, d)
         }
-    }
+    });
 
     Ok(make_outlier_result(scores, "tkmeans*", false, F::zero(), F::zero(), F::infinity()))
 }

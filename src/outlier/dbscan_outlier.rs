@@ -14,6 +14,7 @@
 /// [`dbscan`]: crate::cluster::dbscan::dbscan
 /// [`DbscanResult`]: crate::cluster::dbscan::DbscanResult
 use crate::Float;
+use crate::ParMap;
 use crate::cluster::dbscan::{DbscanResult, NOISE};
 use crate::outlier::common::{OutlierResult, make_outlier_result};
 
@@ -25,20 +26,17 @@ use crate::outlier::common::{OutlierResult, make_outlier_result};
 ///
 /// Returns scores in [0, 1] with `ascending=false` (higher = more outlier-like).
 pub fn dbscan_outlier<F: Float>(result: &DbscanResult) -> OutlierResult<F> {
-    let scores: Vec<F> = result
-        .labels
-        .iter()
-        .zip(result.core.iter())
-        .map(|(&label, &is_core)| {
-            if label == NOISE {
-                F::one()
-            } else if is_core {
-                F::zero()
-            } else {
-                F::from_f64(0.5).unwrap()
-            }
-        })
-        .collect();
+    let scores: Vec<F> = (0..result.labels.len()).par_map(|i| {
+        let label = result.labels[i];
+        let is_core = result.core[i];
+        if label == NOISE {
+            F::one()
+        } else if is_core {
+            F::zero()
+        } else {
+            F::from_f64(0.5).unwrap()
+        }
+    });
 
     make_outlier_result(scores, "DBSCANOutlier", false, F::zero(), F::zero(), F::one())
 }
@@ -50,7 +48,7 @@ pub fn dbscan_outlier<F: Float>(result: &DbscanResult) -> OutlierResult<F> {
 /// noise (DBSCAN, HDBSCAN extraction, etc.).
 pub fn noise_as_outliers<F: Float>(labels: &[isize]) -> OutlierResult<F> {
     let scores: Vec<F> =
-        labels.iter().map(|&l| if l == NOISE { F::one() } else { F::zero() }).collect();
+        (0..labels.len()).par_map(|i| if labels[i] == NOISE { F::one() } else { F::zero() });
     make_outlier_result(scores, "NoiseAsOutliers", false, F::zero(), F::zero(), F::one())
 }
 

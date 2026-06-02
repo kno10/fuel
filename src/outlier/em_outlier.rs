@@ -6,9 +6,9 @@
 ///
 /// Reference: McLachlan, Basford - *Mixture Models*, 1988.
 use crate::Float;
-use crate::VectorData;
 use crate::cluster::em::{EmModel, EmResult, log_sum_exp};
 use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::{ParMap, VectorData};
 
 /// EM-based outlier detection using per-point log-likelihood.
 ///
@@ -20,24 +20,26 @@ use crate::outlier::common::{OutlierResult, make_outlier_result};
 pub fn em_outlier<N, A, Mo>(data: &A, result: &EmResult<N, Mo>) -> OutlierResult<N>
 where
     N: Float,
-    A: VectorData<N>,
-    Mo: EmModel<N>,
+    A: VectorData<N> + Sync,
+    Mo: EmModel<N> + Sync,
 {
     let n = data.nrows();
     let d = data.ncols();
     let k = result.models.len();
 
-    let mut scratch = vec![N::zero(); d];
-    let mut log_densities = vec![N::zero(); k];
-    let mut scores = vec![N::zero(); n];
-
-    for (i, score) in scores.iter_mut().enumerate() {
-        data.load_into(i, &mut scratch, d);
-        for (j, model) in result.models.iter().enumerate() {
-            log_densities[j] = model.estimate_log_density(&scratch);
-        }
-        *score = log_sum_exp(&log_densities);
-    }
+    let scores: Vec<N> = if let Some(point_log_likelihoods) = &result.point_log_likelihoods {
+        point_log_likelihoods.clone()
+    } else {
+        (0..n).par_map(|i| {
+            let mut scratch = vec![N::zero(); d];
+            let mut log_densities = vec![N::zero(); k];
+            data.load_into(i, &mut scratch, d);
+            for (j, model) in result.models.iter().enumerate() {
+                log_densities[j] = model.estimate_log_density(&scratch);
+            }
+            log_sum_exp(&log_densities)
+        })
+    };
 
     // Use the observed max as baseline (typical inlier log-likelihood)
     let baseline = scores.iter().copied().fold(N::neg_infinity(), |a, b| if b > a { b } else { a });
@@ -75,6 +77,7 @@ mod tests {
             responsibilities: None,
             n_iter: 0,
             log_likelihood: 0.0,
+            point_log_likelihoods: None,
         };
 
         // 4 points near cluster A, 4 near cluster B, 1 far outlier at index 8

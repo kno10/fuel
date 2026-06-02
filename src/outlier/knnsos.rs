@@ -1,6 +1,6 @@
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
 use crate::outlier::sos;
-use crate::{DistanceData, Float, KnnSearch};
+use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 pub fn k_nearest_neighbors_sos<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize,
@@ -36,12 +36,13 @@ where
     let perplexity = (k as f64) / 3.0;
     let log_perp = if perplexity > 1.0 { perplexity.ln() } else { 0.1 };
 
-    let mut scores = vec![1.0f64; size];
-
     let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh)?;
-    for (_idx, neighbors) in neighborhoods.iter().enumerate().take(size) {
+
+    let contributions: Vec<Vec<(usize, f64)>> = (0..size).par_map(|idx| {
+        let neighbors = &neighborhoods[idx];
+        let mut contributions = Vec::new();
         if neighbors.is_empty() {
-            continue;
+            return contributions;
         }
 
         let distances: Vec<f64> =
@@ -55,9 +56,15 @@ where
                 if v.is_nan() || v <= 0.0 {
                     break;
                 }
-                scores[neighbor_id] += (-v).ln_1p();
+                contributions.push((neighbor_id, (-v).ln_1p()));
             }
         }
+        contributions
+    });
+
+    let mut scores = vec![1.0f64; size];
+    for contribution in contributions.into_iter().flatten() {
+        scores[contribution.0] += contribution.1;
     }
 
     let mut scores_after = scores.clone();

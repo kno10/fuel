@@ -3,7 +3,10 @@ use std::ops::{AddAssign, MulAssign, SubAssign};
 
 use ndarray::Array2;
 
-use crate::{Float, ParChunksMut, VectorData as Dataset, par_row_chunks_try_map, par_zip_chunks_try_map_mut};
+use crate::{
+    Float, ParChunksMut, ParMap, VectorData as Dataset, par_row_chunks_try_map,
+    par_zip_chunks_try_map_mut,
+};
 
 /// Pluggable cluster model for expectation-maximization.
 pub trait EmModel<N>
@@ -116,6 +119,7 @@ where
     pub responsibilities: Option<Array2<N>>,
     pub n_iter: usize,
     pub log_likelihood: N,
+    pub point_log_likelihoods: Option<Vec<N>>,
 }
 
 // helper to pick index of maximum value in a slice.  There isn't a
@@ -444,12 +448,7 @@ where
                 config.prior,
             )?;
         } else {
-            recompute_models_soft::<N, A, Mo>(
-                data,
-                &probs,
-                &mut models,
-                config.prior,
-            )?;
+            recompute_models_soft::<N, A, Mo>(data, &probs, &mut models, config.prior)?;
         }
 
         if config.noise_ratio > N::zero()
@@ -510,5 +509,22 @@ where
         None
     };
 
-    Ok(EmResult { models, assignments, responsibilities, n_iter: iter, log_likelihood })
+    let point_log_likelihoods: Vec<N> = (0..n).par_map(|i| {
+        let mut scratch = vec![N::zero(); data.ncols()];
+        let mut local = vec![N::zero(); k];
+        data.load_into(i, &mut scratch, data.ncols());
+        for j in 0..k {
+            local[j] = models[j].estimate_log_density(&scratch);
+        }
+        log_sum_exp(&local)
+    });
+
+    Ok(EmResult {
+        models,
+        assignments,
+        responsibilities,
+        n_iter: iter,
+        log_likelihood,
+        point_log_likelihoods: Some(point_log_likelihoods),
+    })
 }

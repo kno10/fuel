@@ -2,7 +2,7 @@ use std::f64;
 
 use crate::intrinsicdimensionality::KNNIDEstimator;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch};
+use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 /// Intrinsic Dimensionality Outlier Score (IDOS).
 ///
@@ -22,13 +22,11 @@ where
         return Ok(make_outlier_result(Vec::new(), "IDOS", false, 0.0, 0.0, f64::INFINITY));
     }
 
-    let mut ids = Vec::with_capacity(size);
-    for i in 0..size {
+    let ids: Vec<f64> = (0..size).par_map(|i| {
         // following ELKI semantics (query+neighbors): use k_c + 1 here.
         let estimate = E::estimate_from_knn(tree, data, i, k_c + 1);
-        let value = if estimate.is_finite() && estimate > 0.0 { estimate } else { 0.0 };
-        ids.push(value);
-    }
+        if estimate.is_finite() && estimate > 0.0 { estimate } else { 0.0 }
+    });
 
     let scores = crate::outlier::common::for_each_knn(tree, data, k_r - 1, false, |i, neigh| {
         let mut sum = 0.0;

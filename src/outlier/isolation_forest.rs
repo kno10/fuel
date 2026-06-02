@@ -3,7 +3,7 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 
 use crate::outlier::common::{OutlierResult, make_outlier_result};
-use crate::{DistanceData, Float, VectorData};
+use crate::{DistanceData, Float, ParMap, VectorData};
 
 const EULER_MASCHERONI: f64 = 0.577_215_664_901_532_9;
 
@@ -129,22 +129,28 @@ where
     }
 
     let subsample_size = subsample_size.min(n);
-    let mut rng = StdRng::seed_from_u64(seed);
     let c = c_factor(subsample_size as f64);
-    let mut path_sum = vec![0.0; n];
-
     let idxs: Vec<usize> = (0..n).collect();
     let max_height = (subsample_size as f64).log2().ceil() as usize;
 
-    for _ in 0..num_trees {
+    let partial_path_sums: Vec<Vec<f64>> = (0..num_trees).par_map(|tree_idx| {
+        let mut rng = StdRng::seed_from_u64(seed.wrapping_add(tree_idx as u64));
         let mut sample = idxs.clone();
         sample.shuffle(&mut rng);
         let sample = &sample[0..subsample_size];
 
         let tree = build_isolation_tree(data, sample, 0, max_height, &mut rng);
-        for (i, path) in path_sum.iter_mut().enumerate().take(n) {
-            let depth = isolation_path_length(&tree, data, i, 0.0);
-            *path += depth;
+        let mut local = vec![0.0; n];
+        for i in 0..n {
+            local[i] = isolation_path_length(&tree, data, i, 0.0);
+        }
+        local
+    });
+
+    let mut path_sum = vec![0.0; n];
+    for local in partial_path_sums {
+        for (i, depth) in local.into_iter().enumerate() {
+            path_sum[i] += depth;
         }
     }
 

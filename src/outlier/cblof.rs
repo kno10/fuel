@@ -12,7 +12,7 @@
 use crate::Float;
 use crate::cluster::kmeans::util::KMeansResult;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
-use crate::{VectorData, math};
+use crate::{ParMap, VectorData, math};
 
 /// Cluster-based local outlier factor.
 ///
@@ -31,7 +31,7 @@ use crate::{VectorData, math};
 pub fn cblof<D, F>(data: &D, result: &KMeansResult<F>, alpha: F, beta: F) -> OutlierResult<F>
 where
     F: Float,
-    D: VectorData<F>,
+    D: VectorData<F> + Sync,
 {
     let n = data.nrows();
     let d = data.ncols();
@@ -74,15 +74,13 @@ where
     // All centers for large-cluster scoring
     let all_centers: Vec<Vec<F>> = (0..k).map(|j| result.centers.row(j).to_vec()).collect();
 
-    let mut scratch = vec![F::zero(); d];
-    let mut scores = vec![F::zero(); n];
-
-    for (i, score) in scores.iter_mut().enumerate() {
+    let scores: Vec<F> = (0..n).par_map(|i| {
+        let mut scratch = vec![F::zero(); d];
         data.load_into(i, &mut scratch, d);
         let a = result.assignments[i];
         let sz = F::from_usize(sizes[a]).unwrap();
 
-        *score = if is_large[a] {
+        if is_large[a] {
             sz * math::sqdist(&all_centers[a], &scratch, d)
         } else {
             // minimum squared distance to any large cluster center
@@ -91,8 +89,8 @@ where
                 .map(|c| math::sqdist(c, &scratch, d))
                 .fold(F::infinity(), |acc, v| if v < acc { v } else { acc });
             sz * min_dist
-        };
-    }
+        }
+    });
 
     make_outlier_result(scores, "CBLOF", false, F::one(), F::zero(), F::infinity())
 }

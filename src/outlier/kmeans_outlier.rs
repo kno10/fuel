@@ -9,7 +9,7 @@
 use crate::Float;
 use crate::cluster::kmeans::util::KMeansResult;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
-use crate::{VectorData, math};
+use crate::{ParMap, VectorData, math};
 
 /// Scoring rule for [`kmeans_outlier`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,7 +41,7 @@ pub fn kmeans_outlier<D, F>(
 ) -> OutlierResult<F>
 where
     F: Float,
-    D: VectorData<F>,
+    D: VectorData<F> + Sync,
 {
     let n = data.nrows();
     let d = data.ncols();
@@ -53,18 +53,16 @@ where
         sizes[a] += 1;
     }
 
-    let mut scratch = vec![F::zero(); d];
-    let mut scores = vec![F::zero(); n];
-
     // Pre-compute centers as owned vecs (row() returns a temporary view)
     let centers: Vec<Vec<F>> = (0..k).map(|j| result.centers.row(j).to_vec()).collect();
 
-    for (i, score) in scores.iter_mut().enumerate() {
+    let scores: Vec<F> = (0..n).par_map(|i| {
+        let mut scratch = vec![F::zero(); d];
         data.load_into(i, &mut scratch, d);
         let a = result.assignments[i];
         let center_a = &centers[a];
 
-        *score = match rule {
+        match rule {
             KMeansOutlierRule::Distance => math::sqdist(center_a, &scratch, d),
             KMeansOutlierRule::DistanceSingletons => {
                 if sizes[a] == 1 {
@@ -93,8 +91,8 @@ where
                     dist * sz_f / (sz_f - F::one())
                 }
             }
-        };
-    }
+        }
+    });
 
     make_outlier_result(scores, "KMeansOutlier", false, F::zero(), F::zero(), F::infinity())
 }

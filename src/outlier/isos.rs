@@ -1,6 +1,6 @@
 use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
 use crate::outlier::sos;
-use crate::{DistanceData, Float, KnnSearch};
+use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 const DEFAULT_PHI: f64 = 0.01;
 
@@ -80,12 +80,13 @@ where
     let perplexity = (k as f64) / 3.0;
     let log_perp = if perplexity > 1.0 { perplexity.ln() } else { 0.1 };
 
-    let mut scores = vec![1.0f64; size];
-
     let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh)?;
-    for (idx, neighbors) in neighborhoods.iter().enumerate().take(size) {
+
+    let contributions: Vec<Vec<(usize, f64)>> = (0..size).par_map(|idx| {
+        let neighbors = &neighborhoods[idx];
+        let mut contributions = Vec::new();
         if neighbors.is_empty() {
-            continue;
+            return contributions;
         }
 
         let neighbors_no_self: Vec<(usize, F)> =
@@ -108,16 +109,23 @@ where
             sos::compute_pi(&all_distances, perplexity)
         };
 
-        let sum_p: f64 = probs.iter().sum();
+        let sum_p: f64 = probs.iter().filter(|&&p| p > 0.0).sum();
         if sum_p > 0.0 {
             for (i, &(neighbor_id, _)) in neighbors_no_self.iter().enumerate() {
                 let v = probs[i] / sum_p;
                 if v.is_nan() || v <= 0.0 {
                     break;
                 }
-                scores[neighbor_id] += (-v).ln_1p();
+                contributions.push((neighbor_id, (-v).ln_1p()));
             }
         }
+
+        contributions
+    });
+
+    let mut scores = vec![1.0f64; size];
+    for contribution in contributions.into_iter().flatten() {
+        scores[contribution.0] += contribution.1;
     }
 
     let (_min_score, _max_score) = transform_scores(&mut scores, log_perp, DEFAULT_PHI);

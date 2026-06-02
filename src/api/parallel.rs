@@ -223,9 +223,7 @@ where
 /// `chunk_rows * stride` elements.
 ///
 /// Checks `SHUTDOWN_REQUESTED` before each chunk and returns `Err` if set.
-pub fn par_row_chunks_try_map<T, F, R>(
-    data: &[T], stride: usize, f: F,
-) -> Result<Vec<R>, String>
+pub fn par_row_chunks_try_map<T, F, R>(data: &[T], stride: usize, f: F) -> Result<Vec<R>, String>
 where
     T: Sync,
     F: Fn(usize, &[T]) -> Result<R, String> + Sync + Send,

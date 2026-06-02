@@ -1,5 +1,6 @@
+use crate::api::query::IndexQuery;
 use crate::outlier::common::{OutlierResult, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch};
+use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 /// Compute ODIN outlier scores based on in-degree of the k‑NN graph.
 ///
@@ -38,17 +39,45 @@ where
         ));
     }
 
-    let neighborhoods: Vec<Vec<(usize, F)>> =
-        crate::outlier::common::for_each_knn(tree, data, k_effective, false, |_idx, neighbors| {
-            neighbors
-        })?;
+    let num_threads = {
+        #[cfg(feature = "parallel")]
+        {
+            rayon::current_num_threads().max(1)
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            1
+        }
+    };
+    let chunk_rows = size.div_ceil(num_threads).max(1);
+
+    let partial_indegrees: Vec<Vec<usize>> = (0..num_threads).par_try_map(|thread_idx| {
+        let start = thread_idx * chunk_rows;
+        let end = (start + chunk_rows).min(size);
+        let mut local = vec![0usize; size];
+
+        for idx in start..end {
+            crate::poll_interrupted()?;
+            let mut query = data.query();
+            query.set_index(idx);
+            let neighbors = tree
+                .search_knn(&query, k_effective + 1)
+                .into_iter()
+                .map(|neighbor| neighbor.index)
+                .filter(|&neighbor_idx| neighbor_idx != idx);
+            for neighbor_idx in neighbors {
+                if let Some(d) = local.get_mut(neighbor_idx) {
+                    *d += 1;
+                }
+            }
+        }
+        Ok(local)
+    })?;
 
     let mut indegree = vec![0usize; size];
-    for neighbors in neighborhoods {
-        for (neighbor_idx, _) in neighbors {
-            if let Some(d) = indegree.get_mut(neighbor_idx) {
-                *d += 1;
-            }
+    for local in partial_indegrees {
+        for (i, count) in local.into_iter().enumerate() {
+            indegree[i] += count;
         }
     }
 

@@ -913,8 +913,7 @@ macro_rules! kmeans_outlier_from_km_fn {
         #[pyo3(signature = (data, centers, labels, rule = "distance"))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>,
-            centers: PyReadonlyArray2<'py, $dtype>, labels: PyReadonlyArray1<'py, i64>,
-            rule: &str,
+            centers: PyReadonlyArray2<'py, $dtype>, labels: PyReadonlyArray1<'py, i64>, rule: &str,
         ) -> PyResult<Py<PyAny>> {
             use cluster::kmeans::util::KMeansResult;
             let array = data.as_array();
@@ -928,8 +927,7 @@ macro_rules! kmeans_outlier_from_km_fn {
                 noise_mask: None,
             };
             let rule = parse_kmeans_outlier_rule(rule)?;
-            let result =
-                outlier::kmeans_outlier::kmeans_outlier::<_, $dtype>(&dataset, &km, rule);
+            let result = outlier::kmeans_outlier::kmeans_outlier::<_, $dtype>(&dataset, &km, rule);
             result_to_py_outlier(py, result)
         }
     };
@@ -944,8 +942,8 @@ macro_rules! cblof_from_km_fn {
         #[pyo3(signature = (data, centers, labels, alpha = 0.9, beta = 3.0))]
         fn $name<'py>(
             py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>,
-            centers: PyReadonlyArray2<'py, $dtype>, labels: PyReadonlyArray1<'py, i64>,
-            alpha: f64, beta: f64,
+            centers: PyReadonlyArray2<'py, $dtype>, labels: PyReadonlyArray1<'py, i64>, alpha: f64,
+            beta: f64,
         ) -> PyResult<Py<PyAny>> {
             use cluster::kmeans::util::KMeansResult;
             let array = data.as_array();
@@ -959,7 +957,10 @@ macro_rules! cblof_from_km_fn {
                 noise_mask: None,
             };
             let result = outlier::cblof::cblof::<_, $dtype>(
-                &dataset, &km, <$dtype as Float>::cast(alpha), <$dtype as Float>::cast(beta),
+                &dataset,
+                &km,
+                <$dtype as Float>::cast(alpha),
+                <$dtype as Float>::cast(beta),
             );
             result_to_py_outlier(py, result)
         }
@@ -1038,7 +1039,9 @@ tkmeans_star_outlier_fn!(tkmeans_star_outlier_f64, f64);
 macro_rules! tkmeans_outlier_from_km_fn {
     ($name:ident, $dtype:ty) => {
         #[pyfunction]
-        fn $name<'py>(py: Python<'py>, noise_mask: PyReadonlyArray1<'py, bool>) -> PyResult<Py<PyAny>> {
+        fn $name<'py>(
+            py: Python<'py>, noise_mask: PyReadonlyArray1<'py, bool>,
+        ) -> PyResult<Py<PyAny>> {
             use cluster::kmeans::util::KMeansResult;
             let km = KMeansResult::<$dtype> {
                 centers: ndarray::Array2::zeros((0, 0)),
@@ -1077,9 +1080,8 @@ macro_rules! tkmeans_star_outlier_from_km_fn {
                 inertia_bound: None,
                 noise_mask: Some(noise_mask.as_array().iter().copied().collect()),
             };
-            let result =
-                outlier::tkmeans_outlier::tkmeans_star_outlier::<_, $dtype>(&dataset, &km)
-                    .map_err(PyValueError::new_err)?;
+            let result = outlier::tkmeans_outlier::tkmeans_star_outlier::<_, $dtype>(&dataset, &km)
+                .map_err(PyValueError::new_err)?;
             result_to_py_outlier(py, result)
         }
     };
