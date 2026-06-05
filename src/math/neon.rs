@@ -13,7 +13,7 @@ use ndarray::ArrayView2;
 use super::unroll;
 
 #[inline(always)]
-pub(super) fn sqdist_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
+pub fn sqdist_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     let mut acc0 = unsafe { vdupq_n_f32(0.0) };
@@ -67,7 +67,7 @@ pub(super) fn sqdist_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
 }
 
 #[inline(always)]
-pub(super) fn sqdist_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
+pub fn sqdist_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     let mut acc0 = unsafe { vdupq_n_f64(0.0) };
@@ -121,7 +121,7 @@ pub(super) fn sqdist_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
 }
 
 #[inline(always)]
-pub(super) fn l1dist_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
+pub fn l1dist_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     let mut acc0 = unsafe { vdupq_n_f32(0.0) };
@@ -172,7 +172,7 @@ pub(super) fn l1dist_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
 }
 
 #[inline(always)]
-pub(super) fn l1dist_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
+pub fn l1dist_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     let mut acc0 = unsafe { vdupq_n_f64(0.0) };
@@ -223,7 +223,7 @@ pub(super) fn l1dist_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
 }
 
 #[inline(always)]
-pub(super) fn mul_f32(v1: &mut [f32], v2: &[f32], a: f32, d: usize) {
+pub fn mul_f32(v1: &mut [f32], v2: &[f32], a: f32, d: usize) {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     let aa = unsafe { vdupq_n_f32(a) };
@@ -240,7 +240,7 @@ pub(super) fn mul_f32(v1: &mut [f32], v2: &[f32], a: f32, d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn mul_f64(v1: &mut [f64], v2: &[f64], a: f64, d: usize) {
+pub fn mul_f64(v1: &mut [f64], v2: &[f64], a: f64, d: usize) {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     let aa = unsafe { vdupq_n_f64(a) };
@@ -257,7 +257,7 @@ pub(super) fn mul_f64(v1: &mut [f64], v2: &[f64], a: f64, d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn mul_assign_f32(v: &mut [f32], f: f32, d: usize) {
+pub fn mul_assign_f32(v: &mut [f32], f: f32, d: usize) {
     assert!(v.len() >= d);
     let mut i = 0;
     let ff = unsafe { vdupq_n_f32(f) };
@@ -274,7 +274,7 @@ pub(super) fn mul_assign_f32(v: &mut [f32], f: f32, d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn mul_assign_f64(v: &mut [f64], f: f64, d: usize) {
+pub fn mul_assign_f64(v: &mut [f64], f: f64, d: usize) {
     assert!(v.len() >= d);
     let mut i = 0;
     let ff = unsafe { vdupq_n_f64(f) };
@@ -291,7 +291,7 @@ pub(super) fn mul_assign_f64(v: &mut [f64], f: f64, d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn add_assign_f32(v1: &mut [f32], v2: &[f32], d: usize) {
+pub fn add_assign_f32(v1: &mut [f32], v2: &[f32], d: usize) {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     while i + 4 <= d {
@@ -310,7 +310,7 @@ pub(super) fn add_assign_f32(v1: &mut [f32], v2: &[f32], d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn add_assign_f64(v1: &mut [f64], v2: &[f64], d: usize) {
+pub fn add_assign_f64(v1: &mut [f64], v2: &[f64], d: usize) {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     while i + 2 <= d {
@@ -329,7 +329,7 @@ pub(super) fn add_assign_f64(v1: &mut [f64], v2: &[f64], d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn sub_assign_f32(v1: &mut [f32], v2: &[f32], d: usize) {
+pub fn sub_assign_f32(v1: &mut [f32], v2: &[f32], d: usize) {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     while i + 4 <= d {
@@ -348,7 +348,7 @@ pub(super) fn sub_assign_f32(v1: &mut [f32], v2: &[f32], d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn sub_assign_f64(v1: &mut [f64], v2: &[f64], d: usize) {
+pub fn sub_assign_f64(v1: &mut [f64], v2: &[f64], d: usize) {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     while i + 2 <= d {
@@ -367,7 +367,7 @@ pub(super) fn sub_assign_f64(v1: &mut [f64], v2: &[f64], d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn fmamul_f32(v1: &mut [f32], a: f32, v2: &[f32], b: f32, d: usize) {
+pub fn fmamul_f32(v1: &mut [f32], a: f32, v2: &[f32], b: f32, d: usize) {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     let aa = unsafe { vdupq_n_f32(a) };
@@ -389,7 +389,7 @@ pub(super) fn fmamul_f32(v1: &mut [f32], a: f32, v2: &[f32], b: f32, d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn fmamul_f64(v1: &mut [f64], a: f64, v2: &[f64], b: f64, d: usize) {
+pub fn fmamul_f64(v1: &mut [f64], a: f64, v2: &[f64], b: f64, d: usize) {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     let aa = unsafe { vdupq_n_f64(a) };
@@ -411,7 +411,7 @@ pub(super) fn fmamul_f64(v1: &mut [f64], a: f64, v2: &[f64], b: f64, d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn dot_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
+pub fn dot_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     let mut acc0 = unsafe { vdupq_n_f32(0.0) };
@@ -458,7 +458,7 @@ pub(super) fn dot_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
 }
 
 #[inline(always)]
-pub(super) fn dot_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
+pub fn dot_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     let mut acc0 = unsafe { vdupq_n_f64(0.0) };
@@ -505,7 +505,7 @@ pub(super) fn dot_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
 }
 
 #[inline(always)]
-pub(super) fn pairwise_sqdist_between_f32(
+pub fn pairwise_sqdist_between_f32(
     points1: ArrayView2<'_, f32>, points2: ArrayView2<'_, f32>, d: usize, out: &mut [f32],
     nrows: usize, ncols: usize,
 ) {
@@ -549,7 +549,7 @@ pub(super) fn pairwise_sqdist_between_f32(
 }
 
 #[inline(always)]
-pub(super) fn pairwise_sqdist_between_f64(
+pub fn pairwise_sqdist_between_f64(
     points1: ArrayView2<'_, f64>, points2: ArrayView2<'_, f64>, d: usize, out: &mut [f64],
     nrows: usize, ncols: usize,
 ) {
@@ -593,7 +593,7 @@ pub(super) fn pairwise_sqdist_between_f64(
 }
 
 #[inline(always)]
-pub(super) fn axpy_f32(v1: &mut [f32], a: f32, v2: &[f32], d: usize) {
+pub fn axpy_f32(v1: &mut [f32], a: f32, v2: &[f32], d: usize) {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     let aa = unsafe { vdupq_n_f32(a) };
@@ -612,7 +612,7 @@ pub(super) fn axpy_f32(v1: &mut [f32], a: f32, v2: &[f32], d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn axpy_f64(v1: &mut [f64], a: f64, v2: &[f64], d: usize) {
+pub fn axpy_f64(v1: &mut [f64], a: f64, v2: &[f64], d: usize) {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
     let aa = unsafe { vdupq_n_f64(a) };
@@ -631,7 +631,7 @@ pub(super) fn axpy_f64(v1: &mut [f64], a: f64, v2: &[f64], d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn sum_f32(v: &[f32], d: usize) -> f32 {
+pub fn sum_f32(v: &[f32], d: usize) -> f32 {
     assert!(v.len() >= d);
     let mut i = 0;
     let mut acc0 = unsafe { vdupq_n_f32(0.0) };
@@ -666,7 +666,7 @@ pub(super) fn sum_f32(v: &[f32], d: usize) -> f32 {
 }
 
 #[inline(always)]
-pub(super) fn sum_f64(v: &[f64], d: usize) -> f64 {
+pub fn sum_f64(v: &[f64], d: usize) -> f64 {
     assert!(v.len() >= d);
     let mut i = 0;
     let mut acc0 = unsafe { vdupq_n_f64(0.0) };
@@ -701,7 +701,7 @@ pub(super) fn sum_f64(v: &[f64], d: usize) -> f64 {
 }
 
 #[inline(always)]
-pub(super) fn add_scalar_f32(v: &mut [f32], s: f32, d: usize) {
+pub fn add_scalar_f32(v: &mut [f32], s: f32, d: usize) {
     assert!(v.len() >= d);
     let mut i = 0;
     let ss = unsafe { vdupq_n_f32(s) };
@@ -718,7 +718,7 @@ pub(super) fn add_scalar_f32(v: &mut [f32], s: f32, d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn add_scalar_f64(v: &mut [f64], s: f64, d: usize) {
+pub fn add_scalar_f64(v: &mut [f64], s: f64, d: usize) {
     assert!(v.len() >= d);
     let mut i = 0;
     let ss = unsafe { vdupq_n_f64(s) };
@@ -735,7 +735,7 @@ pub(super) fn add_scalar_f64(v: &mut [f64], s: f64, d: usize) {
 }
 
 #[inline(always)]
-pub(super) fn rowdist_f32(
+pub fn rowdist_f32(
     center: &[f32], points: ArrayView2<'_, f32>, d: usize, out: &mut [f32], n: usize,
 ) {
     let strides = points.strides();
@@ -751,7 +751,7 @@ pub(super) fn rowdist_f32(
 }
 
 #[inline(always)]
-pub(super) fn rowdist_f64(
+pub fn rowdist_f64(
     center: &[f64], points: ArrayView2<'_, f64>, d: usize, out: &mut [f64], n: usize,
 ) {
     let strides = points.strides();

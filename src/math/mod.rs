@@ -21,10 +21,9 @@ pub mod unroll;
 
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 use avx2 as simd;
+use ndarray::{ArrayBase, ArrayView2, Data, Ix2};
 #[cfg(all(feature = "simd", target_arch = "aarch64"))]
 use neon as simd;
-
-use ndarray::{ArrayBase, ArrayView2, Data, Ix2};
 
 use crate::{Float, VecOps};
 
@@ -90,13 +89,19 @@ impl VecOps for f32 {
                     let row_start = ci * row_chunk;
                     let block_rows = out_block.len() / ncols;
                     let p1 = points1.slice(ndarray::s![row_start..row_start + block_rows, ..]);
-                    #[cfg(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64")))]
+                    #[cfg(all(
+                        feature = "simd",
+                        any(target_arch = "x86_64", target_arch = "aarch64")
+                    ))]
                     if d >= UNROLL_SIZE {
                         return simd::pairwise_sqdist_between_f32(
                             p1, points2, d, out_block, block_rows, ncols,
                         );
                     }
-                    #[cfg(not(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+                    #[cfg(not(all(
+                        feature = "simd",
+                        any(target_arch = "x86_64", target_arch = "aarch64")
+                    )))]
                     if d >= UNROLL_SIZE {
                         return unroll::pairwise_sqdist_between(
                             p1, points2, d, out_block, block_rows, ncols,
@@ -118,7 +123,10 @@ impl VecOps for f32 {
                     let chunk_n = col_chunk.min(ncols - i0);
                     let pts = points2.slice(ndarray::s![i0..i0 + chunk_n, ..]);
                     let mut tmp = vec![0f32; nrows * chunk_n];
-                    #[cfg(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64")))]
+                    #[cfg(all(
+                        feature = "simd",
+                        any(target_arch = "x86_64", target_arch = "aarch64")
+                    ))]
                     if d >= UNROLL_SIZE {
                         simd::pairwise_sqdist_between_f32(
                             points1, pts, d, &mut tmp, nrows, chunk_n,
@@ -126,7 +134,10 @@ impl VecOps for f32 {
                     } else {
                         scalar::pairwise_sqdist_between(points1, pts, d, &mut tmp, nrows, chunk_n);
                     }
-                    #[cfg(not(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+                    #[cfg(not(all(
+                        feature = "simd",
+                        any(target_arch = "x86_64", target_arch = "aarch64")
+                    )))]
                     if d >= UNROLL_SIZE {
                         unroll::pairwise_sqdist_between(points1, pts, d, &mut tmp, nrows, chunk_n);
                     } else {
@@ -175,7 +186,10 @@ impl VecOps for f32 {
                 if d >= UNROLL_SIZE {
                     return simd::rowdist_f32(center, pts, d, chunk_out, chunk_n);
                 }
-                #[cfg(not(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+                #[cfg(not(all(
+                    feature = "simd",
+                    any(target_arch = "x86_64", target_arch = "aarch64")
+                )))]
                 if d >= UNROLL_SIZE {
                     return unroll::rowdist(center, pts, d, chunk_out, chunk_n);
                 }
@@ -343,13 +357,19 @@ impl VecOps for f64 {
                     let row_start = ci * row_chunk;
                     let block_rows = out_block.len() / ncols;
                     let p1 = points1.slice(ndarray::s![row_start..row_start + block_rows, ..]);
-                    #[cfg(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64")))]
+                    #[cfg(all(
+                        feature = "simd",
+                        any(target_arch = "x86_64", target_arch = "aarch64")
+                    ))]
                     if d >= UNROLL_SIZE {
                         return simd::pairwise_sqdist_between_f64(
                             p1, points2, d, out_block, block_rows, ncols,
                         );
                     }
-                    #[cfg(not(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+                    #[cfg(not(all(
+                        feature = "simd",
+                        any(target_arch = "x86_64", target_arch = "aarch64")
+                    )))]
                     if d >= UNROLL_SIZE {
                         return unroll::pairwise_sqdist_between(
                             p1, points2, d, out_block, block_rows, ncols,
@@ -368,7 +388,10 @@ impl VecOps for f64 {
                     let chunk_n = col_chunk.min(ncols - i0);
                     let pts = points2.slice(ndarray::s![i0..i0 + chunk_n, ..]);
                     let mut tmp = vec![0f64; nrows * chunk_n];
-                    #[cfg(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64")))]
+                    #[cfg(all(
+                        feature = "simd",
+                        any(target_arch = "x86_64", target_arch = "aarch64")
+                    ))]
                     if d >= UNROLL_SIZE {
                         simd::pairwise_sqdist_between_f64(
                             points1, pts, d, &mut tmp, nrows, chunk_n,
@@ -376,7 +399,10 @@ impl VecOps for f64 {
                     } else {
                         scalar::pairwise_sqdist_between(points1, pts, d, &mut tmp, nrows, chunk_n);
                     }
-                    #[cfg(not(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+                    #[cfg(not(all(
+                        feature = "simd",
+                        any(target_arch = "x86_64", target_arch = "aarch64")
+                    )))]
                     if d >= UNROLL_SIZE {
                         unroll::pairwise_sqdist_between(points1, pts, d, &mut tmp, nrows, chunk_n);
                     } else {
@@ -423,7 +449,10 @@ impl VecOps for f64 {
                 if d >= UNROLL_SIZE {
                     return simd::rowdist_f64(center, pts, d, chunk_out, chunk_n);
                 }
-                #[cfg(not(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+                #[cfg(not(all(
+                    feature = "simd",
+                    any(target_arch = "x86_64", target_arch = "aarch64")
+                )))]
                 if d >= UNROLL_SIZE {
                     return unroll::rowdist(center, pts, d, chunk_out, chunk_n);
                 }

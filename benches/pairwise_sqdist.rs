@@ -1,6 +1,7 @@
+use std::hint::black_box;
 use std::time::Duration;
 
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 use fuel::api::float::VecOps;
 use fuel::math;
 use ndarray::{Array2, ShapeBuilder};
