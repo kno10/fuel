@@ -765,9 +765,10 @@ for k in range(5, k_max):
 
 | Function | Parameters | Notes |
 |----------|-----------|-------|
+| `explainable_knn_outlier(data, k, center_type='ArithmeticMean', tol=1e-8, store_centers=False, *, distance='euclidean', index=None)` | `center_type`: `'ArithmeticMean'`, `'PerAxisMedian'`, `'GeometricMedian'`; `tol`: convergence tolerance; `store_centers`: return neighbor centers | EX-kNN |
 | `approximate_local_correlation_integral(data, nmin, alpha, g, *, seed=None, distance='euclidean')` | `nmin`: minimum neighborhood size, `alpha`: smoothing parameter, `g`: kernel exponent, `seed`: algorithmic RNG seed | ALOCI |
 | `local_correlation_integral(data, rmax, nmin, alpha, *, distance='euclidean', index=None)` | `rmax`: radius threshold, `nmin`: minimum neighborhood size, `alpha`: smoothing parameter | LOCI |
-| `correlation_outlier_probabilities(data, k, expect, dist, *, distance='euclidean', index=None)` | `k`: neighbors, `expect`: expected neighbor count, `dist`: `'chi2'` or `'gamma'` | COP |
+| `correlation_outlier_probabilities(data, k, expect, dist='chi2', store_models=False, *, distance='euclidean', index=None)` | `k`: neighbors, `expect`: expected neighbor count, `dist`: `'chi2'` or `'gamma'`, `store_models`: return error vectors | COP |
 | `local_intrinsic_dimensionality(data, k, *, estimator=None, distance='euclidean', index=None)` | `k`: neighbors, `estimator`: LID estimator name | LID-based |
 | `intrinsic_dimensionality_outlier_score(data, k_c, k_r, *, estimator=None, distance='euclidean', index=None)` | `k_c`: reference neighbors, `k_r`: reachability neighbors, `estimator`: LID estimator | IDOS |
 | `subspace_outlier_degree(data, k, alpha, *, distance='euclidean', index=None)` | `k`: neighbors, `alpha`: subspace balance parameter | SOD |

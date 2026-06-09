@@ -154,6 +154,7 @@ pub struct OutlierMetadata<F: Float> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct OutlierResult<F: Float> {
     pub scores: Vec<F>,
+    pub expected_positions: Option<Vec<Vec<F>>>,
     pub metadata: OutlierMetadata<F>,
 }
 
@@ -177,11 +178,12 @@ fn compute_min_max<F: Float>(scores: &[F]) -> (F, F) {
 
 pub fn make_outlier_result<F: Float>(
     scores: Vec<F>, label: &str, ascending: bool, baseline: F, theoretical_min: F,
-    theoretical_max: F,
+    theoretical_max: F, expected_positions: Option<Vec<Vec<F>>>,
 ) -> OutlierResult<F> {
     let (minimum, maximum) = compute_min_max(&scores);
     OutlierResult {
         scores,
+        expected_positions,
         metadata: OutlierMetadata {
             label: label.to_string(),
             ascending,

@@ -1,4 +1,4 @@
-use numpy::{Element, PyArray1, PyReadonlyArray1, PyReadonlyArray2};
+use numpy::{Element, PyArray1, PyReadonlyArray1, PyArray2, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -73,7 +73,14 @@ where
     meta.set_item("maximum", m.maximum)?;
     meta.set_item("theoretical_minimum", m.theoretical_minimum)?;
     meta.set_item("theoretical_maximum", m.theoretical_maximum)?;
-    let output = (scores, meta).into_pyobject(py)?;
+
+    let expected_positions = if let Some(pos) = result.expected_positions {
+        Some(PyArray2::from_vec(py, pos.len(), if !pos.is_empty() { pos[0].len() } else { 0 }, pos.into_iter().flatten().collect()))
+    } else {
+        None
+    };
+
+    let output = (scores, meta, expected_positions).into_pyobject(py)?;
     Ok(output.into())
 }
 
@@ -679,12 +686,77 @@ data_outlier_n!(
     f64
 );
 
-// ---- COF -------------------------------------------------------------------
+macro_rules! tree_outlier_cop {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, k, expect=0.001, dist="chi2", store_models=false, distance="euclidean", *, index))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, expect: f64, dist: &str, 
+            store_models: bool, distance: &str, index: PyRef<'_, SearchIndex>,
+        ) -> PyResult<Py<PyAny>> {
+            let array = data.as_array();
+            let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
+            let tree = index.inner();
+
+            let d_dist = match dist.to_lowercase().as_str() {
+                "chi2" | "chisq" | "chi-squared" => outlier::CopDistanceDist::ChiSquared,
+                "gamma" => outlier::CopDistanceDist::Gamma,
+                other => return Err(PyValueError::new_err(format!(
+                    "unknown COP distance distribution '{}', valid values are: chi2, gamma", 
+                    other
+                ))),
+            };
+
+            let result = crate::py_interruptible(py, || {
+                Ok(outlier::correlation_outlier_probabilities::<_, _, $dtype>(
+                    tree, &dataset, k, expect, d_dist, store_models
+                ))
+            })?;
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+tree_outlier_cop!(correlation_outlier_probabilities_f32, f32);
+tree_outlier_cop!(correlation_outlier_probabilities_f64, f64);
 
 tree_outlier_k!(connectivity_outlier_factor_f32, connectivity_outlier_factor, f32);
 tree_outlier_k!(connectivity_outlier_factor_f64, connectivity_outlier_factor, f64);
 
-// ---- VoV -------------------------------------------------------------------
+macro_rules! tree_outlier_exknn {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, k, center_type="ArithmeticMean", tol=1e-8, store_centers=false, distance="euclidean", *, index))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, center_type: &str, tol: f64, 
+            store_centers: bool, distance: &str, index: PyRef<'_, SearchIndex>,
+        ) -> PyResult<Py<PyAny>> {
+            let array = data.as_array();
+            let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
+            let tree = index.inner();
+
+            let ct = match center_type.to_lowercase().as_str() {
+                "arithmeticmean" | "arithmetic" => outlier::CenterType::ArithmeticMean,
+                "peraxismedian" | "median" => outlier::CenterType::PerAxisMedian,
+                "geometricmedian" | "geometric" => outlier::CenterType::GeometricMedian,
+                other => return Err(PyValueError::new_err(format!(
+                    "unknown center type '{}', valid values are: ArithmeticMean, PerAxisMedian, GeometricMedian", 
+                    other
+                ))),
+            };
+
+            let result = crate::py_interruptible(py, || {
+                Ok(outlier::explainable_knn_outlier::<_, _, $dtype>(
+                    tree, &dataset, k, ct, tol as $dtype, store_centers
+                ))
+            })?;
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+tree_outlier_exknn!(explainable_knn_outlier_f32, f32);
+tree_outlier_exknn!(explainable_knn_outlier_f64, f64);
 
 tree_outlier_k!(variance_of_volume_f32, variance_of_volume, f32);
 tree_outlier_k!(variance_of_volume_f64, variance_of_volume, f64);
@@ -1213,6 +1285,10 @@ pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(stochastic_outlier_selection_f64))?;
     m.add_wrapped(wrap_pyfunction!(weighted_knn_f32))?;
     m.add_wrapped(wrap_pyfunction!(weighted_knn_f64))?;
+    m.add_wrapped(wrap_pyfunction!(explainable_knn_outlier_f32))?;
+    m.add_wrapped(wrap_pyfunction!(explainable_knn_outlier_f64))?;
+    m.add_wrapped(wrap_pyfunction!(correlation_outlier_probabilities_f32))?;
+    m.add_wrapped(wrap_pyfunction!(correlation_outlier_probabilities_f64))?;
     m.add_wrapped(wrap_pyfunction!(connectivity_outlier_factor_f32))?;
     m.add_wrapped(wrap_pyfunction!(connectivity_outlier_factor_f64))?;
     m.add_wrapped(wrap_pyfunction!(variance_of_volume_f32))?;
