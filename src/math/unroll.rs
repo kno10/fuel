@@ -364,6 +364,7 @@ where
         }
     }
 }
+
 /// Squared distances from a single `center` to each of the `n` rows in `points`.
 /// Dispatches on memory layout: C-order, Fortran-order, or general strides.
 pub(super) fn rowdist<N>(center: &[N], points: ArrayView2<'_, N>, d: usize, out: &mut [N], n: usize)
@@ -438,5 +439,65 @@ where
             }
         }
         out[jj..jj + nc].copy_from_slice(&tile[..nc]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sqdist() { crate::math::tests::verify_sqdist_f32(|v1, v2, d| sqdist(v1, v2, d)); }
+
+    #[test]
+    fn test_l1dist() { crate::math::tests::verify_l1dist_f32(|v1, v2, d| l1dist(v1, v2, d)); }
+
+    #[test]
+    fn test_mul() { crate::math::tests::verify_mul_f32(|v1, v2, a, d| mul(v1, v2, a, d)); }
+
+    #[test]
+    fn test_mul_assign() {
+        crate::math::tests::verify_mul_assign_f32(|v, f, d| mul_assign(v, f, d));
+    }
+
+    #[test]
+    fn test_add_assign() {
+        crate::math::tests::verify_add_assign_f32(|v1, v2, d| add_assign(v1, v2, d));
+    }
+
+    #[test]
+    fn test_sub_assign() {
+        crate::math::tests::verify_sub_assign_f32(|v1, v2, d| sub_assign(v1, v2, d));
+    }
+
+    #[test]
+    fn test_fmamul() {
+        crate::math::tests::verify_fmamul_f32(|v1, a, v2, b, d| fmamul(v1, a, v2, b, d));
+    }
+
+    #[test]
+    fn test_dot() { crate::math::tests::verify_dot_f32(|v1, v2, d| dot(v1, v2, d)); }
+
+    #[test]
+    fn test_axpy() { crate::math::tests::verify_axpy_f32(|v1, a, v2, d| axpy(v1, a, v2, d)); }
+
+    #[test]
+    fn test_sum() { crate::math::tests::verify_sum_f32(|v, d| sum(v, d)); }
+
+    #[test]
+    fn test_add_scalar() {
+        crate::math::tests::verify_add_scalar_f32(|v, s, d| add_scalar(v, s, d));
+    }
+
+    #[test]
+    fn test_rowdist() {
+        crate::math::tests::verify_rowdist_f32(|c, p, d, o, n| rowdist(c, p, d, o, n));
+    }
+
+    #[test]
+    fn test_pairwise_sqdist() {
+        crate::math::tests::verify_pairwise_sqdist_f32(|p1, p2, d, o, r, c| {
+            pairwise_sqdist_between(p1, p2, d, o, r, c)
+        });
     }
 }

@@ -9,9 +9,9 @@ use ndarray::{Array2, ShapeBuilder};
 const PAIRWISE_CONFIG: [(usize, usize, usize); 3] = [(64, 64, 16), (128, 128, 32), (256, 64, 32)];
 
 fn configure_group(group: &mut criterion::BenchmarkGroup<'_, criterion::measurement::WallTime>) {
-    group.sample_size(1000);
+    group.sample_size(500);
     group.warm_up_time(Duration::from_secs(1));
-    group.measurement_time(Duration::from_secs(3));
+    group.measurement_time(Duration::from_secs(4));
 }
 
 fn bench_pairwise_sqdist_vs_naive(c: &mut Criterion) {

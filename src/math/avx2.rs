@@ -66,31 +66,35 @@ fn pack_panel_f64(panel: &mut [f64], points: ArrayView2<'_, f64>, jj: usize, nc:
 
 /// Horizontal sum of all 8 lanes of a __m256 into a single f32.
 #[inline(always)]
-unsafe fn horizontal_sum_f32(v: __m256) -> f32 {
-    // Add upper and lower 128-bit halves: [v0+v4, v1+v5, v2+v6, v3+v7]
-    let lo = unsafe { _mm256_castps256_ps128(v) };
-    let hi = unsafe { _mm256_extractf128_ps(v, 1) };
-    let s128 = unsafe { _mm_add_ps(lo, hi) };
-    // Shuffle: [s1, s1, s3, s3], then add pairs -> s64[0] = s0+s1, s64[2] = s2+s3
-    let shuf = unsafe { _mm_movehdup_ps(s128) };
-    let s64 = unsafe { _mm_add_ps(s128, shuf) };
-    // Move s64[2] into lane 0 and add -> final sum
-    let hi64 = unsafe { _mm_movehl_ps(s64, s64) };
-    let s32 = unsafe { _mm_add_ss(s64, hi64) };
-    unsafe { _mm_cvtss_f32(s32) }
+fn horizontal_sum_f32(v: __m256) -> f32 {
+    unsafe {
+        // Add upper and lower 128-bit halves: [v0+v4, v1+v5, v2+v6, v3+v7]
+        let lo = _mm256_castps256_ps128(v);
+        let hi = _mm256_extractf128_ps(v, 1);
+        let s128 = _mm_add_ps(lo, hi);
+        // Shuffle: [s1, s1, s3, s3], then add pairs -> s64[0] = s0+s1, s64[2] = s2+s3
+        let shuf = _mm_movehdup_ps(s128);
+        let s64 = _mm_add_ps(s128, shuf);
+        // Move s64[2] into lane 0 and add -> final sum
+        let hi64 = _mm_movehl_ps(s64, s64);
+        let s32 = _mm_add_ss(s64, hi64);
+        _mm_cvtss_f32(s32)
+    }
 }
 
 /// Horizontal sum of all 4 lanes of a __m256d into a single f64.
 #[inline(always)]
-unsafe fn horizontal_sum_f64(v: __m256d) -> f64 {
-    // Add upper and lower 128-bit halves: [v0+v2, v1+v3]
-    let lo = unsafe { _mm256_castpd256_pd128(v) };
-    let hi = unsafe { _mm256_extractf128_pd(v, 1) };
-    let s128 = unsafe { _mm_add_pd(lo, hi) };
-    // Add the two remaining elements
-    let hi64 = unsafe { _mm_unpackhi_pd(s128, s128) };
-    let s64 = unsafe { _mm_add_sd(s128, hi64) };
-    unsafe { _mm_cvtsd_f64(s64) }
+fn horizontal_sum_f64(v: __m256d) -> f64 {
+    unsafe {
+        // Add upper and lower 128-bit halves: [v0+v2, v1+v3]
+        let lo = _mm256_castpd256_pd128(v);
+        let hi = _mm256_extractf128_pd(v, 1);
+        let s128 = _mm_add_pd(lo, hi);
+        // Add the two remaining elements
+        let hi64 = _mm_unpackhi_pd(s128, s128);
+        let s64 = _mm_add_sd(s128, hi64);
+        _mm_cvtsd_f64(s64)
+    }
 }
 
 // ----- sqdist ----------------------------------------------------------------
@@ -1632,4 +1636,91 @@ pub(super) fn rowdist_f64(
             out[jj..jj + nc].copy_from_slice(&tile[..nc]);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sqdist() {
+        crate::math::tests::verify_sqdist_f32(|v1, v2, d| sqdist_f32(v1, v2, d));
+        crate::math::tests::verify_sqdist_f64(|v1, v2, d| sqdist_f64(v1, v2, d));
+    }
+
+    #[test]
+    fn test_l1dist() {
+        crate::math::tests::verify_l1dist_f32(|v1, v2, d| l1dist_f32(v1, v2, d));
+        crate::math::tests::verify_l1dist_f64(|v1, v2, d| l1dist_f64(v1, v2, d));
+    }
+
+    #[test]
+    fn test_mul() {
+        crate::math::tests::verify_mul_f32(|v1, v2, a, d| mul_f32(v1, v2, a, d));
+        crate::math::tests::verify_mul_f64(|v1, v2, a, d| mul_f64(v1, v2, a, d));
+    }
+
+    #[test]
+    fn test_mul_assign() {
+        crate::math::tests::verify_mul_assign_f32(|v, f, d| mul_assign_f32(v, f, d));
+        crate::math::tests::verify_mul_assign_f64(|v, f, d| mul_assign_f64(v, f, d));
+    }
+
+    #[test]
+    fn test_add_assign() {
+        crate::math::tests::verify_add_assign_f32(|v1, v2, d| add_assign_f32(v1, v2, d));
+        crate::math::tests::verify_add_assign_f64(|v1, v2, d| add_assign_f64(v1, v2, d));
+    }
+
+    #[test]
+    fn test_sub_assign() {
+        crate::math::tests::verify_sub_assign_f32(|v1, v2, d| sub_assign_f32(v1, v2, d));
+        crate::math::tests::verify_sub_assign_f64(|v1, v2, d| sub_assign_f64(v1, v2, d));
+    }
+
+    #[test]
+    fn test_fmamul() {
+        crate::math::tests::verify_fmamul_f32(|v1, a, v2, b, d| fmamul_f32(v1, a, v2, b, d));
+        crate::math::tests::verify_fmamul_f64(|v1, a, v2, b, d| fmamul_f64(v1, a, v2, b, d));
+    }
+
+    #[test]
+    fn test_dot() {
+        crate::math::tests::verify_dot_f32(|v1, v2, d| dot_f32(v1, v2, d));
+        crate::math::tests::verify_dot_f64(|v1, v2, d| dot_f64(v1, v2, d));
+    }
+
+    #[test]
+    fn test_axpy() {
+        crate::math::tests::verify_axpy_f32(|v1, a, v2, d| axpy_f32(v1, a, v2, d));
+        crate::math::tests::verify_axpy_f64(|v1, a, v2, d| axpy_f64(v1, a, v2, d));
+    }
+
+    #[test]
+    fn test_sum() {
+        crate::math::tests::verify_sum_f32(|v, d| sum_f32(v, d));
+        crate::math::tests::verify_sum_f64(|v, d| sum_f64(v, d));
+    }
+
+    #[test]
+    fn test_add_scalar() {
+        crate::math::tests::verify_add_scalar_f32(|v, s, d| add_scalar_f32(v, s, d));
+        crate::math::tests::verify_add_scalar_f64(|v, s, d| add_scalar_f64(v, s, d));
+    }
+
+    #[test]
+    fn test_rowdist() {
+        crate::math::tests::verify_rowdist_f32(|c, p, d, o, n| rowdist_f32(c, p, d, o, n));
+        crate::math::tests::verify_rowdist_f64(|c, p, d, o, n| rowdist_f64(c, p, d, o, n));
+    }
+
+    #[test]
+    fn test_pairwise_sqdist() {
+        crate::math::tests::verify_pairwise_sqdist_f32(|p1, p2, d, o, r, c| {
+            pairwise_sqdist_between_f32(p1, p2, d, o, r, c)
+        });
+        crate::math::tests::verify_pairwise_sqdist_f64(|p1, p2, d, o, r, c| {
+            pairwise_sqdist_between_f64(p1, p2, d, o, r, c)
+        });
+    }
 }

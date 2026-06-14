@@ -14,15 +14,15 @@ use super::unroll;
 
 #[inline(always)]
 pub fn sqdist_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
-    assert!(v1.len() >= d && v2.len() >= d);
-    let mut i = 0;
-    let mut acc0 = unsafe { vdupq_n_f32(0.0) };
-    let mut acc1 = unsafe { vdupq_n_f32(0.0) };
-    let mut acc2 = unsafe { vdupq_n_f32(0.0) };
-    let mut acc3 = unsafe { vdupq_n_f32(0.0) };
+    unsafe {
+        assert!(v1.len() >= d && v2.len() >= d);
+        let mut i = 0;
+        let mut acc0 = vdupq_n_f32(0.0);
+        let mut acc1 = vdupq_n_f32(0.0);
+        let mut acc2 = vdupq_n_f32(0.0);
+        let mut acc3 = vdupq_n_f32(0.0);
 
-    while i + 16 <= d {
-        unsafe {
+        while i + 16 <= d {
             let a0 = vld1q_f32(v1.as_ptr().add(i));
             let b0 = vld1q_f32(v2.as_ptr().add(i));
             let diff0 = vsubq_f32(a0, b0);
@@ -42,28 +42,26 @@ pub fn sqdist_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
             let b3 = vld1q_f32(v2.as_ptr().add(i + 12));
             let diff3 = vsubq_f32(a3, b3);
             acc3 = vfmaq_f32(acc3, diff3, diff3);
+            i += 16;
         }
-        i += 16;
-    }
 
-    let mut acc = unsafe { vaddq_f32(vaddq_f32(acc0, acc1), vaddq_f32(acc2, acc3)) };
-    while i + 4 <= d {
-        unsafe {
+        let mut acc = vaddq_f32(vaddq_f32(acc0, acc1), vaddq_f32(acc2, acc3));
+        while i + 4 <= d {
             let a = vld1q_f32(v1.as_ptr().add(i));
             let b = vld1q_f32(v2.as_ptr().add(i));
             let diff = vsubq_f32(a, b);
             acc = vfmaq_f32(acc, diff, diff);
+            i += 4;
         }
-        i += 4;
-    }
 
-    let mut sum = unsafe { vaddvq_f32(acc) };
-    while i < d {
-        let x = unsafe { *v1.get_unchecked(i) - *v2.get_unchecked(i) };
-        sum = x.mul_add(x, sum);
-        i += 1;
+        let mut sum = vaddvq_f32(acc);
+        while i < d {
+            let x = *v1.get_unchecked(i) - *v2.get_unchecked(i);
+            sum = x.mul_add(x, sum);
+            i += 1;
+        }
+        sum
     }
-    sum
 }
 
 #[inline(always)]
@@ -370,21 +368,19 @@ pub fn sub_assign_f64(v1: &mut [f64], v2: &[f64], d: usize) {
 pub fn fmamul_f32(v1: &mut [f32], a: f32, v2: &[f32], b: f32, d: usize) {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
-    let aa = unsafe { vdupq_n_f32(a) };
-    let bb = unsafe { vdupq_n_f32(b) };
-    while i + 4 <= d {
-        unsafe {
+    unsafe {
+        let aa = vdupq_n_f32(a);
+        let bb = vdupq_n_f32(b);
+        while i + 4 <= d {
             let x = vld1q_f32(v1.as_ptr().add(i));
             let y = vld1q_f32(v2.as_ptr().add(i));
             vst1q_f32(v1.as_mut_ptr().add(i), vmulq_f32(vfmaq_f32(y, x, aa), bb));
+            i += 4;
         }
-        i += 4;
-    }
-    while i < d {
-        unsafe {
+        while i < d {
             *v1.get_unchecked_mut(i) = (*v1.get_unchecked(i)).mul_add(a, *v2.get_unchecked(i)) * b;
+            i += 1;
         }
-        i += 1;
     }
 }
 
@@ -392,21 +388,19 @@ pub fn fmamul_f32(v1: &mut [f32], a: f32, v2: &[f32], b: f32, d: usize) {
 pub fn fmamul_f64(v1: &mut [f64], a: f64, v2: &[f64], b: f64, d: usize) {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
-    let aa = unsafe { vdupq_n_f64(a) };
-    let bb = unsafe { vdupq_n_f64(b) };
-    while i + 2 <= d {
-        unsafe {
+    unsafe {
+        let aa = vdupq_n_f64(a);
+        let bb = vdupq_n_f64(b);
+        while i + 2 <= d {
             let x = vld1q_f64(v1.as_ptr().add(i));
             let y = vld1q_f64(v2.as_ptr().add(i));
             vst1q_f64(v1.as_mut_ptr().add(i), vmulq_f64(vfmaq_f64(y, x, aa), bb));
+            i += 2;
         }
-        i += 2;
-    }
-    while i < d {
-        unsafe {
+        while i < d {
             *v1.get_unchecked_mut(i) = (*v1.get_unchecked(i)).mul_add(a, *v2.get_unchecked(i)) * b;
+            i += 1;
         }
-        i += 1;
     }
 }
 
@@ -414,13 +408,13 @@ pub fn fmamul_f64(v1: &mut [f64], a: f64, v2: &[f64], b: f64, d: usize) {
 pub fn dot_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
-    let mut acc0 = unsafe { vdupq_n_f32(0.0) };
-    let mut acc1 = unsafe { vdupq_n_f32(0.0) };
-    let mut acc2 = unsafe { vdupq_n_f32(0.0) };
-    let mut acc3 = unsafe { vdupq_n_f32(0.0) };
+    unsafe {
+        let mut acc0 = vdupq_n_f32(0.0);
+        let mut acc1 = vdupq_n_f32(0.0);
+        let mut acc2 = vdupq_n_f32(0.0);
+        let mut acc3 = vdupq_n_f32(0.0);
 
-    while i + 16 <= d {
-        unsafe {
+        while i + 16 <= d {
             acc0 = vfmaq_f32(acc0, vld1q_f32(v1.as_ptr().add(i)), vld1q_f32(v2.as_ptr().add(i)));
             acc1 = vfmaq_f32(
                 acc1,
@@ -437,37 +431,35 @@ pub fn dot_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
                 vld1q_f32(v1.as_ptr().add(i + 12)),
                 vld1q_f32(v2.as_ptr().add(i + 12)),
             );
+            i += 16;
         }
-        i += 16;
-    }
 
-    let mut acc = unsafe { vaddq_f32(vaddq_f32(acc0, acc1), vaddq_f32(acc2, acc3)) };
-    while i + 4 <= d {
-        unsafe {
+        let mut acc = vaddq_f32(vaddq_f32(acc0, acc1), vaddq_f32(acc2, acc3));
+        while i + 4 <= d {
             acc = vfmaq_f32(acc, vld1q_f32(v1.as_ptr().add(i)), vld1q_f32(v2.as_ptr().add(i)));
+            i += 4;
         }
-        i += 4;
-    }
 
-    let mut sum = unsafe { vaddvq_f32(acc) };
-    while i < d {
-        sum += unsafe { *v1.get_unchecked(i) * *v2.get_unchecked(i) };
-        i += 1;
+        let mut sum = vaddvq_f32(acc);
+        while i < d {
+            sum += *v1.get_unchecked(i) * *v2.get_unchecked(i);
+            i += 1;
+        }
+        sum
     }
-    sum
 }
 
 #[inline(always)]
 pub fn dot_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
     assert!(v1.len() >= d && v2.len() >= d);
     let mut i = 0;
-    let mut acc0 = unsafe { vdupq_n_f64(0.0) };
-    let mut acc1 = unsafe { vdupq_n_f64(0.0) };
-    let mut acc2 = unsafe { vdupq_n_f64(0.0) };
-    let mut acc3 = unsafe { vdupq_n_f64(0.0) };
+    unsafe {
+        let mut acc0 = vdupq_n_f64(0.0);
+        let mut acc1 = vdupq_n_f64(0.0);
+        let mut acc2 = vdupq_n_f64(0.0);
+        let mut acc3 = vdupq_n_f64(0.0);
 
-    while i + 8 <= d {
-        unsafe {
+        while i + 8 <= d {
             acc0 = vfmaq_f64(acc0, vld1q_f64(v1.as_ptr().add(i)), vld1q_f64(v2.as_ptr().add(i)));
             acc1 = vfmaq_f64(
                 acc1,
@@ -484,24 +476,22 @@ pub fn dot_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
                 vld1q_f64(v1.as_ptr().add(i + 6)),
                 vld1q_f64(v2.as_ptr().add(i + 6)),
             );
+            i += 8;
         }
-        i += 8;
-    }
 
-    let mut acc = unsafe { vaddq_f64(vaddq_f64(acc0, acc1), vaddq_f64(acc2, acc3)) };
-    while i + 2 <= d {
-        unsafe {
+        let mut acc = vaddq_f64(vaddq_f64(acc0, acc1), vaddq_f64(acc2, acc3));
+        while i + 2 <= d {
             acc = vfmaq_f64(acc, vld1q_f64(v1.as_ptr().add(i)), vld1q_f64(v2.as_ptr().add(i)));
+            i += 2;
         }
-        i += 2;
-    }
 
-    let mut sum = unsafe { vaddvq_f64(acc) };
-    while i < d {
-        sum += unsafe { *v1.get_unchecked(i) * *v2.get_unchecked(i) };
-        i += 1;
+        let mut sum = vaddvq_f64(acc);
+        while i < d {
+            sum += *v1.get_unchecked(i) * *v2.get_unchecked(i);
+            i += 1;
+        }
+        sum
     }
-    sum
 }
 
 #[inline(always)]
@@ -747,6 +737,41 @@ pub fn rowdist_f32(
         }
         return;
     }
+
+    if strides[0] == 1 && strides[1] > 0 {
+        const NR: usize = 4;
+        let col_stride = strides[1] as usize;
+        let data_ptr = points.as_ptr();
+        let n_b_blocks = n.div_ceil(NR);
+        let mut tile = [0f32; NR];
+        for jj_block in 0..n_b_blocks {
+            let jj = jj_block * NR;
+            let nc = (n - jj).min(NR);
+            if nc == NR {
+                unsafe {
+                    micro_rowdist_fortran_f32(
+                        d,
+                        center.as_ptr(),
+                        data_ptr.add(jj),
+                        col_stride,
+                        tile.as_mut_ptr(),
+                    );
+                }
+                out[jj..jj + NR].copy_from_slice(&tile);
+            } else {
+                for j_local in 0..nc {
+                    let j = jj + j_local;
+                    let mut sum = 0f32;
+                    for (k, &c) in center.iter().enumerate().take(d) {
+                        let diff = c - unsafe { *data_ptr.add(j + k * col_stride) };
+                        sum += diff * diff;
+                    }
+                    out[j] = sum;
+                }
+            }
+        }
+        return;
+    }
     unroll::rowdist(center, points, d, out, n);
 }
 
@@ -763,5 +788,223 @@ pub fn rowdist_f64(
         }
         return;
     }
+
+    if strides[0] == 1 && strides[1] > 0 {
+        const NR: usize = 2;
+        let col_stride = strides[1] as usize;
+        let data_ptr = points.as_ptr();
+        let n_b_blocks = n.div_ceil(NR);
+        let mut tile = [0f64; NR];
+        for jj_block in 0..n_b_blocks {
+            let jj = jj_block * NR;
+            let nc = (n - jj).min(NR);
+            if nc == NR {
+                unsafe {
+                    micro_rowdist_fortran_f64(
+                        d,
+                        center.as_ptr(),
+                        data_ptr.add(jj),
+                        col_stride,
+                        tile.as_mut_ptr(),
+                    );
+                }
+                out[jj..jj + NR].copy_from_slice(&tile);
+            } else {
+                for j_local in 0..nc {
+                    let j = jj + j_local;
+                    let mut sum = 0f64;
+                    for (k, &c) in center.iter().enumerate().take(d) {
+                        let diff = c - unsafe { *data_ptr.add(j + k * col_stride) };
+                        sum += diff * diff;
+                    }
+                    out[j] = sum;
+                }
+            }
+        }
+        return;
+    }
     unroll::rowdist(center, points, d, out, n);
+}
+
+/// Squared distance from one center to NR=4 points direct from Fortran-order layout.
+#[inline(always)]
+fn micro_rowdist_fortran_f32(
+    d: usize, center: *const f32, base: *const f32, col_stride: usize, out: *mut f32,
+) {
+    unsafe {
+        let mut acc0 = vdupq_n_f32(0.0);
+        let mut acc1 = vdupq_n_f32(0.0);
+        let mut acc2 = vdupq_n_f32(0.0);
+        let mut acc3 = vdupq_n_f32(0.0);
+
+        let k_unroll = d / 4;
+
+        for p in 0..k_unroll {
+            let base_k = p * 4;
+
+            let b0 = vld1q_f32(base.add(base_k * col_stride));
+            let c0 = vdupq_n_f32(*center.add(base_k));
+            let d0 = vsubq_f32(c0, b0);
+            acc0 = vfmaq_f32(acc0, d0, d0);
+
+            let b1 = vld1q_f32(base.add((base_k + 1) * col_stride));
+            let c1 = vdupq_n_f32(*center.add(base_k + 1));
+            let d1 = vsubq_f32(c1, b1);
+            acc1 = vfmaq_f32(acc1, d1, d1);
+
+            let b2 = vld1q_f32(base.add((base_k + 2) * col_stride));
+            let c2 = vdupq_n_f32(*center.add(base_k + 2));
+            let d2 = vsubq_f32(c2, b2);
+            acc2 = vfmaq_f32(acc2, d2, d2);
+
+            let b3 = vld1q_f32(base.add((base_k + 3) * col_stride));
+            let c3 = vdupq_n_f32(*center.add(base_k + 3));
+            let d3 = vsubq_f32(c3, b3);
+            acc3 = vfmaq_f32(acc3, d3, d3);
+        }
+
+        let mut acc = vaddq_f32(vaddq_f32(acc0, acc1), vaddq_f32(acc2, acc3));
+        for k in (k_unroll * 4)..d {
+            let b = vld1q_f32(base.add(k * col_stride));
+            let c = vdupq_n_f32(*center.add(k));
+            let diff = vsubq_f32(c, b);
+            acc = vfmaq_f32(acc, diff, diff);
+        }
+        vst1q_f32(out, acc);
+    }
+}
+
+/// Squared distance from one center to NR=2 points direct from Fortran-order layout.
+#[inline(always)]
+fn micro_rowdist_fortran_f64(
+    d: usize, center: *const f64, base: *const f64, col_stride: usize, out: *mut f64,
+) {
+    unsafe {
+        let mut acc0 = vdupq_n_f64(0.0);
+        let mut acc1 = vdupq_n_f64(0.0);
+        let mut acc2 = vdupq_n_f64(0.0);
+        let mut acc3 = vdupq_n_f64(0.0);
+
+        let k_unroll = d / 4;
+
+        for p in 0..k_unroll {
+            let base_k = p * 4;
+
+            let b0 = vld1q_f64(base.add(base_k * col_stride));
+            let c0 = vdupq_n_f64(*center.add(base_k));
+            let d0 = vsubq_f64(c0, b0);
+            acc0 = vfmaq_f64(acc0, d0, d0);
+
+            let b1 = vld1q_f64(base.add((base_k + 1) * col_stride));
+            let c1 = vdupq_n_f64(*center.add(base_k + 1));
+            let d1 = vsubq_f64(c1, b1);
+            acc1 = vfmaq_f64(acc1, d1, d1);
+
+            let b2 = vld1q_f64(base.add((base_k + 2) * col_stride));
+            let c2 = vdupq_n_f64(*center.add(base_k + 2));
+            let d2 = vsubq_f64(c2, b2);
+            acc2 = vfmaq_f64(acc2, d2, d2);
+
+            let b3 = vld1q_f64(base.add((base_k + 3) * col_stride));
+            let c3 = vdupq_n_f64(*center.add(base_k + 3));
+            let d3 = vsubq_f64(c3, b3);
+            acc3 = vfmaq_f64(acc3, d3, d3);
+        }
+
+        let mut acc = vaddq_f64(vaddq_f64(acc0, acc1), vaddq_f64(acc2, acc3));
+        for k in (k_unroll * 4)..d {
+            let b = vld1q_f64(base.add(k * col_stride));
+            let c = vdupq_n_f64(*center.add(k));
+            let diff = vsubq_f64(c, b);
+            acc = vfmaq_f64(acc, diff, diff);
+        }
+        vst1q_f64(out, acc);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sqdist() {
+        crate::math::tests::verify_sqdist_f32(|v1, v2, d| sqdist_f32(v1, v2, d));
+        crate::math::tests::verify_sqdist_f64(|v1, v2, d| sqdist_f64(v1, v2, d));
+    }
+
+    #[test]
+    fn test_l1dist() {
+        crate::math::tests::verify_l1dist_f32(|v1, v2, d| l1dist_f32(v1, v2, d));
+        crate::math::tests::verify_l1dist_f64(|v1, v2, d| l1dist_f64(v1, v2, d));
+    }
+
+    #[test]
+    fn test_mul() {
+        crate::math::tests::verify_mul_f32(|v1, v2, a, d| mul_f32(v1, v2, a, d));
+        crate::math::tests::verify_mul_f64(|v1, v2, a, d| mul_f64(v1, v2, a, d));
+    }
+
+    #[test]
+    fn test_mul_assign() {
+        crate::math::tests::verify_mul_assign_f32(|v, f, d| mul_assign_f32(v, f, d));
+        crate::math::tests::verify_mul_assign_f64(|v, f, d| mul_assign_f64(v, f, d));
+    }
+
+    #[test]
+    fn test_add_assign() {
+        crate::math::tests::verify_add_assign_f32(|v1, v2, d| add_assign_f32(v1, v2, d));
+        crate::math::tests::verify_add_assign_f64(|v1, v2, d| add_assign_f64(v1, v2, d));
+    }
+
+    #[test]
+    fn test_sub_assign() {
+        crate::math::tests::verify_sub_assign_f32(|v1, v2, d| sub_assign_f32(v1, v2, d));
+        crate::math::tests::verify_sub_assign_f64(|v1, v2, d| sub_assign_f64(v1, v2, d));
+    }
+
+    #[test]
+    fn test_fmamul() {
+        crate::math::tests::verify_fmamul_f32(|v1, a, v2, b, d| fmamul_f32(v1, a, v2, b, d));
+        crate::math::tests::verify_fmamul_f64(|v1, a, v2, b, d| fmamul_f64(v1, a, v2, b, d));
+    }
+
+    #[test]
+    fn test_dot() {
+        crate::math::tests::verify_dot_f32(|v1, v2, d| dot_f32(v1, v2, d));
+        crate::math::tests::verify_dot_f64(|v1, v2, d| dot_f64(v1, v2, d));
+    }
+
+    #[test]
+    fn test_axpy() {
+        crate::math::tests::verify_axpy_f32(|v1, a, v2, d| axpy_f32(v1, a, v2, d));
+        crate::math::tests::verify_axpy_f64(|v1, a, v2, d| axpy_f64(v1, a, v2, d));
+    }
+
+    #[test]
+    fn test_sum() {
+        crate::math::tests::verify_sum_f32(|v, d| sum_f32(v, d));
+        crate::math::tests::verify_sum_f64(|v, d| sum_f64(v, d));
+    }
+
+    #[test]
+    fn test_add_scalar() {
+        crate::math::tests::verify_add_scalar_f32(|v, s, d| add_scalar_f32(v, s, d));
+        crate::math::tests::verify_add_scalar_f64(|v, s, d| add_scalar_f64(v, s, d));
+    }
+
+    #[test]
+    fn test_rowdist() {
+        crate::math::tests::verify_rowdist_f32(|c, p, d, o, n| rowdist_f32(c, p, d, o, n));
+        crate::math::tests::verify_rowdist_f64(|c, p, d, o, n| rowdist_f64(c, p, d, o, n));
+    }
+
+    #[test]
+    fn test_pairwise_sqdist() {
+        crate::math::tests::verify_pairwise_sqdist_f32(|p1, p2, d, o, r, c| {
+            pairwise_sqdist_between_f32(p1, p2, d, o, r, c)
+        });
+        crate::math::tests::verify_pairwise_sqdist_f64(|p1, p2, d, o, r, c| {
+            pairwise_sqdist_between_f64(p1, p2, d, o, r, c)
+        });
+    }
 }

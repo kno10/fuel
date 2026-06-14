@@ -4,12 +4,12 @@ use std::time::Duration;
 use criterion::{Criterion, criterion_group, criterion_main};
 use fuel::math;
 
-const MATH_DIMS: [usize; 3] = [2, 4, 8];
+const MATH_DIMS: [usize; 4] = [2, 4, 8, 32];
 
 fn configure_group(group: &mut criterion::BenchmarkGroup<'_, criterion::measurement::WallTime>) {
     group.sample_size(200);
     group.warm_up_time(Duration::from_secs(1));
-    group.measurement_time(Duration::from_secs(2));
+    group.measurement_time(Duration::from_secs(3));
 }
 
 fn bench_math_dot(c: &mut Criterion) {
