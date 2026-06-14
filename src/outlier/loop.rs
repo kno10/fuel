@@ -2,7 +2,7 @@ use rs_stats::prob::erf;
 
 #[cfg(test)]
 use crate::distance::Euclidean;
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 /// Compute Local Outlier Probabilities (LoOP) scores.
@@ -27,14 +27,7 @@ where
     let k_effective = k.min(size.saturating_sub(1));
 
     if k_effective == 0 {
-        return Ok(make_outlier_result(
-            vec![F::zero(); size],
-            "LoOP",
-            false,
-            F::zero(),
-            F::zero(),
-            F::one(),
-        ));
+        return Ok(OutlierResult::builder(vec![F::zero(); size], "LoOP").build());
     }
 
     let neighborhoods: Vec<Vec<(usize, F)>> =
@@ -83,7 +76,7 @@ where
         F::from_f64(erf(z).unwrap_or(0.0).max(0.0)).unwrap_or(F::zero())
     });
 
-    Ok(make_outlier_result(scores, "LoOP", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "LoOP").build())
 }
 #[cfg(test)]
 mod tests {

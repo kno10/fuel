@@ -1,4 +1,4 @@
-use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_knn};
 use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 pub fn k_nearest_neighbors_distance_deviation<'a, S, D, F>(
@@ -33,7 +33,7 @@ where
         F::from_f64(sc).unwrap_or(F::zero())
     });
 
-    Ok(make_outlier_result(scores, "kNNDensityDiff", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "kNNDensityDiff").build())
 }
 
 #[cfg(test)]

@@ -1,26 +1,13 @@
-use crate::api::query::IndexQuery;
-use crate::outlier::common::{OutlierResult, make_outlier_result};
-use crate::{DistanceData, Float, KnnSearch, ParMap};
+use crate::outlier::common::OutlierResult;
+use crate::{DistanceData, Float, IndexQuery, KnnSearch, ParMap};
 
-/// Compute ODIN outlier scores based on in-degree of the k‑NN graph.
-///
-/// For each point the `k` nearest neighbors are found (excluding the point
-/// itself), and each neighbor's in-degree is incremented.  Points with a
-/// small in-degree are considered outliers (inverted scoring semantics).
-///
-/// The algorithm returns normalized in-degree: `in_degree / k_effective`.
-/// `OutlierMetadata.ascending` is set to `true` to indicate inverted order
-/// (low scores are more anomalous).
-///
-/// # Panics
-///
-/// Panics if `k == 0`.
 pub fn outlier_detection_independence_neighbor<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize,
 ) -> Result<OutlierResult<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
+    D::Query<'a>: IndexQuery<F>,
     S: KnnSearch<F, D::Query<'a>> + Sync,
 {
     assert!(k > 0, "k must be greater than 0");
@@ -29,14 +16,12 @@ where
     let k_effective = k.min(size.saturating_sub(1));
 
     if k_effective == 0 {
-        return Ok(make_outlier_result(
-            vec![F::zero(); size],
-            "ODIN",
-            true,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(vec![F::zero(); size], "ODIN")
+            .ascending(true)
+            .baseline(F::zero())
+            .theoretical_min(F::zero())
+            .theoretical_max(F::infinity())
+            .build());
     }
 
     let num_threads = {
@@ -85,7 +70,12 @@ where
     let scores: Vec<F> =
         indegree.into_iter().map(|d| F::from_f64((d as f64) * inc).unwrap_or(F::zero())).collect();
 
-    Ok(make_outlier_result(scores, "ODIN", true, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "ODIN")
+        .ascending(true)
+        .baseline(F::zero())
+        .theoretical_min(F::zero())
+        .theoretical_max(F::infinity())
+        .build())
 }
 
 #[cfg(test)]

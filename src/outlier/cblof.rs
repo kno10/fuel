@@ -11,7 +11,7 @@
 /// objective; the score is further multiplied by the point's cluster size.
 use crate::Float;
 use crate::cluster::kmeans::util::KMeansResult;
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 use crate::{ParMap, VectorData, math};
 
 /// Cluster-based local outlier factor.
@@ -92,7 +92,11 @@ where
         }
     });
 
-    make_outlier_result(scores, "CBLOF", false, F::one(), F::zero(), F::infinity())
+    OutlierResult::builder(scores, "CBLOF")
+        .baseline(F::one())
+        .theoretical_min(F::zero())
+        .theoretical_max(F::infinity())
+        .build()
 }
 
 #[cfg(test)]

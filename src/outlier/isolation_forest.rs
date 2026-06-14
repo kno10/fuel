@@ -2,7 +2,7 @@ use rand::prelude::SliceRandom;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 use crate::{DistanceData, Float, ParMap, VectorData};
 
 const EULER_MASCHERONI: f64 = 0.577_215_664_901_532_9;
@@ -118,14 +118,7 @@ where
 {
     let n = data.len();
     if n == 0 || subsample_size < 2 {
-        return make_outlier_result(
-            Vec::new(),
-            "IsolationForest",
-            false,
-            F::zero(),
-            F::zero(),
-            F::one(),
-        );
+        return OutlierResult::builder(Vec::new(), "IsolationForest").build();
     }
 
     let subsample_size = subsample_size.min(n);
@@ -162,7 +155,7 @@ where
         })
         .collect();
 
-    make_outlier_result(scores, "IsolationForest", false, F::zero(), F::zero(), F::infinity())
+    OutlierResult::builder(scores, "IsolationForest").build()
 }
 
 #[cfg(test)]

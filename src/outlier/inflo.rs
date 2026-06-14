@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_knn};
 use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 /// Influence Outlierness Factor.
@@ -14,14 +14,7 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(
-            Vec::new(),
-            "INFLO",
-            false,
-            F::one(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(Vec::new(), "INFLO").baseline(F::one()).build());
     }
 
     let k_effective = k.min(size.saturating_sub(1));
@@ -82,7 +75,7 @@ where
         }
     });
 
-    Ok(make_outlier_result(scores, "INFLO", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "INFLO").build())
 }
 
 #[cfg(test)]

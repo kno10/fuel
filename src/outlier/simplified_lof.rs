@@ -1,4 +1,4 @@
-use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_knn};
 use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 pub fn simplified_lof<'a, S, D, F>(
@@ -11,26 +11,12 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(
-            Vec::new(),
-            "SimplifiedLOF",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(Vec::new(), "SimplifiedLOF").build());
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return Ok(make_outlier_result(
-            vec![F::one(); size],
-            "SimplifiedLOF",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(vec![F::one(); size], "SimplifiedLOF").build());
     }
 
     let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh)?;
@@ -55,7 +41,7 @@ where
         if count > F::zero() { sum_neighbors / (lrd[i] * count) } else { F::one() }
     });
 
-    Ok(make_outlier_result(scores, "SimplifiedLOF", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "SimplifiedLOF").build())
 }
 
 #[cfg(test)]

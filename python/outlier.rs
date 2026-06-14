@@ -1,4 +1,4 @@
-use numpy::{Element, PyArray1, PyReadonlyArray1, PyArray2, PyReadonlyArray2};
+use numpy::{Element, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -9,7 +9,6 @@ use crate::intrinsicdimensionality::{
     TightLID, ZipfID,
 };
 use crate::kernel::polynomial::PolynomialKernel;
-use crate::outlier::cop::CopDistanceDist;
 use crate::outlier::kernel::KernelDensityFunction;
 use crate::outlier::kmeans_outlier::KMeansOutlierRule;
 use crate::python::search::SearchIndex;
@@ -75,24 +74,15 @@ where
     meta.set_item("theoretical_maximum", m.theoretical_maximum)?;
 
     let expected_positions = if let Some(pos) = result.expected_positions {
-        Some(PyArray2::from_vec(py, pos.len(), if !pos.is_empty() { pos[0].len() } else { 0 }, pos.into_iter().flatten().collect()))
+        Some(PyArray2::from_vec2(py, &pos)?)
     } else {
         None
     };
 
-    let output = (scores, meta, expected_positions).into_pyobject(py)?;
-    Ok(output.into())
-}
+    meta.set_item("expected_positions", expected_positions)?;
 
-fn parse_cop_distance_dist(dist: &str) -> PyResult<CopDistanceDist> {
-    match dist.to_lowercase().as_str() {
-        "chi2" | "chi_squared" | "chisq" | "chi-squared" => Ok(CopDistanceDist::ChiSquared),
-        "gamma" => Ok(CopDistanceDist::Gamma),
-        other => Err(PyValueError::new_err(format!(
-            "unknown COP distribution '{}', valid values are 'chi2' or 'gamma'",
-            other
-        ))),
-    }
+    let output = (scores, meta).into_pyobject(py)?;
+    Ok(output.into())
 }
 
 fn parse_kernel_density_function(kernel: &str) -> PyResult<KernelDensityFunction> {
@@ -111,7 +101,7 @@ fn parse_kernel_density_function(kernel: &str) -> PyResult<KernelDensityFunction
     }
 }
 
-macro_rules! tree_outlier_p {
+macro_rules! outlier_p {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, perplexity, distance, *, index))]
@@ -165,7 +155,7 @@ macro_rules! data_outlier_n {
     };
 }
 
-macro_rules! tree_outlier_k {
+macro_rules! outlier_k {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, k, distance, *, index))]
@@ -184,7 +174,7 @@ macro_rules! tree_outlier_k {
     };
 }
 
-macro_rules! tree_outlier_k_m {
+macro_rules! outlier_k_m {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, k, m, distance, *, index))]
@@ -203,7 +193,7 @@ macro_rules! tree_outlier_k_m {
     };
 }
 
-macro_rules! tree_outlier_k_alpha {
+macro_rules! outlier_k_alpha {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, k, alpha, distance, *, index))]
@@ -222,7 +212,7 @@ macro_rules! tree_outlier_k_alpha {
     };
 }
 
-macro_rules! tree_outlier_d {
+macro_rules! outlier_d {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, d, distance, *, index))]
@@ -241,7 +231,7 @@ macro_rules! tree_outlier_d {
     };
 }
 
-macro_rules! tree_outlier_d_p {
+macro_rules! outlier_d_p {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, d, p, distance, *, index))]
@@ -260,7 +250,7 @@ macro_rules! tree_outlier_d_p {
     };
 }
 
-macro_rules! tree_outlier_k_delta {
+macro_rules! outlier_k_delta {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, k, delta, distance, *, index))]
@@ -279,38 +269,7 @@ macro_rules! tree_outlier_k_delta {
     };
 }
 
-macro_rules! tree_outlier_k_expect_dist {
-    ($name:ident, $variant:ident, $dtype:ty) => {
-        #[pyfunction]
-        #[pyo3(signature = (data, k, expect, dist, distance, *, index))]
-        fn $name<'py>(
-            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, expect: f64,
-            dist: &str, distance: &str, index: PyRef<'_, SearchIndex>,
-        ) -> PyResult<Py<PyAny>> {
-            let array = data.as_array();
-            let dataset = build_outlier_dataset::<$dtype>(&array, distance)?;
-            let tree = index.inner();
-            let dist = parse_cop_distance_dist(dist)?;
-            let result = crate::py_interruptible(py, || {
-                outlier::$variant::<_, _, $dtype>(tree, &dataset, k, expect, dist)
-            })?;
-            result_to_py_outlier(py, result)
-        }
-    };
-}
-
-tree_outlier_k_expect_dist!(
-    correlation_outlier_probabilities_f32,
-    correlation_outlier_probabilities,
-    f32
-);
-tree_outlier_k_expect_dist!(
-    correlation_outlier_probabilities_f64,
-    correlation_outlier_probabilities,
-    f64
-);
-
-macro_rules! tree_outlier_k_h_kernel {
+macro_rules! outlier_k_h_kernel {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, k, h, kernel, distance, *, index))]
@@ -330,8 +289,8 @@ macro_rules! tree_outlier_k_h_kernel {
     };
 }
 
-tree_outlier_k_h_kernel!(simple_kernel_density_lof_f32, simple_kd_lof, f32);
-tree_outlier_k_h_kernel!(simple_kernel_density_lof_f64, simple_kd_lof, f64);
+outlier_k_h_kernel!(simple_kernel_density_lof_f32, simple_kd_lof, f32);
+outlier_k_h_kernel!(simple_kernel_density_lof_f64, simple_kd_lof, f64);
 
 // Dispatches an estimator name to a concrete KNNIDEstimator type, forwarding it as
 // first argument to the callback macro. Usage:
@@ -370,7 +329,7 @@ macro_rules! apply_idos {
     };
 }
 
-macro_rules! tree_outlier_kc_kr {
+macro_rules! outlier_kc_kr {
     ($name:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, k_c, k_r, estimator=None, *, distance, index))]
@@ -387,8 +346,8 @@ macro_rules! tree_outlier_kc_kr {
     };
 }
 
-tree_outlier_kc_kr!(intrinsic_dimensionality_outlier_score_f32, f32);
-tree_outlier_kc_kr!(intrinsic_dimensionality_outlier_score_f64, f64);
+outlier_kc_kr!(intrinsic_dimensionality_outlier_score_f32, f32);
+outlier_kc_kr!(intrinsic_dimensionality_outlier_score_f64, f64);
 
 macro_rules! apply_lid {
     ($E:ty, $tree:expr, $dataset:expr, $k:expr) => {
@@ -396,7 +355,7 @@ macro_rules! apply_lid {
     };
 }
 
-macro_rules! tree_outlier_k_id {
+macro_rules! outlier_k_id {
     ($name:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, k, estimator=None, *, distance, index))]
@@ -413,8 +372,8 @@ macro_rules! tree_outlier_k_id {
     };
 }
 
-tree_outlier_k_id!(local_intrinsic_dimensionality_f32, f32);
-tree_outlier_k_id!(local_intrinsic_dimensionality_f64, f64);
+outlier_k_id!(local_intrinsic_dimensionality_f32, f32);
+outlier_k_id!(local_intrinsic_dimensionality_f64, f64);
 
 macro_rules! isolation_forest {
     ($name:ident, $dtype:ty) => {
@@ -494,7 +453,7 @@ data_outlier_no_args!(distance_from_center_f64, distance_from_center, f64);
 data_outlier_no_args!(distance_from_origin_f32, distance_from_origin, f32);
 data_outlier_no_args!(distance_from_origin_f64, distance_from_origin, f64);
 
-macro_rules! tree_outlier_rmax_nmin_alpha {
+macro_rules! outlier_rmax_nmin_alpha {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, rmax, nmin, alpha, distance, *, index))]
@@ -513,25 +472,25 @@ macro_rules! tree_outlier_rmax_nmin_alpha {
     };
 }
 
-tree_outlier_rmax_nmin_alpha!(local_correlation_integral_f32, local_correlation_integral, f32);
-tree_outlier_rmax_nmin_alpha!(local_correlation_integral_f64, local_correlation_integral, f64);
+outlier_rmax_nmin_alpha!(local_correlation_integral_f32, local_correlation_integral, f32);
+outlier_rmax_nmin_alpha!(local_correlation_integral_f64, local_correlation_integral, f64);
 
 // Macro-generated wrappers
 
-tree_outlier_p!(stochastic_outlier_selection_f32, stochastic_outlier_selection, f32);
-tree_outlier_p!(stochastic_outlier_selection_f64, stochastic_outlier_selection, f64);
+outlier_p!(stochastic_outlier_selection_f32, stochastic_outlier_selection, f32);
+outlier_p!(stochastic_outlier_selection_f64, stochastic_outlier_selection, f64);
 
-tree_outlier_k_m!(local_outlier_probabilities_f32, local_outlier_probabilities, f32);
-tree_outlier_k_m!(local_outlier_probabilities_f64, local_outlier_probabilities, f64);
+outlier_k_m!(local_outlier_probabilities_f32, local_outlier_probabilities, f32);
+outlier_k_m!(local_outlier_probabilities_f64, local_outlier_probabilities, f64);
 
-tree_outlier_d!(db_outlier_score_f32, db_outlier_score, f32);
-tree_outlier_d!(db_outlier_score_f64, db_outlier_score, f64);
+outlier_d!(db_outlier_score_f32, db_outlier_score, f32);
+outlier_d!(db_outlier_score_f64, db_outlier_score, f64);
 
-tree_outlier_d_p!(db_outlier_detection_f32, db_outlier_detection, f32);
-tree_outlier_d_p!(db_outlier_detection_f64, db_outlier_detection, f64);
+outlier_d_p!(db_outlier_detection_f32, db_outlier_detection, f32);
+outlier_d_p!(db_outlier_detection_f64, db_outlier_detection, f64);
 
-tree_outlier_k_delta!(dynamic_window_outlier_factor_f32, dynamic_window_outlier_factor, f32);
-tree_outlier_k_delta!(dynamic_window_outlier_factor_f64, dynamic_window_outlier_factor, f64);
+outlier_k_delta!(dynamic_window_outlier_factor_f32, dynamic_window_outlier_factor, f32);
+outlier_k_delta!(dynamic_window_outlier_factor_f64, dynamic_window_outlier_factor, f64);
 
 macro_rules! fast_abod {
     ($name:ident, $dtype:ty) => {
@@ -557,10 +516,10 @@ macro_rules! fast_abod {
 
 fast_abod!(fast_angle_based_outlier_detection_f32, f32);
 fast_abod!(fast_angle_based_outlier_detection_f64, f64);
-tree_outlier_k_m!(influence_outlier_f32, influence_outlier, f32);
-tree_outlier_k_m!(influence_outlier_f64, influence_outlier, f64);
+outlier_k_m!(influence_outlier_f32, influence_outlier, f32);
+outlier_k_m!(influence_outlier_f64, influence_outlier, f64);
 
-macro_rules! tree_outlier_k_h_c_kernel {
+macro_rules! outlier_k_h_c_kernel {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, k, h, c, kernel, distance, *, index))]
@@ -580,36 +539,36 @@ macro_rules! tree_outlier_k_h_c_kernel {
     };
 }
 
-tree_outlier_k_h_c_kernel!(local_density_factor_f32, local_density_factor, f32);
-tree_outlier_k_h_c_kernel!(local_density_factor_f64, local_density_factor, f64);
+outlier_k_h_c_kernel!(local_density_factor_f32, local_density_factor, f32);
+outlier_k_h_c_kernel!(local_density_factor_f64, local_density_factor, f64);
 
-tree_outlier_k!(local_density_outlier_factor_f32, local_density_outlier_factor, f32);
-tree_outlier_k!(local_density_outlier_factor_f64, local_density_outlier_factor, f64);
+outlier_k!(local_density_outlier_factor_f32, local_density_outlier_factor, f32);
+outlier_k!(local_density_outlier_factor_f64, local_density_outlier_factor, f64);
 
-tree_outlier_k!(local_isolation_coefficient_f32, local_isolation_coefficient, f32);
-tree_outlier_k!(local_isolation_coefficient_f64, local_isolation_coefficient, f64);
+outlier_k!(local_isolation_coefficient_f32, local_isolation_coefficient, f32);
+outlier_k!(local_isolation_coefficient_f64, local_isolation_coefficient, f64);
 
-tree_outlier_k!(local_outlier_factor_f32, local_outlier_factor, f32);
-tree_outlier_k!(local_outlier_factor_f64, local_outlier_factor, f64);
+outlier_k!(local_outlier_factor_f32, local_outlier_factor, f32);
+outlier_k!(local_outlier_factor_f64, local_outlier_factor, f64);
 
-tree_outlier_k!(
+outlier_k!(
     outlier_detection_independence_neighbor_f32,
     outlier_detection_independence_neighbor,
     f32
 );
-tree_outlier_k!(
+outlier_k!(
     outlier_detection_independence_neighbor_f64,
     outlier_detection_independence_neighbor,
     f64
 );
 
-tree_outlier_k_alpha!(subspace_outlier_degree_f32, subspace_outlier_degree, f32);
-tree_outlier_k_alpha!(subspace_outlier_degree_f64, subspace_outlier_degree, f64);
+outlier_k_alpha!(subspace_outlier_degree_f32, subspace_outlier_degree, f32);
+outlier_k_alpha!(subspace_outlier_degree_f64, subspace_outlier_degree, f64);
 
-tree_outlier_k!(weighted_knn_f32, weighted_knn, f32);
-tree_outlier_k!(weighted_knn_f64, weighted_knn, f64);
+outlier_k!(weighted_knn_f32, weighted_knn, f32);
+outlier_k!(weighted_knn_f64, weighted_knn, f64);
 
-macro_rules! tree_outlier_krefer_kreach {
+macro_rules! outlier_krefer_kreach {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, krefer, kreach, distance, *, index))]
@@ -628,28 +587,20 @@ macro_rules! tree_outlier_krefer_kreach {
     };
 }
 
-tree_outlier_krefer_kreach!(flexible_lof_f32, flexible_lof, f32);
-tree_outlier_krefer_kreach!(flexible_lof_f64, flexible_lof, f64);
+outlier_krefer_kreach!(flexible_lof_f32, flexible_lof, f32);
+outlier_krefer_kreach!(flexible_lof_f64, flexible_lof, f64);
 
-tree_outlier_k!(simplified_lof_f32, simplified_lof, f32);
-tree_outlier_k!(simplified_lof_f64, simplified_lof, f64);
+outlier_k!(simplified_lof_f32, simplified_lof, f32);
+outlier_k!(simplified_lof_f64, simplified_lof, f64);
 
-tree_outlier_k!(k_nearest_neighbors_outlier_f32, k_nearest_neighbors_outlier, f32);
-tree_outlier_k!(k_nearest_neighbors_outlier_f64, k_nearest_neighbors_outlier, f64);
+outlier_k!(k_nearest_neighbors_outlier_f32, k_nearest_neighbors_outlier, f32);
+outlier_k!(k_nearest_neighbors_outlier_f64, k_nearest_neighbors_outlier, f64);
 
-tree_outlier_k!(
-    k_nearest_neighbors_distance_deviation_f32,
-    k_nearest_neighbors_distance_deviation,
-    f32
-);
-tree_outlier_k!(
-    k_nearest_neighbors_distance_deviation_f64,
-    k_nearest_neighbors_distance_deviation,
-    f64
-);
+outlier_k!(k_nearest_neighbors_distance_deviation_f32, k_nearest_neighbors_distance_deviation, f32);
+outlier_k!(k_nearest_neighbors_distance_deviation_f64, k_nearest_neighbors_distance_deviation, f64);
 
-tree_outlier_k!(k_nearest_neighbors_sos_f32, k_nearest_neighbors_sos, f32);
-tree_outlier_k!(k_nearest_neighbors_sos_f64, k_nearest_neighbors_sos, f64);
+outlier_k!(k_nearest_neighbors_sos_f32, k_nearest_neighbors_sos, f32);
+outlier_k!(k_nearest_neighbors_sos_f64, k_nearest_neighbors_sos, f64);
 
 macro_rules! abod {
     ($name:ident, $dtype:ty) => {
@@ -686,12 +637,12 @@ data_outlier_n!(
     f64
 );
 
-macro_rules! tree_outlier_cop {
+macro_rules! outlier_cop {
     ($name:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, k, expect=0.001, dist="chi2", store_models=false, distance="euclidean", *, index))]
         fn $name<'py>(
-            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, expect: f64, dist: &str, 
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, expect: f64, dist: &str,
             store_models: bool, distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
@@ -702,33 +653,33 @@ macro_rules! tree_outlier_cop {
                 "chi2" | "chisq" | "chi-squared" => outlier::CopDistanceDist::ChiSquared,
                 "gamma" => outlier::CopDistanceDist::Gamma,
                 other => return Err(PyValueError::new_err(format!(
-                    "unknown COP distance distribution '{}', valid values are: chi2, gamma", 
+                    "unknown COP distance distribution '{}', valid values are: chi2, gamma",
                     other
                 ))),
             };
 
-            let result = crate::py_interruptible(py, || {
-                Ok(outlier::correlation_outlier_probabilities::<_, _, $dtype>(
+            let result = crate::py_interruptible(py, ||
+                outlier::correlation_outlier_probabilities::<_, _, $dtype>(
                     tree, &dataset, k, expect, d_dist, store_models
-                ))
-            })?;
+                )
+            )?;
             result_to_py_outlier(py, result)
         }
     };
 }
 
-tree_outlier_cop!(correlation_outlier_probabilities_f32, f32);
-tree_outlier_cop!(correlation_outlier_probabilities_f64, f64);
+outlier_cop!(correlation_outlier_probabilities_f32, f32);
+outlier_cop!(correlation_outlier_probabilities_f64, f64);
 
-tree_outlier_k!(connectivity_outlier_factor_f32, connectivity_outlier_factor, f32);
-tree_outlier_k!(connectivity_outlier_factor_f64, connectivity_outlier_factor, f64);
+outlier_k!(connectivity_outlier_factor_f32, connectivity_outlier_factor, f32);
+outlier_k!(connectivity_outlier_factor_f64, connectivity_outlier_factor, f64);
 
-macro_rules! tree_outlier_exknn {
+macro_rules! outlier_exknn {
     ($name:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, k, center_type="ArithmeticMean", tol=1e-8, store_centers=false, distance="euclidean", *, index))]
         fn $name<'py>(
-            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, center_type: &str, tol: f64, 
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, k: usize, center_type: &str, tol: f64,
             store_centers: bool, distance: &str, index: PyRef<'_, SearchIndex>,
         ) -> PyResult<Py<PyAny>> {
             let array = data.as_array();
@@ -740,30 +691,30 @@ macro_rules! tree_outlier_exknn {
                 "peraxismedian" | "median" => outlier::CenterType::PerAxisMedian,
                 "geometricmedian" | "geometric" => outlier::CenterType::GeometricMedian,
                 other => return Err(PyValueError::new_err(format!(
-                    "unknown center type '{}', valid values are: ArithmeticMean, PerAxisMedian, GeometricMedian", 
+                    "unknown center type '{}', valid values are: ArithmeticMean, PerAxisMedian, GeometricMedian",
                     other
                 ))),
             };
 
-            let result = crate::py_interruptible(py, || {
-                Ok(outlier::explainable_knn_outlier::<_, _, $dtype>(
+            let result = crate::py_interruptible(py, ||
+                outlier::explainable_knn_outlier::<_, _, $dtype>(
                     tree, &dataset, k, ct, tol as $dtype, store_centers
-                ))
-            })?;
+                )
+            )?;
             result_to_py_outlier(py, result)
         }
     };
 }
 
-tree_outlier_exknn!(explainable_knn_outlier_f32, f32);
-tree_outlier_exknn!(explainable_knn_outlier_f64, f64);
+outlier_exknn!(explainable_knn_outlier_f32, f32);
+outlier_exknn!(explainable_knn_outlier_f64, f64);
 
-tree_outlier_k!(variance_of_volume_f32, variance_of_volume, f32);
-tree_outlier_k!(variance_of_volume_f64, variance_of_volume, f64);
+outlier_k!(variance_of_volume_f32, variance_of_volume, f32);
+outlier_k!(variance_of_volume_f64, variance_of_volume, f64);
 
 // ---- KDEOS -----------------------------------------------------------------
 
-macro_rules! tree_outlier_kdeos {
+macro_rules! outlier_kdeos {
     ($name:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, kmin, kmax, kernel="gaussian", min_bandwidth=0.0, scale=1.0, idim=None, *, distance, index))]
@@ -784,8 +735,8 @@ macro_rules! tree_outlier_kdeos {
     };
 }
 
-tree_outlier_kdeos!(kdeos_f32, f32);
-tree_outlier_kdeos!(kdeos_f64, f64);
+outlier_kdeos!(kdeos_f32, f32);
+outlier_kdeos!(kdeos_f64, f64);
 
 // ---- ISOS ------------------------------------------------------------------
 
@@ -797,7 +748,7 @@ macro_rules! apply_isos {
     };
 }
 
-macro_rules! tree_outlier_isos {
+macro_rules! outlier_isos {
     ($name:ident, $dtype:ty) => {
         #[pyfunction]
         #[pyo3(signature = (data, k, estimator=None, *, distance, index))]
@@ -814,8 +765,8 @@ macro_rules! tree_outlier_isos {
     };
 }
 
-tree_outlier_isos!(intrinsic_stochastic_outlier_selection_f32, f32);
-tree_outlier_isos!(intrinsic_stochastic_outlier_selection_f64, f64);
+outlier_isos!(intrinsic_stochastic_outlier_selection_f32, f32);
+outlier_isos!(intrinsic_stochastic_outlier_selection_f64, f64);
 
 // ---- LBABOD kernel variant -------------------------------------------------
 

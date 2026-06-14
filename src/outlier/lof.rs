@@ -1,4 +1,4 @@
-use super::common::{OutlierResult, for_each_knn, make_outlier_result};
+use super::common::{OutlierResult, for_each_knn};
 #[cfg(test)]
 use crate::distance::Euclidean;
 use crate::{DistanceData, Float, KnnSearch, ParMap};
@@ -25,14 +25,7 @@ where
     let k_effective = k.min(size.saturating_sub(1));
 
     if k_effective == 0 {
-        return Ok(make_outlier_result(
-            vec![F::one(); size],
-            "LOF",
-            false,
-            F::one(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(vec![F::one(); size], "LOF").baseline(F::one()).build());
     }
 
     let neighborhoods_and_k_distances: Vec<(Vec<(usize, F)>, F)> =
@@ -77,7 +70,7 @@ where
         }
     });
 
-    Ok(make_outlier_result(scores, "LOF", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "LOF").build())
 }
 
 #[cfg(test)]

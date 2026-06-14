@@ -1,11 +1,6 @@
-use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_knn};
 use crate::{DistanceData, Float, KnnSearch, ParMap};
 
-/// Local Isolation Coefficient (LIC).
-///
-/// score = kNN-distance + average distance to k nearest neighbors
-///
-/// Reference: B. Yu, M. Song, L. Wang (2009).
 pub fn local_isolation_coefficient<'a, S, D, F>(
     tree: &S, data: &'a D, k: usize,
 ) -> Result<OutlierResult<F>, String>
@@ -16,19 +11,22 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(vec![], "LIC", false, F::zero(), F::zero(), F::infinity()));
+        return Ok(OutlierResult::builder(vec![], "LIC")
+            .ascending(false)
+            .baseline(F::zero())
+            .theoretical_min(F::zero())
+            .theoretical_max(F::infinity())
+            .build());
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return Ok(make_outlier_result(
-            vec![F::zero(); size],
-            "LIC",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(vec![F::zero(); size], "LIC")
+            .ascending(false)
+            .baseline(F::zero())
+            .theoretical_min(F::zero())
+            .theoretical_max(F::infinity())
+            .build());
     }
 
     let neighborhoods: Vec<Vec<(usize, F)>> =
@@ -43,7 +41,12 @@ where
         knn_distance + mean
     });
 
-    Ok(make_outlier_result(scores, "LIC", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "LIC")
+        .ascending(false)
+        .baseline(F::zero())
+        .theoretical_min(F::zero())
+        .theoretical_max(F::infinity())
+        .build())
 }
 
 #[cfg(test)]

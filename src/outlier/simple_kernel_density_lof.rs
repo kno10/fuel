@@ -1,4 +1,4 @@
-use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_knn};
 use crate::outlier::kernel::KernelDensityFunction;
 use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 
@@ -12,26 +12,12 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(
-            Vec::new(),
-            "SimpleKernelDensityLOF",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(Vec::new(), "SimpleKernelDensityLOF").build());
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return Ok(make_outlier_result(
-            vec![F::one(); size],
-            "SimpleKernelDensityLOF",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(vec![F::one(); size], "SimpleKernelDensityLOF").build());
     }
 
     let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh)?;
@@ -79,14 +65,7 @@ where
         F::from_f64(score).unwrap_or(F::zero())
     });
 
-    Ok(make_outlier_result(
-        scores,
-        "SimpleKernelDensityLOF",
-        false,
-        F::zero(),
-        F::zero(),
-        F::infinity(),
-    ))
+    Ok(OutlierResult::builder(scores, "SimpleKernelDensityLOF").build())
 }
 
 #[cfg(test)]

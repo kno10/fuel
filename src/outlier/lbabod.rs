@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use super::abod::abod_kernel_score_for_neighbor_set;
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 use crate::{DistanceData, Float, VectorData};
 
 fn dot_product<F: Float>(left: &[F], right: &[F]) -> F {
@@ -110,14 +110,7 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(
-            Vec::new(),
-            "LBABOD",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        );
+        return OutlierResult::builder(Vec::new(), "LBABOD").build();
     }
 
     let mut lbabof_scores = Vec::with_capacity(size);
@@ -165,7 +158,7 @@ where
         }
     }
 
-    make_outlier_result(scores, "LBABOD", false, F::zero(), F::zero(), F::infinity())
+    OutlierResult::builder(scores, "LBABOD").build()
 }
 
 #[cfg(test)]

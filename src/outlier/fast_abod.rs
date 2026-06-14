@@ -1,5 +1,5 @@
 use super::abod::abod_kernel_score_for_neighbor_set;
-use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_knn};
 use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 
 /// Fast-ABOD (approximate ABOD) using `k` nearest Euclidean neighbors and a kernel similarity function.
@@ -14,26 +14,18 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(
-            Vec::new(),
-            "FastABOD",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(Vec::new(), "FastABOD")
+            .theoretical_min(F::zero())
+            .theoretical_max(F::infinity())
+            .build());
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective < 2 {
-        return Ok(make_outlier_result(
-            vec![F::infinity(); size],
-            "FastABOD",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(vec![F::infinity(); size], "FastABOD")
+            .theoretical_min(F::zero())
+            .theoretical_max(F::infinity())
+            .build());
     }
 
     let neighborhoods: Vec<Vec<(usize, F)>> =
@@ -44,7 +36,10 @@ where
         abod_kernel_score_for_neighbor_set(data, i, &neighbor_ids, &kernel)
     });
 
-    Ok(make_outlier_result(scores, "FastABOD", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "FastABOD")
+        .theoretical_min(F::zero())
+        .theoretical_max(F::infinity())
+        .build())
 }
 
 #[cfg(test)]

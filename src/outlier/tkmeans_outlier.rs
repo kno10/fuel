@@ -13,7 +13,7 @@
 /// [`tkmeans`]: crate::cluster::kmeans::tkmeans
 use crate::Float;
 use crate::cluster::kmeans::util::KMeansResult;
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 use crate::{ParMap, VectorData, math};
 
 /// Binary outlier labeling from k-means-- (KMeansMinusMinusOutlierDetection).
@@ -29,7 +29,10 @@ pub fn tkmeans_outlier<F: Float>(result: &KMeansResult<F>) -> Result<OutlierResu
     let n = mask.len();
     let scores: Vec<F> = (0..n).par_map(|i| if mask[i] { F::one() } else { F::zero() });
 
-    Ok(make_outlier_result(scores, "tkmeans", false, F::zero(), F::zero(), F::one()))
+    Ok(OutlierResult::builder(scores, "tkmeans")
+        .theoretical_min(F::zero())
+        .theoretical_max(F::one())
+        .build())
 }
 
 /// Continuous outlier scoring from k-means--* (KMeansMinusMinusStar).
@@ -71,7 +74,10 @@ where
         }
     });
 
-    Ok(make_outlier_result(scores, "tkmeans*", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "tkmeans*")
+        .theoretical_min(F::zero())
+        .theoretical_max(F::infinity())
+        .build())
 }
 
 #[cfg(test)]

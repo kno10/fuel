@@ -1,6 +1,6 @@
 use rand::{RngExt, SeedableRng};
 
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 use crate::{DistanceData, Float, VectorData};
 
 fn to_f64_point<F: Float>(point: &[F]) -> Vec<f64> {
@@ -353,14 +353,7 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(
-            Vec::new(),
-            "aLOCI",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        );
+        return OutlierResult::builder(Vec::new(), "aLOCI").build();
     }
 
     let dims = data.dims();
@@ -475,7 +468,7 @@ where
         };
     }
 
-    make_outlier_result(outlier_scores, "aLOCI", false, F::zero(), F::zero(), F::infinity())
+    OutlierResult::builder(outlier_scores, "aLOCI").build()
 }
 
 #[cfg(test)]

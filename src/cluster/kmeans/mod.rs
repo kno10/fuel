@@ -10,7 +10,7 @@ mod fuzzy_cmeans;
 mod hamerly;
 mod hartigan_wong;
 pub mod init;
-mod kgeometric;
+pub(crate) mod kgeometric;
 mod kgeometric_sh;
 mod kgmedians;
 mod kharmonic;

@@ -1,7 +1,7 @@
 use std::f64;
 
 use crate::intrinsicdimensionality::KNNIDEstimator;
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 /// Intrinsic Dimensionality Outlier Score (IDOS).
@@ -19,7 +19,7 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(Vec::new(), "IDOS", false, 0.0, 0.0, f64::INFINITY));
+        return Ok(OutlierResult::builder(Vec::new(), "IDOS").build());
     }
 
     let ids: Vec<f64> = (0..size).par_map(|i| {
@@ -43,7 +43,7 @@ where
         if id_q > 0.0 && cnt > 0 { id_q * sum / (cnt as f64) } else { 0.0 }
     })?;
 
-    Ok(make_outlier_result(scores, "IDOS", false, 0.0, 0.0, f64::INFINITY))
+    Ok(OutlierResult::builder(scores, "IDOS").build())
 }
 
 #[cfg(test)]

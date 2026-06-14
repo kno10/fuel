@@ -7,7 +7,7 @@
 /// Reference: McLachlan, Basford - *Mixture Models*, 1988.
 use crate::Float;
 use crate::cluster::em::{EmModel, EmResult, log_sum_exp};
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 use crate::{ParMap, VectorData};
 
 /// EM-based outlier detection using per-point log-likelihood.
@@ -44,14 +44,12 @@ where
     // Use the observed max as baseline (typical inlier log-likelihood)
     let baseline = scores.iter().copied().fold(N::neg_infinity(), |a, b| if b > a { b } else { a });
 
-    make_outlier_result(
-        scores,
-        "EMOutlier",
-        true, // ascending: low log-likelihood = outlier
-        baseline,
-        N::neg_infinity(),
-        N::infinity(),
-    )
+    OutlierResult::builder(scores, "EMOutlier")
+        .ascending(true) // low log-likelihood = outlier
+        .baseline(baseline)
+        .theoretical_min(N::neg_infinity())
+        .theoretical_max(N::infinity())
+        .build()
 }
 
 #[cfg(test)]

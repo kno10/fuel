@@ -11,7 +11,7 @@
 /// evaluation code is not generic.
 use crate::evaluation::cluster::internal::helpers::NoiseHandling;
 use crate::evaluation::cluster::internal::silhouette::silhouette;
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 
 /// Silhouette-based outlier detection.
 ///
@@ -34,14 +34,12 @@ pub fn silhouette_outlier(
 
     let stats = silhouette(data, labels, noise_label, NoiseHandling::TreatNoiseAsSingletons, false);
 
-    make_outlier_result(
-        stats.values,
-        "SilhouetteOutlier",
-        true, // ascending: low silhouette = outlier
-        0.5,
-        -1.0,
-        1.0,
-    )
+    OutlierResult::builder(stats.values, "SilhouetteOutlier")
+        .ascending(true) // low silhouette = outlier
+        .baseline(0.5)
+        .theoretical_min(-1.0)
+        .theoretical_max(1.0)
+        .build()
 }
 
 #[cfg(test)]

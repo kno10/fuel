@@ -1,5 +1,5 @@
 use crate::api::IndexQuery;
-use crate::outlier::common::{OutlierResult, make_outlier_result, perplexity_to_entropy};
+use crate::outlier::common::{OutlierResult, perplexity_to_entropy};
 use crate::{DistanceData, Float, KnnSearch};
 
 const PERPLEXITY_ERROR: f64 = 1e-5;
@@ -81,7 +81,7 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(Vec::new(), "SOS", false, F::zero(), F::zero(), F::infinity());
+        return OutlierResult::builder(Vec::new(), "SOS").build();
     }
 
     let mut scores: Vec<f64> = vec![1.0; size];
@@ -121,7 +121,7 @@ where
 
     let scores: Vec<F> = scores.into_iter().map(|s| F::from_f64(s).unwrap_or(F::zero())).collect();
 
-    make_outlier_result(scores, "SOS", false, F::zero(), F::zero(), F::infinity())
+    OutlierResult::builder(scores, "SOS").build()
 }
 
 #[cfg(test)]

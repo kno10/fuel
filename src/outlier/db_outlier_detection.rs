@@ -1,4 +1,4 @@
-use crate::outlier::common::{OutlierResult, for_each_range, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_range};
 use crate::{DistanceData, Float, RangeSearch};
 
 pub fn db_outlier_detection<'a, S, D, F>(
@@ -11,14 +11,9 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(
-            Vec::new(),
-            "DBOutlierDetection",
-            false,
-            F::one(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(Vec::new(), "DBOutlierDetection")
+            .baseline(F::one())
+            .build());
     }
 
     let m = ((size as f64) * (1.0 - p)).floor() as usize;
@@ -29,14 +24,7 @@ where
         F::from_f64(outlier).unwrap_or(F::zero())
     })?;
 
-    Ok(make_outlier_result(
-        scores,
-        "DBOutlierDetection",
-        false,
-        F::zero(),
-        F::zero(),
-        F::infinity(),
-    ))
+    Ok(OutlierResult::builder(scores, "DBOutlierDetection").build())
 }
 
 #[cfg(test)]

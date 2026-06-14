@@ -718,6 +718,7 @@ All outlier functions return a tuple `(scores, metadata)` where `scores` is a
 | `maximum` | Observed maximum score |
 | `theoretical_minimum` | Theoretical minimum (may be `NaN`) |
 | `theoretical_maximum` | Theoretical maximum (may be `NaN`) |
+| `expected_positions` | Optional: indices of expected neighbors if provided by the method |
 
 The two baseline methods (`zero`, `random`) follow the same calling convention
 but the return format matches the standard tuple.
@@ -795,7 +796,7 @@ The function signatures below show the available parameters. Common arguments ar
 | `dynamic_window_outlier_factor(data, k, delta, *, distance='euclidean', index=None)` | DWOF, `delta` window size |
 | `local_density_factor(data, k, h, c, kernel, *, distance='euclidean', index=None)` | LDF, `h` bandwidth, `c` kernel parameter |
 | `simple_kernel_density_lof(data, k, h, kernel, *, distance='euclidean', index=None)` | KDEOS (2-param), `h` bandwidth, `kernel` name |
-| `kdeos(data, kmin, kmax, *, kernel='gaussian', min_bandwidth=0.0, scale=1.0, idim=None, distance='euclidean', index=None)` | KDEOS (range variant) |
+| `kdeos(data, kmin, kmax, kernel='gaussian', min_bandwidth=0.0, scale=1.0, idim=None, *, distance='euclidean', index=None)` | KDEOS (range variant) |
 | `stochastic_outlier_selection(data, perplexity, *, distance='euclidean', index=None)` | SOS, `perplexity` effective neighbor count |
 | `outlier_detection_independence_neighbor(data, k, *, distance='euclidean', index=None)` | ODIN |
 | `local_isolation_coefficient(data, k, *, distance='euclidean', index=None)` | LIC |

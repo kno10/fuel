@@ -3,7 +3,7 @@ use rand::{RngExt, SeedableRng};
 
 use crate::api::VectorData; // needed for MatrixDataAccess.point/dims in this file
 use crate::distance::DistanceFunction;
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 use crate::{DistanceData, Float, ParMap};
 
 /// A very simple outlier score used for trivial baseline detectors.
@@ -28,7 +28,7 @@ where
     let origin = vec![F::zero(); dims];
     let scores: Vec<F> = (0..data.len()).par_map(|idx| dist.distance(data.point(idx), &origin));
 
-    make_outlier_result(scores, "Distance from origin", false, F::zero(), F::zero(), F::infinity())
+    OutlierResult::builder(scores, "Distance from origin").build()
 }
 
 /// Outlierness is the distance of each point from the mean of the
@@ -44,14 +44,7 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(
-            Vec::new(),
-            "Distance from center",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        );
+        return OutlierResult::builder(Vec::new(), "Distance from center").build();
     }
 
     let dims = data.dims();
@@ -69,7 +62,7 @@ where
 
     let scores: Vec<F> = (0..size).par_map(|idx| dist.distance(data.point(idx), &centre));
 
-    make_outlier_result(scores, "Distance from center", false, F::zero(), F::zero(), F::infinity())
+    OutlierResult::builder(scores, "Distance from center").build()
 }
 
 /// Produce random outlier scores in the interval `[0,1)`.  A seed is required
@@ -80,7 +73,7 @@ pub fn random<D: DistanceData<F>, F: Float>(data: D, seed: u64) -> OutlierResult
     let scores: Vec<F> =
         data.iter().map(|_idx| F::from_f64(rng.random::<f64>()).unwrap_or(F::one())).collect();
 
-    make_outlier_result(scores, "Random outlier score", false, F::zero(), F::zero(), F::infinity())
+    OutlierResult::builder(scores, "Random outlier score").build()
 }
 
 /// A completely non-informative detector that assigns a score of zero to every
@@ -94,7 +87,7 @@ pub fn zero<D: DistanceData<F> + Sync, F: Float>(data: D) -> OutlierResult<F> {
         data.iter().map(|_| F::zero()).collect()
     };
 
-    make_outlier_result(scores, "Random outlier score", false, F::zero(), F::zero(), F::infinity())
+    OutlierResult::builder(scores, "Random outlier score").build()
 }
 
 #[cfg(test)]

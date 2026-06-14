@@ -1,4 +1,4 @@
-use crate::outlier::common::{OutlierResult, for_each_range, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_range};
 use crate::{DistanceData, Float, RangeSearch};
 
 pub fn db_outlier_score<'a, S, D, F>(
@@ -17,7 +17,7 @@ where
         F::from_f64(score_val).unwrap_or(F::zero())
     })?;
 
-    Ok(make_outlier_result(scores, "DBOutlierScore", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "DBOutlierScore").build())
 }
 
 #[cfg(test)]

@@ -1,7 +1,6 @@
-use crate::outlier::common::{OutlierResult, for_each_range, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_range};
 use crate::{DistanceData, Float, ParMap, RangeSearch, VectorData};
 
-/// LOCI: Fast Outlier Detection Using the Local Correlation Integral.
 fn build_critical_distances<F: Float>(
     neighbors: &[(usize, F)], rmax: f64, alpha: f64,
 ) -> Vec<(f64, usize)> {
@@ -69,14 +68,12 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(
-            Vec::new(),
-            "LOCI",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(Vec::new(), "LOCI")
+            .ascending(false)
+            .baseline(F::zero())
+            .theoretical_min(F::zero())
+            .theoretical_max(F::infinity())
+            .build());
     }
 
     let neighs = for_each_range(tree, data, rmax, true, |_, neigh| neigh)?;
@@ -170,7 +167,12 @@ where
         })
         .collect();
 
-    Ok(make_outlier_result(result_f, "LOCI", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(result_f, "LOCI")
+        .ascending(false)
+        .baseline(F::zero())
+        .theoretical_min(F::zero())
+        .theoretical_max(F::infinity())
+        .build())
 }
 
 #[cfg(test)]

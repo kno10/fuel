@@ -1,4 +1,4 @@
-use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_knn};
 use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 /// Compute Connectivity-based Outlier Factor (COF) scores.
@@ -14,26 +14,12 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(
-            Vec::new(),
-            "COF",
-            false,
-            F::one(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(Vec::new(), "COF").baseline(F::one()).build());
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return Ok(make_outlier_result(
-            vec![F::one(); size],
-            "COF",
-            false,
-            F::one(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(vec![F::one(); size], "COF").baseline(F::one()).build());
     }
 
     let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh)?;
@@ -110,7 +96,7 @@ where
         }
     });
 
-    Ok(make_outlier_result(scores, "COF", false, F::one(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "COF").baseline(F::one()).build())
 }
 
 #[cfg(test)]

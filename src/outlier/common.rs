@@ -158,6 +158,79 @@ pub struct OutlierResult<F: Float> {
     pub metadata: OutlierMetadata<F>,
 }
 
+impl<F: Float> OutlierResult<F> {
+    /// Create a builder to construct an `OutlierResult` with optional parameters.
+    pub fn builder(scores: Vec<F>, label: &str) -> OutlierResultBuilder<F> {
+        OutlierResultBuilder::new(scores, label)
+    }
+}
+
+pub struct OutlierResultBuilder<F: Float> {
+    scores: Vec<F>,
+    label: String,
+    ascending: bool,
+    baseline: F,
+    theoretical_min: F,
+    theoretical_max: F,
+    expected_positions: Option<Vec<Vec<F>>>,
+}
+
+impl<F: Float> OutlierResultBuilder<F> {
+    pub fn new(scores: Vec<F>, label: &str) -> Self {
+        Self {
+            scores,
+            label: label.to_string(),
+            ascending: false,
+            baseline: F::zero(),
+            theoretical_min: F::zero(),
+            theoretical_max: F::infinity(),
+            expected_positions: None,
+        }
+    }
+
+    pub fn ascending(mut self, ascending: bool) -> Self {
+        self.ascending = ascending;
+        self
+    }
+
+    pub fn baseline(mut self, baseline: F) -> Self {
+        self.baseline = baseline;
+        self
+    }
+
+    pub fn theoretical_min(mut self, min: F) -> Self {
+        self.theoretical_min = min;
+        self
+    }
+
+    pub fn theoretical_max(mut self, max: F) -> Self {
+        self.theoretical_max = max;
+        self
+    }
+
+    pub fn expected_positions(mut self, positions: Option<Vec<Vec<F>>>) -> Self {
+        self.expected_positions = positions;
+        self
+    }
+
+    pub fn build(self) -> OutlierResult<F> {
+        let (minimum, maximum) = compute_min_max(&self.scores);
+        OutlierResult {
+            scores: self.scores,
+            expected_positions: self.expected_positions,
+            metadata: OutlierMetadata {
+                label: self.label,
+                ascending: self.ascending,
+                baseline: self.baseline,
+                minimum,
+                maximum,
+                theoretical_minimum: self.theoretical_min,
+                theoretical_maximum: self.theoretical_max,
+            },
+        }
+    }
+}
+
 fn compute_min_max<F: Float>(scores: &[F]) -> (F, F) {
     let mut min = F::infinity();
     let mut max = F::neg_infinity();
@@ -176,24 +249,20 @@ fn compute_min_max<F: Float>(scores: &[F]) -> (F, F) {
     (min, max)
 }
 
+// The `make_outlier_result` function has been replaced by the `OutlierResultBuilder` factory pattern.
+// This is kept as a deprecated alias for now if needed, but we should migrate all callers.
+#[deprecated(note = "Use OutlierResult::builder()...build() instead")]
 pub fn make_outlier_result<F: Float>(
     scores: Vec<F>, label: &str, ascending: bool, baseline: F, theoretical_min: F,
     theoretical_max: F, expected_positions: Option<Vec<Vec<F>>>,
 ) -> OutlierResult<F> {
-    let (minimum, maximum) = compute_min_max(&scores);
-    OutlierResult {
-        scores,
-        expected_positions,
-        metadata: OutlierMetadata {
-            label: label.to_string(),
-            ascending,
-            baseline,
-            minimum,
-            maximum,
-            theoretical_minimum: theoretical_min,
-            theoretical_maximum: theoretical_max,
-        },
-    }
+    OutlierResult::builder(scores, label)
+        .ascending(ascending)
+        .baseline(baseline)
+        .theoretical_min(theoretical_min)
+        .theoretical_max(theoretical_max)
+        .expected_positions(expected_positions)
+        .build()
 }
 
 use std::fs;

@@ -11,7 +11,7 @@
 use crate::Float;
 use crate::cluster::hdbscan::HdbscanHierarchy;
 use crate::cluster::hdbscan::extraction::extract_hdbscan_hierarchy_hdbscan;
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 
 /// Compute GLOSH outlier scores from an HDBSCAN* hierarchy.
 ///
@@ -23,7 +23,10 @@ pub fn glosh<F: Float>(
     hierarchy: &HdbscanHierarchy<F>, min_cluster_size: usize,
 ) -> OutlierResult<F> {
     let result = extract_hdbscan_hierarchy_hdbscan(hierarchy, min_cluster_size, false);
-    make_outlier_result(result.glosh, "GLOSH", false, F::zero(), F::zero(), F::one())
+    OutlierResult::builder(result.glosh, "GLOSH")
+        .theoretical_min(F::zero())
+        .theoretical_max(F::one())
+        .build()
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 use crate::{DistanceData, Float, IndexQuery, KnnSearch, RangeSearch};
 
 /// Compute Dynamic Window Outlier Factor (DWOF) scores.
@@ -17,14 +17,7 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(
-            Vec::new(),
-            "DWOF",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(Vec::new(), "DWOF").build());
     }
 
     let k_effective = k.min(size.saturating_sub(1));
@@ -167,7 +160,7 @@ where
         }
     }
 
-    Ok(make_outlier_result(score, "DWOF", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(score, "DWOF").build())
 }
 
 #[cfg(test)]

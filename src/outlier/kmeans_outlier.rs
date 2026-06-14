@@ -8,7 +8,7 @@
 /// provided to handle singleton clusters differently.
 use crate::Float;
 use crate::cluster::kmeans::util::KMeansResult;
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 use crate::{ParMap, VectorData, math};
 
 /// Scoring rule for [`kmeans_outlier`].
@@ -94,7 +94,10 @@ where
         }
     });
 
-    make_outlier_result(scores, "KMeansOutlier", false, F::zero(), F::zero(), F::infinity())
+    OutlierResult::builder(scores, "KMeansOutlier")
+        .theoretical_min(F::zero())
+        .theoretical_max(F::infinity())
+        .build()
 }
 
 #[cfg(test)]

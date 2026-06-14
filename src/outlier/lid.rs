@@ -1,5 +1,5 @@
 use crate::intrinsicdimensionality::KNNIDEstimator;
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 pub fn local_intrinsic_dimensionality<'a, S, D, F, E>(
@@ -13,7 +13,7 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(Vec::new(), "LID", false, F::zero(), F::zero(), F::infinity());
+        return OutlierResult::builder(Vec::new(), "LID").build();
     }
 
     let scores: Vec<F> = (0..size).par_map(|i| {
@@ -25,7 +25,7 @@ where
         }
     });
 
-    make_outlier_result(scores, "LID", false, F::zero(), F::zero(), F::infinity())
+    OutlierResult::builder(scores, "LID").build()
 }
 
 #[cfg(test)]

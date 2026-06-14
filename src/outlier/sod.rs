@@ -1,4 +1,4 @@
-use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_knn};
 use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 
 /// Subspace Outlier Degree approximation.
@@ -15,26 +15,12 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(
-            Vec::new(),
-            "SOD",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(Vec::new(), "SOD").build());
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return Ok(make_outlier_result(
-            vec![F::zero(); size],
-            "SOD",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(vec![F::zero(); size], "SOD").build());
     }
 
     // Precompute Euclidean kNN neighborhoods (with self), in parallel.
@@ -44,7 +30,7 @@ where
 
     let dim = data.dims();
 
-    let scores: Vec<F> = (0..size).par_map(|idx| {
+    let results = (0..size).par_map(|idx| {
         let query_neighbors = &euclidean_neighborhoods[idx];
 
         let mut similarities = Vec::with_capacity(size - 1);
@@ -70,7 +56,7 @@ where
         };
 
         if neighborhood.is_empty() {
-            return F::zero();
+            return (F::zero(), None);
         }
 
         let mut centroid = vec![0.0_f64; dim];
@@ -104,7 +90,7 @@ where
             .collect();
 
         if selected.is_empty() {
-            return F::zero();
+            return (F::zero(), None);
         }
 
         let center_point = data.point(idx);
@@ -119,10 +105,17 @@ where
 
         let sod = if sqr_dist > 0.0 { sqr_dist.sqrt() / (selected.len() as f64) } else { 0.0 };
 
-        F::from_f64(sod).unwrap_or(F::zero())
+        let score = F::from_f64(sod).unwrap_or(F::zero());
+        let expected_pos =
+            Some(centroid.into_iter().map(|v| F::from_f64(v).unwrap_or(F::zero())).collect());
+
+        (score, expected_pos)
     });
 
-    Ok(make_outlier_result(scores, "SOD", false, F::zero(), F::zero(), F::infinity()))
+    let scores: Vec<F> = results.iter().map(|r| r.0).collect();
+    let expected_positions = Some(results.into_iter().filter_map(|r| r.1).collect());
+
+    Ok(OutlierResult::builder(scores, "SOD").expected_positions(expected_positions).build())
 }
 
 #[cfg(test)]

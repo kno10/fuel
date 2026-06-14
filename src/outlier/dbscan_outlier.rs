@@ -16,7 +16,7 @@
 use crate::Float;
 use crate::ParMap;
 use crate::cluster::dbscan::{DbscanResult, NOISE};
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 
 /// DBSCAN-based outlier detection with core/border/noise distinction.
 ///
@@ -38,7 +38,10 @@ pub fn dbscan_outlier<F: Float>(result: &DbscanResult) -> OutlierResult<F> {
         }
     });
 
-    make_outlier_result(scores, "DBSCANOutlier", false, F::zero(), F::zero(), F::one())
+    OutlierResult::builder(scores, "DBSCANOutlier")
+        .theoretical_min(F::zero())
+        .theoretical_max(F::one())
+        .build()
 }
 
 /// Generic binary outlier scoring: noise points score 1, all others score 0.
@@ -49,7 +52,10 @@ pub fn dbscan_outlier<F: Float>(result: &DbscanResult) -> OutlierResult<F> {
 pub fn noise_as_outliers<F: Float>(labels: &[isize]) -> OutlierResult<F> {
     let scores: Vec<F> =
         (0..labels.len()).par_map(|i| if labels[i] == NOISE { F::one() } else { F::zero() });
-    make_outlier_result(scores, "NoiseAsOutliers", false, F::zero(), F::zero(), F::one())
+    OutlierResult::builder(scores, "NoiseAsOutliers")
+        .theoretical_min(F::zero())
+        .theoretical_max(F::one())
+        .build()
 }
 
 #[cfg(test)]

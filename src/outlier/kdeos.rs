@@ -1,7 +1,7 @@
 use rs_stats::Distribution;
 use rs_stats::distributions::Normal;
 
-use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_knn};
 // Use for_each_knn(tree,data,k,true,...) when we need the self point included in neighbors.
 use crate::outlier::kernel::KernelDensityFunction;
 use crate::{DistanceData, Float, KnnSearch, ParChunksMut, ParMap, VectorData};
@@ -19,14 +19,7 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(
-            Vec::new(),
-            "KDEOS",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(Vec::new(), "KDEOS").build());
     }
 
     let kmin = kmin.max(1);
@@ -170,7 +163,7 @@ where
         Ok(F::from_f64(score).unwrap_or(F::zero()))
     })?;
 
-    Ok(make_outlier_result(scores, "KDEOS", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "KDEOS").build())
 }
 
 #[cfg(test)]

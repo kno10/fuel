@@ -1,4 +1,4 @@
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 use crate::{DistanceData, Float, ParMap, VectorData};
 
 /// Exact ABOD (angle-based outlier factor) using a kernel similarity function.
@@ -10,7 +10,10 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return make_outlier_result(Vec::new(), "ABOD", false, F::zero(), F::zero(), F::infinity());
+        return OutlierResult::builder(Vec::new(), "ABOD")
+            .theoretical_min(F::zero())
+            .theoretical_max(F::infinity())
+            .build();
     }
 
     let scores: Vec<F> = (0..size).par_map(|i| {
@@ -18,7 +21,10 @@ where
         abod_kernel_score_for_neighbor_set(data, i, &neighbors, &kernel)
     });
 
-    make_outlier_result(scores, "ABOD", false, F::zero(), F::zero(), F::infinity())
+    OutlierResult::builder(scores, "ABOD")
+        .theoretical_min(F::zero())
+        .theoretical_max(F::infinity())
+        .build()
 }
 
 /// Compute ABOF for center with kernel similarity.

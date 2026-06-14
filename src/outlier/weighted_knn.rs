@@ -1,4 +1,4 @@
-use crate::outlier::common::{OutlierResult, make_outlier_result};
+use crate::outlier::common::OutlierResult;
 use crate::{DistanceData, Float, KnnSearch};
 
 /// Compute weighted KNN outlier scores for each point in the data set.
@@ -26,7 +26,7 @@ where
             neighbors.iter().take(k_effective).map(|(_, distance)| *distance).sum::<F>()
         })?;
 
-    Ok(make_outlier_result(scores, "WeightedKNN", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "WeightedKNN").build())
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_knn};
 use crate::outlier::sos;
 use crate::{DistanceData, Float, KnnSearch, ParMap};
 
@@ -55,26 +55,12 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(
-            Vec::new(),
-            "ISOS",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(Vec::new(), "ISOS").build());
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return Ok(make_outlier_result(
-            vec![F::zero(); size],
-            "ISOS",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(vec![F::zero(); size], "ISOS").build());
     }
 
     let perplexity = (k as f64) / 3.0;
@@ -133,7 +119,7 @@ where
     let final_scores: Vec<F> =
         scores.into_iter().map(|v| F::from_f64(v).unwrap_or(F::zero())).collect();
 
-    Ok(make_outlier_result(final_scores, "ISOS", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(final_scores, "ISOS").build())
 }
 
 #[cfg(test)]

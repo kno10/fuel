@@ -1,4 +1,4 @@
-use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_knn};
 use crate::outlier::kernel::KernelDensityFunction;
 use crate::{DistanceData, Float, KnnSearch, ParMap, VectorData};
 
@@ -12,26 +12,12 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(
-            Vec::new(),
-            "KDLOF",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(Vec::new(), "KDLOF").build());
     }
 
     let k_effective = k.min(size.saturating_sub(1));
     if k_effective == 0 {
-        return Ok(make_outlier_result(
-            vec![F::one(); size],
-            "KDLOF",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(vec![F::one(); size], "KDLOF").build());
     }
 
     let neighborhoods: Vec<Vec<(usize, F)>> =
@@ -81,7 +67,7 @@ where
         F::from_f64(score).unwrap_or(F::zero())
     });
 
-    Ok(make_outlier_result(scores, "KDLOF", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "KDLOF").build())
 }
 
 #[cfg(test)]

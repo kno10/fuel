@@ -1,4 +1,4 @@
-use super::common::{OutlierResult, for_each_knn, make_outlier_result};
+use super::common::{OutlierResult, for_each_knn};
 #[cfg(test)]
 use crate::distance::Euclidean;
 use crate::{DistanceData, Float, KnnSearch};
@@ -28,7 +28,7 @@ where
         neighbors.last().map_or(F::zero(), |(_, distance)| *distance)
     })?;
 
-    Ok(make_outlier_result(scores, "kNN Outlier Score", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "kNN Outlier Score").build())
 }
 
 #[cfg(test)]

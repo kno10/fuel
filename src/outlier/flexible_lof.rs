@@ -1,4 +1,4 @@
-use crate::outlier::common::{OutlierResult, for_each_knn, make_outlier_result};
+use crate::outlier::common::{OutlierResult, for_each_knn};
 use crate::{DistanceData, Float, KnnSearch, ParMap};
 
 pub fn flexible_lof<'a, S, D, F>(
@@ -11,14 +11,12 @@ where
 {
     let size = data.len();
     if size == 0 {
-        return Ok(make_outlier_result(
-            Vec::new(),
-            "FlexibleLOF",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(Vec::new(), "FlexibleLOF")
+            .ascending(false)
+            .baseline(F::zero())
+            .theoretical_min(F::zero())
+            .theoretical_max(F::infinity())
+            .build());
     }
 
     let krefer_effective = krefer.min(size.saturating_sub(1));
@@ -26,14 +24,12 @@ where
     let k_effective = krefer_effective.max(kreach_effective);
 
     if k_effective == 0 {
-        return Ok(make_outlier_result(
-            vec![F::one(); size],
-            "FlexibleLOF",
-            false,
-            F::zero(),
-            F::zero(),
-            F::infinity(),
-        ));
+        return Ok(OutlierResult::builder(vec![F::one(); size], "FlexibleLOF")
+            .ascending(false)
+            .baseline(F::zero())
+            .theoretical_min(F::zero())
+            .theoretical_max(F::infinity())
+            .build());
     }
 
     let neighborhoods = for_each_knn(tree, data, k_effective, false, |_, neigh| neigh)?;
@@ -87,7 +83,12 @@ where
         }
     });
 
-    Ok(make_outlier_result(scores, "FlexibleLOF", false, F::zero(), F::zero(), F::infinity()))
+    Ok(OutlierResult::builder(scores, "FlexibleLOF")
+        .ascending(false)
+        .baseline(F::zero())
+        .theoretical_min(F::zero())
+        .theoretical_max(F::infinity())
+        .build())
 }
 
 #[cfg(test)]
