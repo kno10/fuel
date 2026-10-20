@@ -4,24 +4,24 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::time::Instant;
 
-use common::{CountingDistance, read_numeric_data};
+use common::{read_numeric_data, CountingDistance};
+use fuel::cluster::coresg::coresg;
 use fuel::cluster::dbscan::NOISE;
 use fuel::cluster::hdbscan::extraction::extract_clusters_with_noise;
 use fuel::cluster::hdbscan::{
-    HdbscanHierarchy, boruvka_searchers_hdbscan, buffered_search_hdbscan, hdbscan_prim,
-    heap_of_searchers_hdbscan, lazy_buffered_search_hdbscan, restarting_search_hdbscan,
-    slink_hdbscan,
+    boruvka_searchers_hdbscan, buffered_search_hdbscan, hdbscan_prim, heap_of_searchers_hdbscan,
+    lazy_buffered_search_hdbscan, restarting_search_hdbscan, slink_hdbscan, HdbscanHierarchy,
 };
 use fuel::cluster::hierarchical::MergeHistory;
 use fuel::distance::Euclidean;
 use fuel::search::vptree::VPTree;
 use fuel::{Data, TableWithDistance};
-use rand::SeedableRng;
 use rand::rngs::StdRng;
+use rand::SeedableRng;
 
 const RNG_SEED: u64 = 42;
 const BUFFERED_SLACK: usize = 4;
-const USAGE: &str = "usage: cargo run --features benchmark --bin hdbscan -- <csv_path> <min_points> [--algorithms=<heap|boruvka|restarting|buffered|lazy-buffered|linear|slink|all>]";
+const USAGE: &str = "usage: cargo run --features benchmark --bin hdbscan -- <csv_path> <min_points> [--algorithms=<coresg|heap|boruvka|restarting|buffered|lazy-buffered|linear|slink|all>]";
 
 fn main() {
     if let Err(err) = run() {
@@ -160,6 +160,7 @@ fn print_result(result: &BenchmarkResult) {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Variant {
+    CoreSg,
     Prim,
     Slink,
     Heap,
@@ -170,11 +171,12 @@ enum Variant {
 }
 
 impl Variant {
-    const ALL: [Variant; 5] =
-        [Self::Heap, Self::Boruvka, Self::Restarting, Self::Slink, Self::Prim];
+    const ALL: [Variant; 6] =
+        [Self::CoreSg, Self::Heap, Self::Boruvka, Self::Restarting, Self::Slink, Self::Prim];
 
     fn label(&self) -> &'static str {
         match self {
+            Variant::CoreSg => "core_sg",
             Variant::Heap => "heap_of_searchers",
             Variant::Boruvka => "boruvka_searchers",
             Variant::Restarting => "restarting_search",
@@ -193,6 +195,9 @@ impl Variant {
         min_points: usize,
     ) -> HdbscanHierarchy<f64> {
         match self {
+            Variant::CoreSg => coresg(tree.expect("tree required"), data, min_points)
+                .and_then(|graph| graph.hdbscan_hierarchy())
+                .expect("CORE-SG failed"),
             Variant::Heap => {
                 heap_of_searchers_hdbscan(tree.expect("tree required"), data, min_points).unwrap()
             }
@@ -220,6 +225,7 @@ impl Variant {
 
     fn parse(value: &str) -> Result<Self, Box<dyn Error>> {
         match value {
+            "coresg" | "core-sg" | "core_sg" => Ok(Variant::CoreSg),
             "heap" => Ok(Variant::Heap),
             "boruvka" => Ok(Variant::Boruvka),
             "restarting" => Ok(Variant::Restarting),
@@ -228,7 +234,7 @@ impl Variant {
             "linear" => Ok(Variant::Prim),
             "slink" => Ok(Variant::Slink),
             _ => Err(
-                "unknown variant, expected heap, boruvka, restarting, buffered, lazy-buffered, linear, or slink"
+                "unknown variant, expected coresg, heap, boruvka, restarting, buffered, lazy-buffered, linear, or slink"
                     .into(),
             ),
         }
