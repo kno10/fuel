@@ -36,12 +36,6 @@ where
     fn similarity(&self, x: &D, y: &D) -> F { (**self).similarity(x, y) }
 }
 
-/// Compute a full symmetric kernel matrix for a point set using the given similarity function.
-///
-/// The kernel function is expected to be symmetric; diagonal values are computed with the
-/// same function (i == j). The result is a square matrix of size n x n, where n = points.len().
-///
-/// This implementation computes the upper triangle in parallel and mirrors it.
 #[cfg(test)]
 mod tests {
     use crate::compute_pairwise_dense;

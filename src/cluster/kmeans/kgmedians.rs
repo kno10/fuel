@@ -153,18 +153,6 @@ where
     Ok(KMeansResult::with_inertia(centers.into_ndarray(), assign_best, iter, loss))
 }
 
-/// kGmedian -- stochastic k-medians clustering.
-///
-/// This is an implementation of the `kGmedian` algorithm as described in the
-/// original R package (using a stochastic gradient-like update for each centre).
-///
-/// The function keeps the same interface style as other clustering routines in
-/// this crate.
-///
-/// # Parameters
-/// - `gamma`: Constant controlling the magnitude of the descent steps.
-/// - `alpha`: Rate of decrease of the descent steps as cluster sizes grow.
-
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;

@@ -423,10 +423,6 @@ where
     Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, sum))
 }
 
-/// Hartigan-Wong k-means (Algorithm AS 136).
-/// Hartigan-Wong k-means with quick transfer heuristic (fast path when the
-/// second-closest centroid yields improvement).
-
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;

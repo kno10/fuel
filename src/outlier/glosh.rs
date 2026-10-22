@@ -81,7 +81,7 @@ mod tests {
         let result = glosh(&hierarchy, 2);
 
         for &s in &result.scores {
-            assert!(s >= 0.0 && s <= 1.0, "score {s} out of [0, 1]");
+            assert!((0.0..=1.0).contains(&s), "score {s} out of [0, 1]");
         }
     }
 

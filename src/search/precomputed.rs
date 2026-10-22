@@ -150,7 +150,7 @@ mod tests {
 
             let expected_row_k1 = linear_scan_knn(&table, &query, 1);
             let precomputed_result = precomputed.search_knn(&query, 1);
-            assert!(precomputed_result.len() >= 1);
+            assert!(!precomputed_result.is_empty());
             let first_k_distance = precomputed_result[0].distance;
             assert!(
                 precomputed_result.iter().skip(1).all(|pair| pair.distance == first_k_distance)

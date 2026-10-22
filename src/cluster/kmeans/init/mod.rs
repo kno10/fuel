@@ -43,45 +43,16 @@ mod tests {
     use rand::rngs::StdRng;
 
     use super::*;
-
-    /// simple in-memory dataset: n rows, d cols stored row-major
-    struct SimpleDataset<N> {
-        data: Vec<N>,
-        n: usize,
-        d: usize,
-    }
-    impl<N: Copy> SimpleDataset<N> {
-        fn new(data: Vec<N>, n: usize, d: usize) -> Self {
-            assert_eq!(n * d, data.len());
-            SimpleDataset { data, n, d }
-        }
-    }
-    impl<N: Copy> crate::Data for SimpleDataset<N> {
-        fn len(&self) -> usize { self.n }
-    }
-
-    impl<N: Copy> Dataset<N> for SimpleDataset<N> {
-        fn nrows(&self) -> usize { self.n }
-        fn ncols(&self) -> usize { self.d }
-        fn dims(&self) -> usize { self.d }
-        fn point(&self, idx: usize) -> &[N] {
-            let start = idx * self.d;
-            &self.data[start..start + self.d]
-        }
-        fn load_into(&self, i: usize, vec: &mut [N], d: usize) {
-            let start = i * self.d;
-            vec[..d].copy_from_slice(&self.data[start..start + d]);
-        }
-    }
-
-    fn make_centroids<N: Float>(k: usize, d: usize) -> Centers<N> { Centers::new(k, d) }
+    use crate::distance::Euclidean;
+    use crate::TableWithDistance;
 
     #[test]
     fn firstk_initialization() {
-        let ds = SimpleDataset::new(vec![1., 2., 3., 4., 5., 6.], 3, 2);
+        let points = vec![vec![1., 2.], vec![3., 4.], vec![5., 6.]];
+        let ds = TableWithDistance::<f64, _, _, f64>::with_distance(&points, Euclidean);
         let mut init = FirstK::new();
         assert!(!init.uses_distances());
-        let mut cent = make_centroids::<f64>(2, 2);
+        let mut cent = Centers::new(2, 2);
         init.init(&ds, &mut cent, 2);
         // first two rows should be copied
         assert_eq!(cent.center(0), &[1., 2.]);
@@ -90,11 +61,12 @@ mod tests {
 
     #[test]
     fn random_sample_bounds() {
-        let ds = SimpleDataset::new((0..9).map(|x| x as f64).collect(), 3, 3);
+        let points: Vec<Vec<f64>> = (0..3).map(|i| (0..3).map(|j| (i * 3 + j) as f64).collect()).collect();
+        let ds = TableWithDistance::<f64, _, _, f64>::with_distance(&points, Euclidean);
         let rng = StdRng::seed_from_u64(42);
         let mut init = RandomSample::new(rng);
         assert!(!init.uses_distances());
-        let mut cent = make_centroids::<f64>(2, 3);
+        let mut cent = Centers::new(2, 3);
         init.init(&ds, &mut cent, 2);
         // centroids must come from dataset (values between 0 and 8)
         for i in 0..2 {
@@ -106,11 +78,12 @@ mod tests {
 
     #[test]
     fn kmeanspp_uses_distances() {
-        let ds = SimpleDataset::new(vec![0., 1., 2., 3.], 2, 2);
+        let points = vec![vec![0., 1.], vec![2., 3.]];
+        let ds = TableWithDistance::<f64, _, _, f64>::with_distance(&points, Euclidean);
         let rng = StdRng::seed_from_u64(123);
         let mut init = KMeansPP::new(rng);
         assert!(init.uses_distances());
-        let mut cent = make_centroids::<f64>(2, 2);
+        let mut cent = Centers::new(2, 2);
         // callback increments a counter
         let mut count = 0;
         init.init_with_distances::<_, _>(
@@ -126,11 +99,12 @@ mod tests {
 
     #[test]
     fn kgeometricpp_uses_distances_and_in_dataset() {
-        let ds = SimpleDataset::new((0..9).map(|x| x as f64).collect(), 3, 3);
+        let points: Vec<Vec<f64>> = (0..3).map(|i| (0..3).map(|j| (i * 3 + j) as f64).collect()).collect();
+        let ds = TableWithDistance::<f64, _, _, f64>::with_distance(&points, Euclidean);
         let rng = StdRng::seed_from_u64(42);
         let mut init = KGeometricPP::new(rng);
         assert!(init.uses_distances());
-        let mut cent = make_centroids::<f64>(2, 3);
+        let mut cent = Centers::new(2, 3);
         init.init(&ds, &mut cent, 2);
         for i in 0..2 {
             for &v in cent.center(i) {

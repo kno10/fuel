@@ -246,7 +246,7 @@ where
         let first_pass: Vec<Vec<Mo>> =
             par_row_chunks_try_map(probs, k, |row_start, probs_chunk| {
                 let chunk_rows = probs_chunk.len() / k;
-                let mut local: Vec<Mo> = models.iter().cloned().collect();
+                let mut local: Vec<Mo> = models.to_vec();
                 let mut sc = vec![N::zero(); d];
                 for ri in 0..chunk_rows {
                     data.load_into(row_start + ri, &mut sc, d);
@@ -275,7 +275,7 @@ where
     let update: Vec<(Vec<Mo>, Vec<N>)> =
         par_row_chunks_try_map(probs, k, |row_start, probs_chunk| {
             let chunk_rows = probs_chunk.len() / k;
-            let mut local: Vec<Mo> = models.iter().cloned().collect();
+            let mut local: Vec<Mo> = models.to_vec();
             let mut partial_wsum = vec![N::zero(); k];
             let mut sc = vec![N::zero(); d];
             for ri in 0..chunk_rows {
@@ -332,16 +332,16 @@ where
         let first_pass: Vec<Vec<Mo>> =
             par_row_chunks_try_map(probs, k, |row_start, probs_chunk| {
                 let chunk_rows = probs_chunk.len() / k;
-                let mut local: Vec<Mo> = models.iter().cloned().collect();
+                let mut local: Vec<Mo> = models.to_vec();
                 let mut sc = vec![N::zero(); d];
                 for ri in 0..chunk_rows {
                     data.load_into(row_start + ri, &mut sc, d);
                     let slice = &probs_chunk[ri * k..(ri + 1) * k];
                     let best = argmax(slice);
-                    if let Some(noise) = noise_probs {
-                        if noise[row_start + ri] > slice[best] {
-                            continue;
-                        }
+                    if let Some(noise) = noise_probs
+                        && noise[row_start + ri] > slice[best]
+                    {
+                        continue;
                     }
                     local[best].first_pass_estep(&sc, N::one());
                 }
@@ -360,17 +360,15 @@ where
     let update: Vec<(Vec<Mo>, Vec<N>)> =
         par_row_chunks_try_map(probs, k, |row_start, probs_chunk| {
             let chunk_rows = probs_chunk.len() / k;
-            let mut local: Vec<Mo> = models.iter().cloned().collect();
+            let mut local: Vec<Mo> = models.to_vec();
             let mut partial_wsum = vec![N::zero(); k];
             let mut sc = vec![N::zero(); d];
             for ri in 0..chunk_rows {
                 data.load_into(row_start + ri, &mut sc, d);
                 let slice = &probs_chunk[ri * k..(ri + 1) * k];
                 let best = argmax(slice);
-                if let Some(noise) = noise_probs {
-                    if noise[row_start + ri] > slice[best] {
-                        continue;
-                    }
+                if let Some(noise) = noise_probs && noise[row_start + ri] > slice[best] {
+                    continue;
                 }
                 local[best].update_estep(&sc, N::one());
                 partial_wsum[best] += N::one();

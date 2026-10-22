@@ -303,9 +303,6 @@ where
     Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum))
 }
 
-/// Public entry point with backend dispatch just like the original kgeometric
-// basic smoke tests for the new algorithm
-
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;

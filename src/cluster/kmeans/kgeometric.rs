@@ -353,45 +353,17 @@ where
     Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum))
 }
 
-/// K-geometric median clustering entry with runtime math dispatch
-// simple dataset helper for tests
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    struct SimpleDataset<N> {
-        data: Vec<N>,
-        n: usize,
-        d: usize,
-    }
-    impl<N: Copy> SimpleDataset<N> {
-        fn new(data: Vec<N>, n: usize, d: usize) -> Self {
-            assert_eq!(n * d, data.len());
-            SimpleDataset { data, n, d }
-        }
-    }
-    impl<N: Copy> crate::Data for SimpleDataset<N> {
-        fn len(&self) -> usize { self.n }
-    }
-
-    impl<N: Copy> Dataset<N> for SimpleDataset<N> {
-        fn nrows(&self) -> usize { self.n }
-        fn ncols(&self) -> usize { self.d }
-        fn dims(&self) -> usize { self.d }
-        fn point(&self, idx: usize) -> &[N] {
-            let start = idx * self.d;
-            &self.data[start..start + self.d]
-        }
-        fn load_into(&self, i: usize, vec: &mut [N], d: usize) {
-            let start = i * self.d;
-            vec[..d].copy_from_slice(&self.data[start..start + d]);
-        }
-    }
+    use crate::distance::Euclidean;
+    use crate::TableWithDistance;
 
     #[test]
     fn weiszfeld_zero_distance_returns_point() {
         // centre exactly on a dataset point should remain there
-        let ds = SimpleDataset::new(vec![0., 0., 0., 0.], 2, 2);
+        let points = vec![vec![0., 0.], vec![0., 0.]];
+        let ds = TableWithDistance::<f64, _, _, f64>::with_distance(&points, Euclidean);
         let assign = vec![0, 0];
         let cent = vec![0., 0.];
         let res = weiszfeld_step::<f64, _>(&ds, 0, &assign, &cent, None, false);
@@ -402,7 +374,8 @@ mod tests {
     fn weiszfeld_at_data_point_retains_location() {
         // with two points at 0 and 1 and starting at 0 the Vardi–Zhang
         // modification prevents a jump to 1
-        let ds = SimpleDataset::new(vec![0., 0., 1., 0.], 2, 2);
+        let points = vec![vec![0., 0.], vec![1., 0.]];
+        let ds = TableWithDistance::<f64, _, _, f64>::with_distance(&points, Euclidean);
         let assign = vec![0, 0];
         let cent = vec![0., 0.];
         let res = weiszfeld_step::<f64, _>(&ds, 0, &assign, &cent, None, false);
@@ -414,7 +387,8 @@ mod tests {
         // for two points the sum of distances is constant on the segment
         // between them; any starting point inside [0,2] is already an
         // optimal solution and the iteration will remain there.
-        let ds = SimpleDataset::new(vec![0., 0., 2., 0.], 2, 2);
+        let points = vec![vec![0., 0.], vec![2., 0.]];
+        let ds = TableWithDistance::<f64, _, _, f64>::with_distance(&points, Euclidean);
         let assign = vec![0, 0];
         let cent = vec![0.1, 0.0];
         let res = weiszfeld_step::<f64, _>(&ds, 0, &assign, &cent, None, false);
@@ -427,7 +401,8 @@ mod tests {
     fn weiszfeld_sensible_movement() {
         // behaviour on a trivial collinear triple should still move toward the
         // median and stay in the convex hull.
-        let ds = SimpleDataset::new(vec![0., 0., 1., 1., 2., 2.], 3, 2);
+        let points = vec![vec![0., 0.], vec![1., 1.], vec![2., 2.]];
+        let ds = TableWithDistance::<f64, _, _, f64>::with_distance(&points, Euclidean);
         let assign = vec![0, 0, 0];
         let cent = vec![0., 0.];
         let res = weiszfeld_step::<f64, _>(&ds, 0, &assign, &cent, None, false);
@@ -443,7 +418,8 @@ mod tests {
         // exercise the stability guard by placing one point extremely close
         // to the current centre; the presence of a coincident point should
         // not drive the centre away.
-        let ds = SimpleDataset::new(vec![0., 0., 1e-20, 0.], 2, 2);
+        let points = vec![vec![0., 0.], vec![1e-20, 0.]];
+        let ds = TableWithDistance::<f64, _, _, f64>::with_distance(&points, Euclidean);
         let assign = vec![0, 0];
         let cent = vec![5e-21, 0.];
         let res = weiszfeld_step::<f64, _>(&ds, 0, &assign, &cent, None, false);

@@ -118,7 +118,6 @@ where
     (centers_arr, membership_arr, assign, iter, loss)
 }
 
-/// Public fuzzy k-means wrapper with runtime dispatch
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;

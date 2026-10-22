@@ -103,8 +103,6 @@ where
     Ok(KMeansResult::with_inertia(cent.into_ndarray(), assign, iter, lastsum))
 }
 
-/// Classic MacQueen k-means.
-
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;

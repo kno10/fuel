@@ -111,7 +111,7 @@ where
             let row = &mut rows[row_idx * knum..(row_idx + 1) * knum];
             for &(query_idx, neighbor_pos, dval) in &appearances[point_id] {
                 let info = &query_info[query_idx];
-                for idx_range in 0..knum {
+                for (idx_range, cell) in row.iter_mut().enumerate() {
                     if neighbor_pos >= info.max_neigh[idx_range] {
                         continue;
                     }
@@ -123,7 +123,7 @@ where
                     } else {
                         0.0
                     };
-                    row[idx_range] += dens;
+                    *cell += dens;
                 }
             }
         }

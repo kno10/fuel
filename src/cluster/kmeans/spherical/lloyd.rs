@@ -129,8 +129,6 @@ where
     (cent.into_ndarray(), assign, iter, -lastsum)
 }
 
-/// Spherical k-means clustering with the Standard Lloyd-style algorithm.
-/// This maximizes cosine similarity and returns the negated total similarity.
 #[cfg(test)]
 mod tests {
     use ndarray::Array2;

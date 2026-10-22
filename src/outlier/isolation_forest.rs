@@ -141,8 +141,8 @@ where
 
         let tree = build_isolation_tree(data, sample, 0, max_height, &mut rng);
         let mut local = vec![0.0; n];
-        for i in 0..n {
-            local[i] = isolation_path_length(&tree, data, i, 0.0);
+        for (i, slot) in local.iter_mut().enumerate() {
+            *slot = isolation_path_length(&tree, data, i, 0.0);
         }
         local
     });
