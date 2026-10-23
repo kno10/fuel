@@ -613,6 +613,34 @@ HDBSCAN hierarchy construction. Returns an `HdbscanHierarchy` object.
 | `buffered_search_hdbscan` | Tree-accelerated; uses `index`, `slack` |
 | `lazy_buffered_search_hdbscan` | Tree-accelerated; uses `index`, `slack` |
 
+For several `min_points` values, build a CORE-SG graph once at the largest
+value and derive each hierarchy from that graph:
+
+```python
+from fuel.search import SearchIndex
+
+index = SearchIndex(data, distance='euclidean', tree='vp')
+graph = cluster.coresg(data, max_points=20, index=index)
+print(graph.num_edges)
+for target, distance in graph.neighbors(0):
+    ...
+
+hierarchy_5 = graph.hdbscan(data, min_points=5, index=index)
+hierarchy_10 = graph.hdbscan(data, min_points=10, index=index)
+labels = hierarchy_5.extract_clusters_with_noise(num_clusters=5, min_cluster_size=5)
+```
+
+`max_points` and each `min_points` count the query point itself. The graph can
+serve any positive `min_points <= max_points`. `coresg` requires a reusable
+`SearchIndex`; pass the same index, data, and distance when deriving each
+hierarchy. The `CoreSG` object does not retain the index, so it can be released
+when it is not in use. The graph stores CSR adjacency and `neighbors(source)`
+iterates lazily over `(target, distance)` pairs without copying the adjacency
+list. Each undirected edge appears in both endpoint neighbor lists, while
+`num_edges` counts each edge once. `core_distance(point)` reads the stored core
+distance for one point.
+Each returned `HdbscanHierarchy` has the extraction methods shown below.
+
 **`HdbscanHierarchy` methods:**
 
 ```python

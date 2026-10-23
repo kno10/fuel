@@ -303,11 +303,11 @@ where
 {
     let start = Instant::now();
     let (mut sum, mut found) = (0.0, 0);
-    let query: D::Query<'a> = data.query();
+    let mut query: D::Query<'a> = data.query();
 
     for &query_idx in queries {
         if let Some(dist) = {
-            tree.search_knn(&query.with_coordinates(data.point(query_idx)), rank)
+            tree.search_knn(query.set_index(query_idx), rank)
                 .into_iter()
                 .nth(rank - 1)
                 .map(|neighbor| neighbor.distance)
@@ -329,10 +329,10 @@ where
 {
     let start = Instant::now();
     let mut total_found = 0_usize;
-    let query: D::Query<'a> = data.query();
+    let mut query: D::Query<'a> = data.query();
 
     for &query_idx in queries {
-        let neighbors = tree.search_range(&query.with_index(query_idx), radius);
+        let neighbors = tree.search_range(query.set_index(query_idx), radius);
         total_found += neighbors.into_iter().filter(|neighbor| neighbor.index != query_idx).count();
     }
     (
@@ -351,12 +351,12 @@ where
 {
     let start = Instant::now();
     let (mut sum, mut found) = (0.0, 0);
-    let query: D::Query<'a> = data.query();
+    let mut query: D::Query<'a> = data.query();
 
     for &query_idx in queries {
         let mut searcher = <T as PrioritySearcherFactory<f64, _>>::priority_searcher(tree);
         if let Some(dist) =
-            kth_neighbor_distance_from_searcher(&mut searcher, &query.with_index(query_idx), kth)
+            kth_neighbor_distance_from_searcher(&mut searcher, query.set_index(query_idx), kth)
         {
             sum += dist;
             found += 1;

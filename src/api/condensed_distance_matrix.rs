@@ -119,9 +119,10 @@ impl<F: Float> DistanceSearch<F> for CondensedMatrixQuery<'_, F> {
 }
 
 impl<F: Float> IndexQuery<F> for CondensedMatrixQuery<'_, F> {
-    fn set_index(&mut self, idx: usize) {
+    fn set_index(&mut self, idx: usize) -> &mut Self {
         debug_assert!(idx < self.data.n);
         self.index = idx;
+        self
     }
 
     fn query_index(&self) -> usize { self.index }

@@ -6,7 +6,6 @@
 
 use std::cmp::Ordering;
 
-#[cfg(not(feature = "parallel"))]
 use crate::cluster::hdbscan::hdbscan_common::compute_core_distances_tree;
 use crate::cluster::hdbscan::hdbscan_common::{
     mutual_reachability_distance, HdbscanHierarchy, WeightedEdge,
@@ -14,27 +13,31 @@ use crate::cluster::hdbscan::hdbscan_common::{
 use crate::cluster::hierarchical::{idsize, Builder};
 use crate::{DistanceData, Float, IndexQuery, KnnSearch};
 
-/// An undirected weighted edge in the CORE-SG graph (`a < b`).
+/// A target and weight in one source node's CSR row.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct CoreSgEdge<F: Float> {
-    pub a: idsize,
-    pub b: idsize,
+pub struct CoreSGEdge<F: Float> {
+    pub target: idsize,
     pub weight: F,
 }
 
 /// CORE-SG graph and the core distances used to construct it.
 #[derive(Debug, Clone, PartialEq)]
-pub struct CoreSgGraph<F: Float> {
-    pub edges: Vec<CoreSgEdge<F>>,
+pub struct CoreSG<F: Float> {
+    /// CSR offsets into `adjacency`; neighbors for node `i` are
+    /// `adjacency[offsets[i]..offsets[i + 1]]`.
+    pub offsets: Vec<usize>,
+    /// Each undirected edge occurs once in each endpoint's neighbor slice.
+    pub adjacency: Vec<CoreSGEdge<F>>,
+    /// Core distances for the largest `min_points` value used to build graph.
     pub core_distances: Vec<F>,
+    /// Largest `min_points` value supported by this graph.
+    pub max_points: usize,
 }
 
 /// Build CORE-SG using a kNN index. `max_points` is the largest supported
 /// `min_points` setting and counts the query point itself, matching `fuel`'s
 /// HDBSCAN core-distance convention and the Python code.
-pub fn coresg<'a, S, D, F>(
-    tree: &S, data: &'a D, max_points: usize,
-) -> Result<CoreSgGraph<F>, String>
+pub fn coresg<'a, S, D, F>(tree: &S, data: &'a D, max_points: usize) -> Result<CoreSG<F>, String>
 where
     F: Float,
     D: DistanceData<F> + Sync + 'a,
@@ -189,16 +192,58 @@ where
         }
     }
 
-    let edges = graph.into_iter().map(|((a, b), weight)| CoreSgEdge { a, b, weight }).collect();
-    Ok(CoreSgGraph { edges, core_distances })
+    let mut sourced_adjacency = Vec::with_capacity(graph.len().saturating_mul(2));
+    for ((a, b), weight) in graph {
+        sourced_adjacency.push((a, CoreSGEdge { target: b, weight }));
+        sourced_adjacency.push((b, CoreSGEdge { target: a, weight }));
+    }
+    sourced_adjacency.sort_unstable_by_key(|(source, edge)| (*source, edge.target));
+    let mut offsets = vec![0usize; n + 1];
+    for (source, _) in &sourced_adjacency {
+        offsets[*source as usize + 1] += 1;
+    }
+    for i in 1..offsets.len() {
+        offsets[i] += offsets[i - 1];
+    }
+    let adjacency = sourced_adjacency.into_iter().map(|(_, edge)| edge).collect();
+    Ok(CoreSG { offsets, adjacency, core_distances, max_points })
 }
 
-impl<F: Float> CoreSgGraph<F> {
+impl<F: Float> CoreSG<F> {
+    /// Return the adjacency slice for a source node, or `None` if out of range.
+    pub fn neighbors(&self, source: usize) -> Option<&[CoreSGEdge<F>]> {
+        let start = *self.offsets.get(source)?;
+        let end = *self.offsets.get(source + 1)?;
+        Some(&self.adjacency[start..end])
+    }
+
+    /// Number of unique undirected edges.
+    pub fn num_edges(&self) -> usize {
+        self.adjacency.len() / 2
+    }
+
     /// Rebuild the HDBSCAN mutual-reachability MST from this sparse graph.
     /// This lets the usual HDBSCAN flat, simplified, and GLOSH extraction
     /// functions operate on CORE-SG output.
     pub fn hdbscan_hierarchy(&self) -> Result<HdbscanHierarchy<F>, String> {
         self.hdbscan_hierarchy_for_core_distances(&self.core_distances)
+    }
+
+    /// Compute an HDBSCAN hierarchy for `min_points` from this precomputed
+    /// CORE-SG graph. The graph may be reused for any positive value up to
+    /// the `max_points` supplied to [`coresg`].
+    pub fn hdbscan_hierarchy_for_min_points<'a, S, D>(
+        &self, tree: &S, data: &'a D, min_points: usize,
+    ) -> Result<HdbscanHierarchy<F>, String>
+    where
+        D: DistanceData<F> + 'a,
+        S: KnnSearch<F, D::Query<'a>>,
+    {
+        assert!(min_points > 0, "min_points must be greater than 0");
+        assert!(min_points <= self.max_points, "min_points exceeds CORE-SG max_points");
+        assert_eq!(data.len(), self.core_distances.len(), "dataset size must match CORE-SG graph");
+        let core_distances = compute_core_distances_tree(tree, data, min_points)?;
+        self.hdbscan_hierarchy_for_core_distances(&core_distances)
     }
 
     /// Build an HDBSCAN hierarchy for another core-distance vector using this
@@ -213,19 +258,20 @@ impl<F: Float> CoreSgGraph<F> {
         if n > idsize::MAX as usize {
             return Err("dataset exceeds supported idsize range".into());
         }
-        let mut edges: Vec<_> = self
-            .edges
-            .iter()
-            .map(|edge| {
-                WeightedEdge::new(
-                    edge.a as usize,
-                    edge.b as usize,
-                    core_distances[edge.a as usize]
-                        .max(core_distances[edge.b as usize])
-                        .max(edge.weight),
-                )
-            })
-            .collect();
+        let mut edges = Vec::with_capacity(self.num_edges());
+        for source in 0..n {
+            for edge in self.neighbors(source).expect("valid CSR row") {
+                if source < edge.target as usize {
+                    edges.push(WeightedEdge::new(
+                        source,
+                        edge.target as usize,
+                        core_distances[source]
+                            .max(core_distances[edge.target as usize])
+                            .max(edge.weight),
+                    ));
+                }
+            }
+        }
         edges.sort_by(|a, b| {
             a.weight
                 .partial_cmp(&b.weight)
@@ -287,10 +333,19 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(31);
         let tree: VPTree<f64> = VPTree::new(&data, 2, &mut rng);
 
-        let graph = coresg(&tree, &data, 2).unwrap();
-        assert!(graph.edges.iter().all(|edge| edge.a < edge.b));
-        let hierarchy = graph.hdbscan_hierarchy().unwrap();
+        let graph = coresg(&tree, &data, 3).unwrap();
+        assert!((0..graph.core_distances.len()).all(|source| {
+            graph.neighbors(source).unwrap().iter().all(|edge| {
+                graph.neighbors(edge.target as usize).unwrap().iter().any(|reverse| {
+                    reverse.target as usize == source && reverse.weight == edge.weight
+                })
+            })
+        }));
+        let hierarchy = graph.hdbscan_hierarchy_for_min_points(&tree, &data, 2).unwrap();
+        let hierarchy_max = graph.hdbscan_hierarchy().unwrap();
         assert_eq!(hierarchy.merges.len(), points.len() - 1);
+        assert_eq!(hierarchy_max.merges.len(), points.len() - 1);
+        assert_ne!(hierarchy.core_distances, hierarchy_max.core_distances);
         let labels = extract_clusters_with_noise(&hierarchy.merges, 2, 2);
         assert_ne!(labels[0], labels[3]);
     }

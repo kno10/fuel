@@ -77,7 +77,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             let start = Instant::now();
             let tree = VPTree::new(&data, sample_size, &mut rng);
             let distance_count_after_index = distance.count();
-            let scores = local_outlier_factor(&tree, &data, k);
+            let scores = local_outlier_factor(&tree, &data, k)?;
             let dist_count = distance.count();
             let elapsed = start.elapsed();
 
@@ -89,7 +89,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             let start = Instant::now();
             let tree = KdTree::new(&data, MaxVarianceSplit);
             let distance_count_after_index = kd_metric.count();
-            let scores = local_outlier_factor(&tree, &data, k);
+            let scores = local_outlier_factor(&tree, &data, k)?;
             let dist_count = kd_metric.count();
             let elapsed = start.elapsed();
 

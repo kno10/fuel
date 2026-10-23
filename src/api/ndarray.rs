@@ -204,10 +204,7 @@ where
     DF: DistanceFunction<[N], F> + PartialDistance<N, F>,
     F: Float,
 {
-    fn with_coordinates(mut self, coords: &[N]) -> Self
-    where
-        Self: Sized,
-    {
+    fn set_coordinates(&mut self, coords: &[N]) -> &mut Self {
         if self.data.len() > 0 {
             debug_assert_eq!(coords.len(), self.data.dims());
         }
@@ -223,9 +220,10 @@ where
     DF: DistanceFunction<[N], F>,
     F: Float,
 {
-    fn set_index(&mut self, idx: usize) {
+    fn set_index(&mut self, idx: usize) -> &mut Self {
         self.index = idx;
         self.coords = None;
+        self
     }
 
     fn query_index(&self) -> usize { self.index }

@@ -12,7 +12,7 @@ from ._kmeans import (
 )
 from ._em import EMResult, em, von_mises_fisher
 from ._hierarchical import hierarchical
-from ._hdbscan import hdbscan
+from ._hdbscan import CoreSG, hdbscan, coresg
 from ._dbscan import dbscan, optics
 from ._kmedoids import (DynkResult, KMedoidsResult, kmedoids, dynmsc, silhouette_clustering)
 
@@ -37,6 +37,8 @@ __all__ = [
     'von_mises_fisher',
     'hierarchical',
     'hdbscan',
+    'coresg',
+    'CoreSG',
     'dbscan',
     'optics',
 ]

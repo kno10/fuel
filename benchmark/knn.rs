@@ -88,7 +88,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "knn" => knn(&tree, &data, k),
                 "odin" => outlier_detection_independence_neighbor(&tree, &data, k),
                 other => return Err(format!("unknown mode: {}", other).into()),
-            };
+            }?;
             let dist_count = distance.count();
             let elapsed = start.elapsed();
 
@@ -104,7 +104,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "knn" => knn(&tree, &data, k),
                 "odin" => outlier_detection_independence_neighbor(&tree, &data, k),
                 other => return Err(format!("unknown mode: {}", other).into()),
-            };
+            }?;
             let dist_count = kd_metric.count();
             let elapsed = start.elapsed();
 

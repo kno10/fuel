@@ -55,7 +55,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let start = Instant::now();
     let tree = VPTree::new(&data, sample_size, &mut rng);
     let distance_count_after_index = distance.count();
-    let scores = local_outlier_probabilities(&tree, &data, k, n_lambda);
+    let scores = local_outlier_probabilities(&tree, &data, k, n_lambda)?;
     let dist_count = distance.count();
     let elapsed = start.elapsed();
 

@@ -9,6 +9,23 @@ _KD_DISTANCE_NAMES = {
     'manhattan', 'l1', 'cityblock',
 }
 
+_DISTANCE_NAME_MAP = {
+    'l2': 'euclidean', 'squared_euclidean': 'sqeuclidean',
+    'l1': 'manhattan', 'cityblock': 'manhattan',
+    'linf': 'chebyshev', 'chessboard': 'chebyshev',
+    'angular': 'arccosine', 'bray_curtis': 'braycurtis',
+    'chisquared': 'chi_squared', 'chi2': 'chi_squared',
+    'jensenshannon': 'jensen_shannon', 'js': 'jensen_shannon',
+    'jeffreys': 'jeffrey', 'intersection': 'histogram_intersection',
+}
+
+
+def _normalize_distance_name(distance):
+    if not isinstance(distance, str):
+        raise TypeError("distance must be a string")
+    key = distance.lower()
+    return _DISTANCE_NAME_MAP.get(key, key)
+
 _TREE_NAME_MAP = {
     'auto': 'auto',
     'vp': 'vp',
@@ -152,6 +169,7 @@ def pairwise_distances(data, distance='euclidean', form='condensed'):
 
 def _build_search_index(data, tree, distance, seed=None, precompute=None):
     data = _ensure_float(data)
+    distance = _normalize_distance_name(distance)
     tree = _normalize_search_tree_name(tree)
     if tree == 'auto':
         tree = _choose_search_tree(data, distance)
@@ -178,16 +196,20 @@ def _build_search_index(data, tree, distance, seed=None, precompute=None):
 
 
 def _prepare_search_index(data, index, *, distance=None, seed=None, priority_search=False):
+    distance = _normalize_distance_name(distance) if distance is not None else None
     if index is None:
         tree = _choose_search_tree(data, distance or 'euclidean')
         if priority_search and tree == 'kd':
             tree = 'vp'
         return _build_search_index(data, tree, distance or 'euclidean', seed)
     if isinstance(index, SearchIndex):
-        if index.dtype != data.dtype or index.shape != data.shape:
+        expected_dtype = _np.dtype(_np.float32 if _f32(data) else _np.float64)
+        if index.dtype != expected_dtype or index.shape != data.shape:
             raise ValueError(
-                "SearchIndex must be built from the same data shape and dtype as the outlier input"
+                "SearchIndex must be built from the same data shape and effective dtype as the input"
             )
+        if distance is not None and index.distance != distance:
+            raise ValueError("SearchIndex distance must match the requested distance")
         return index.index
     if isinstance(index, str):
         return _build_search_index(data, index, distance or 'euclidean', seed)
@@ -230,6 +252,7 @@ class SearchIndex:
     def __init__(self, data, *, distance='euclidean', tree=None, seed=None, precompute=None):
         data = _ensure_float(data)
         self.data = data
+        distance = _normalize_distance_name(distance)
         self.distance = distance
         self.seed = seed
         self.precompute = precompute

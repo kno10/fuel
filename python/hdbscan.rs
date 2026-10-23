@@ -1,9 +1,10 @@
 use ndarray::ArrayView2;
 use numpy::{PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray2};
-use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
+use pyo3::IntoPyObjectExt;
 
+use crate::cluster::coresg::CoreSG;
 use crate::cluster::hdbscan;
 use crate::cluster::hdbscan::extraction::{
     extract_clusters_with_noise, extract_hdbscan_hierarchy_hdbscan,
@@ -23,6 +24,32 @@ struct HdbscanHierarchyF32 {
 #[pyclass]
 struct HdbscanHierarchyF64 {
     inner: hdbscan::HdbscanHierarchy<f64>,
+}
+
+#[pyclass]
+struct CoreSGF32 {
+    inner: CoreSG<f32>,
+    distance: String,
+}
+
+#[pyclass]
+struct CoreSGF64 {
+    inner: CoreSG<f64>,
+    distance: String,
+}
+
+#[pyclass]
+struct CoreSGEdgeIterF32 {
+    graph: Py<CoreSGF32>,
+    position: usize,
+    end: usize,
+}
+
+#[pyclass]
+struct CoreSGEdgeIterF64 {
+    graph: Py<CoreSGF64>,
+    position: usize,
+    end: usize,
 }
 
 macro_rules! hdbscan_hierarchy_methods {
@@ -162,6 +189,125 @@ where
     let dist_fn: Box<dyn DistanceFunction<[N], N> + Sync> = super::parse_distance_fn(distance)?;
     Ok(NdArrayDatasetWithDistance::with_distance(array, dist_fn))
 }
+
+macro_rules! coresg_python_api {
+    ($graph:ident, $iterator:ident, $dtype:ty, $hierarchy:ident, $name:ident) => {
+        #[pymethods]
+        impl $graph {
+            #[getter]
+            fn max_points(&self) -> usize {
+                self.inner.max_points
+            }
+
+            #[getter]
+            fn num_edges(&self) -> usize {
+                self.inner.num_edges()
+            }
+
+            #[getter]
+            fn num_points(&self) -> usize {
+                self.inner.core_distances.len()
+            }
+
+            fn __len__(&self) -> usize {
+                self.inner.num_edges()
+            }
+
+            /// Iterate over (target, weight) adjacency entries for one source.
+            fn neighbors(slf: Py<Self>, py: Python<'_>, source: usize) -> PyResult<Py<$iterator>> {
+                let (position, end) = {
+                    let graph = slf.borrow(py);
+                    let neighbors = graph.inner.neighbors(source).ok_or_else(|| {
+                        pyo3::exceptions::PyIndexError::new_err("source node out of range")
+                    })?;
+                    let position = graph.inner.offsets[source];
+                    (position, position + neighbors.len())
+                };
+                Py::new(py, $iterator { graph: slf, position, end })
+            }
+
+            /// Return the core distance for a single point.
+            fn core_distance(&self, index: usize) -> PyResult<$dtype> {
+                self.inner.core_distances.get(index).copied().ok_or_else(|| {
+                    pyo3::exceptions::PyIndexError::new_err("point index out of range")
+                })
+            }
+
+            /// Compute a hierarchy for min_points using a caller-supplied index.
+            #[pyo3(signature = (data, min_points, *, index))]
+            fn hdbscan<'py>(
+                &self, py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, min_points: usize,
+                index: PyRef<'_, SearchIndex>,
+            ) -> PyResult<Py<PyAny>> {
+                if min_points == 0 || min_points > self.inner.max_points {
+                    return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                        "min_points must be in 1..={}, got {}",
+                        self.inner.max_points, min_points
+                    )));
+                }
+                let array = data.as_array();
+                if array.nrows() != self.inner.core_distances.len() {
+                    return Err(pyo3::exceptions::PyValueError::new_err(
+                        "data row count must match the CORE-SG graph",
+                    ));
+                }
+                let dataset = build_dataset::<$dtype>(&array, &self.distance)?;
+                let search_index = index.inner();
+                let graph = &self.inner;
+                let hierarchy = py
+                    .detach(|| {
+                        crate::reset_interrupted();
+                        graph.hdbscan_hierarchy_for_min_points(search_index, &dataset, min_points)
+                    })
+                    .map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
+                Py::new(py, $hierarchy { inner: hierarchy })?.into_py_any(py)
+            }
+        }
+
+        #[pymethods]
+        impl $iterator {
+            fn __iter__(slf: Py<Self>) -> Py<Self> {
+                slf
+            }
+
+            fn __next__(&mut self, py: Python<'_>) -> Option<(usize, $dtype)> {
+                if self.position >= self.end {
+                    return None;
+                }
+                let graph = self.graph.borrow(py);
+                let edge = graph.inner.adjacency.get(self.position)?;
+                self.position += 1;
+                Some((edge.target as usize, edge.weight))
+            }
+        }
+
+        #[pyfunction]
+        #[pyo3(signature = (data, max_points, *, distance, index))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, max_points: usize,
+            distance: &str, index: PyRef<'_, SearchIndex>,
+        ) -> PyResult<Py<PyAny>> {
+            if max_points == 0 {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "max_points must be greater than 0",
+                ));
+            }
+            let array = data.as_array();
+            let dataset = build_dataset::<$dtype>(&array, distance)?;
+            let search_index = index.inner();
+            let graph = py
+                .detach(|| {
+                    crate::reset_interrupted();
+                    crate::cluster::coresg::coresg(search_index, &dataset, max_points)
+                })
+                .map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
+            Py::new(py, $graph { inner: graph, distance: distance.to_owned() })?.into_py_any(py)
+        }
+    };
+}
+
+coresg_python_api!(CoreSGF32, CoreSGEdgeIterF32, f32, HdbscanHierarchyF32, coresg_graph_f32);
+coresg_python_api!(CoreSGF64, CoreSGEdgeIterF64, f64, HdbscanHierarchyF64, coresg_graph_f64);
 
 // ---- brute-force algorithms (no tree) --------------------------------------
 
@@ -303,6 +449,8 @@ hdbscan_tree_slack_wrapper!(
 // ---- module registration ---------------------------------------------------
 
 pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
+    m.add_wrapped(wrap_pyfunction!(coresg_graph_f32))?;
+    m.add_wrapped(wrap_pyfunction!(coresg_graph_f64))?;
     m.add_wrapped(wrap_pyfunction!(hdbscan_prim_f32))?;
     m.add_wrapped(wrap_pyfunction!(hdbscan_prim_f64))?;
     m.add_wrapped(wrap_pyfunction!(slink_hdbscan_f32))?;
@@ -319,5 +467,9 @@ pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(lazy_buffered_search_hdbscan_f64))?;
     m.add_class::<HdbscanHierarchyF32>()?;
     m.add_class::<HdbscanHierarchyF64>()?;
+    m.add_class::<CoreSGF32>()?;
+    m.add_class::<CoreSGF64>()?;
+    m.add_class::<CoreSGEdgeIterF32>()?;
+    m.add_class::<CoreSGEdgeIterF64>()?;
     Ok(())
 }

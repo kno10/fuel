@@ -3,7 +3,7 @@ use crate::api::float::Float;
 /// A query that can be updated to point at different dataset indices.
 pub trait IndexQuery<F: Float>: DistanceSearch<F> {
     /// Update the query to use the given dataset index.
-    fn set_index(&mut self, idx: usize);
+    fn set_index(&mut self, idx: usize) -> &mut Self;
 
     /// Return the current index used by the query.
     fn query_index(&self) -> usize;
@@ -20,10 +20,17 @@ pub trait IndexQuery<F: Float>: DistanceSearch<F> {
 
 /// A query that can be updated to use explicit coordinates.
 pub trait CoordinateQuery<C: Float, F: Float>: DistanceSearch<F> + CoordinateSearch<C, F> {
-    /// Update the query to use the given coordinates, returning it for chaining.
-    fn with_coordinates(self, coords: &[C]) -> Self
+    /// Update the query to use the given coordinates.
+    fn set_coordinates(&mut self, coords: &[C]) -> &mut Self;
+
+    /// Update the query and return it for chaining.
+    fn with_coordinates(mut self, coords: &[C]) -> Self
     where
-        Self: Sized;
+        Self: Sized,
+    {
+        self.set_coordinates(coords);
+        self
+    }
 }
 
 /// Interface for a running search
