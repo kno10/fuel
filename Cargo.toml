@@ -122,6 +122,14 @@ pyo3 = { version = "0.28", optional = true, features = ["macros", "extension-mod
 numpy = { version = "0.28", optional = true }
 kmedoids = "0.5.5"
 
+# linux default: openblas-system
+[target.'cfg(target_os = "linux")'.dependencies]
+openblas-src = { version = "0.10", features = ["system"] }
+
+# OSX default: accelerate
+[target.'cfg(target_os = "macos")'.dependencies]
+blas-src = { version = "0.9", features = ["accelerate"] }
+
 [build-dependencies]
 vcpkg = "0.2"
 

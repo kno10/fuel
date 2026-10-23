@@ -23,3 +23,19 @@ pub mod statistics;
 mod python;
 
 pub use crate::api::*;
+
+// pull in the crate to link default system BLAS on Linux
+// unless an explicit BLAS feature was selected
+#[cfg(all(
+    target_os = "linux",
+    not(any(
+        feature = "openblas",
+        feature = "openblas-system",
+        feature = "openblas-system-static"
+    ))
+))]
+extern crate openblas_src;
+
+// Windows default: static OpenBLAS (slow build)
+#[cfg(win_blas_static)]
+extern crate openblas_src;

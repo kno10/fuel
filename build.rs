@@ -1,6 +1,9 @@
 use std::env;
 
+/// Windows BLAS linking
 fn main() {
+    println!("cargo:rustc-check-cfg=cfg(win_blas_static)");
+
     if env::var_os("DOCS_RS").is_some() {
         return;
     }
@@ -9,9 +12,15 @@ fn main() {
         return;
     }
 
-    let openblas_system = env::var_os("CARGO_FEATURE_OPENBLAS_SYSTEM").is_some()
-        || env::var_os("CARGO_FEATURE_OPENBLAS_SYSTEM_STATIC").is_some();
-    if openblas_system {
+    let has_openblas = env::var_os("CARGO_FEATURE_OPENBLAS").is_some();
+    let has_openblas_system = env::var_os("CARGO_FEATURE_OPENBLAS_SYSTEM").is_some();
+    let has_openblas_system_static = env::var_os("CARGO_FEATURE_OPENBLAS_SYSTEM_STATIC").is_some();
+
+    let any_user_feature = has_openblas || has_openblas_system || has_openblas_system_static;
+
+    if !any_user_feature {
+        println!("cargo:rustc-cfg=win_blas_static");
+    } else if has_openblas_system || has_openblas_system_static {
         println!("cargo:rerun-if-env-changed=VCPKG_ROOT");
         println!("cargo:rerun-if-env-changed=VCPKGRS_TRIPLET");
         println!("cargo:rerun-if-env-changed=VCPKG_DEFAULT_TRIPLET");
