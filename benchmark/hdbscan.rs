@@ -4,20 +4,21 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::time::Instant;
 
-use common::{read_numeric_data, CountingDistance};
+use common::{CountingDistance, read_numeric_data};
 use fuel::cluster::coresg::coresg;
 use fuel::cluster::dbscan::NOISE;
 use fuel::cluster::hdbscan::extraction::extract_clusters_with_noise;
 use fuel::cluster::hdbscan::{
-    boruvka_searchers_hdbscan, buffered_search_hdbscan, hdbscan_prim, heap_of_searchers_hdbscan,
-    lazy_buffered_search_hdbscan, restarting_search_hdbscan, slink_hdbscan, HdbscanHierarchy,
+    HdbscanHierarchy, boruvka_searchers_hdbscan, buffered_search_hdbscan, hdbscan_prim,
+    heap_of_searchers_hdbscan, lazy_buffered_search_hdbscan, restarting_search_hdbscan,
+    slink_hdbscan,
 };
 use fuel::cluster::hierarchical::MergeHistory;
 use fuel::distance::Euclidean;
 use fuel::search::vptree::VPTree;
 use fuel::{Data, TableWithDistance};
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 
 const RNG_SEED: u64 = 42;
 const BUFFERED_SLACK: usize = 4;

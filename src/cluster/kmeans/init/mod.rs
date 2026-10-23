@@ -43,8 +43,8 @@ mod tests {
     use rand::rngs::StdRng;
 
     use super::*;
-    use crate::distance::Euclidean;
     use crate::TableWithDistance;
+    use crate::distance::Euclidean;
 
     #[test]
     fn firstk_initialization() {
@@ -61,7 +61,8 @@ mod tests {
 
     #[test]
     fn random_sample_bounds() {
-        let points: Vec<Vec<f64>> = (0..3).map(|i| (0..3).map(|j| (i * 3 + j) as f64).collect()).collect();
+        let points: Vec<Vec<f64>> =
+            (0..3).map(|i| (0..3).map(|j| (i * 3 + j) as f64).collect()).collect();
         let ds = TableWithDistance::<f64, _, _, f64>::with_distance(&points, Euclidean);
         let rng = StdRng::seed_from_u64(42);
         let mut init = RandomSample::new(rng);
@@ -99,7 +100,8 @@ mod tests {
 
     #[test]
     fn kgeometricpp_uses_distances_and_in_dataset() {
-        let points: Vec<Vec<f64>> = (0..3).map(|i| (0..3).map(|j| (i * 3 + j) as f64).collect()).collect();
+        let points: Vec<Vec<f64>> =
+            (0..3).map(|i| (0..3).map(|j| (i * 3 + j) as f64).collect()).collect();
         let ds = TableWithDistance::<f64, _, _, f64>::with_distance(&points, Euclidean);
         let rng = StdRng::seed_from_u64(42);
         let mut init = KGeometricPP::new(rng);

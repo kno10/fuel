@@ -356,8 +356,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::distance::Euclidean;
     use crate::TableWithDistance;
+    use crate::distance::Euclidean;
 
     #[test]
     fn weiszfeld_zero_distance_returns_point() {

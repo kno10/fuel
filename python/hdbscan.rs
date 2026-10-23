@@ -1,8 +1,8 @@
 use ndarray::ArrayView2;
 use numpy::{PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray2};
+use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
-use pyo3::IntoPyObjectExt;
 
 use crate::cluster::coresg::CoreSG;
 use crate::cluster::hdbscan;
@@ -195,23 +195,15 @@ macro_rules! coresg_python_api {
         #[pymethods]
         impl $graph {
             #[getter]
-            fn max_points(&self) -> usize {
-                self.inner.max_points
-            }
+            fn max_points(&self) -> usize { self.inner.max_points }
 
             #[getter]
-            fn num_edges(&self) -> usize {
-                self.inner.num_edges()
-            }
+            fn num_edges(&self) -> usize { self.inner.num_edges() }
 
             #[getter]
-            fn num_points(&self) -> usize {
-                self.inner.core_distances.len()
-            }
+            fn num_points(&self) -> usize { self.inner.core_distances.len() }
 
-            fn __len__(&self) -> usize {
-                self.inner.num_edges()
-            }
+            fn __len__(&self) -> usize { self.inner.num_edges() }
 
             /// Iterate over (target, weight) adjacency entries for one source.
             fn neighbors(slf: Py<Self>, py: Python<'_>, source: usize) -> PyResult<Py<$iterator>> {
@@ -266,9 +258,7 @@ macro_rules! coresg_python_api {
 
         #[pymethods]
         impl $iterator {
-            fn __iter__(slf: Py<Self>) -> Py<Self> {
-                slf
-            }
+            fn __iter__(slf: Py<Self>) -> Py<Self> { slf }
 
             fn __next__(&mut self, py: Python<'_>) -> Option<(usize, $dtype)> {
                 if self.position >= self.end {

@@ -175,10 +175,7 @@ where
         let scale = wa * wb / wab;
         let dim = self.mean.len();
         let mut delta = vec![N::zero(); dim];
-        for (d, (sm, om)) in delta
-            .iter_mut()
-            .zip(self.mean.iter_mut().zip(other.mean.iter()))
-        {
+        for (d, (sm, om)) in delta.iter_mut().zip(self.mean.iter_mut().zip(other.mean.iter())) {
             *d = *om - *sm;
             *sm = (wa * *sm + wb * *om) / wab;
         }

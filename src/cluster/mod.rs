@@ -1,5 +1,5 @@
-pub mod dbscan;
 pub mod coresg;
+pub mod dbscan;
 pub mod em;
 pub mod hdbscan;
 pub mod hierarchical;

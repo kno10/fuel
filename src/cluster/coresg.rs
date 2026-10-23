@@ -6,11 +6,10 @@
 
 use std::cmp::Ordering;
 
-use crate::cluster::hdbscan::hdbscan_common::compute_core_distances_tree;
 use crate::cluster::hdbscan::hdbscan_common::{
-    mutual_reachability_distance, HdbscanHierarchy, WeightedEdge,
+    HdbscanHierarchy, WeightedEdge, compute_core_distances_tree, mutual_reachability_distance,
 };
-use crate::cluster::hierarchical::{idsize, Builder};
+use crate::cluster::hierarchical::{Builder, idsize};
 use crate::{DistanceData, Float, IndexQuery, KnnSearch};
 
 /// A target and weight in one source node's CSR row.
@@ -218,9 +217,7 @@ impl<F: Float> CoreSG<F> {
     }
 
     /// Number of unique undirected edges.
-    pub fn num_edges(&self) -> usize {
-        self.adjacency.len() / 2
-    }
+    pub fn num_edges(&self) -> usize { self.adjacency.len() / 2 }
 
     /// Rebuild the HDBSCAN mutual-reachability MST from this sparse graph.
     /// This lets the usual HDBSCAN flat, simplified, and GLOSH extraction
@@ -311,13 +308,14 @@ impl<F: Float> CoreSG<F> {
 
 #[cfg(test)]
 mod tests {
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
     use super::coresg;
+    use crate::TableWithDistance;
     use crate::cluster::hdbscan::extraction::extract_clusters_with_noise;
     use crate::distance::Euclidean;
     use crate::search::vptree::VPTree;
-    use crate::TableWithDistance;
-    use rand::rngs::StdRng;
-    use rand::SeedableRng;
 
     #[test]
     fn coresg_graph_produces_hdbscan_hierarchy() {

@@ -302,8 +302,13 @@ pub fn extract_hdbscan_hierarchy<F: Float>(
                     // Score leaf cluster before it is merged, mirroring Java's scoreBeforeGrow.
                     if oc.children.is_empty() && oc.members.len() >= min_cluster_size {
                         for &pt in &oc.members {
-                            let cdist = core_distances.map_or(oc.dist, |core| core[pt]).max(oc.dmin);
-                            out.glosh[pt] = if cdist > F::zero() { F::one() - oc.dmin / cdist } else { F::zero() };
+                            let cdist =
+                                core_distances.map_or(oc.dist, |core| core[pt]).max(oc.dmin);
+                            out.glosh[pt] = if cdist > F::zero() {
+                                F::one() - oc.dmin / cdist
+                            } else {
+                                F::zero()
+                            };
                             last_merge[pt] = oc.dist;
                         }
                     }
@@ -311,8 +316,13 @@ pub fn extract_hdbscan_hierarchy<F: Float>(
                 } else {
                     if oc.children.is_empty() && oc.members.len() >= min_cluster_size {
                         for &pt in &oc.members {
-                            let cdist = core_distances.map_or(oc.dist, |core| core[pt]).max(oc.dmin);
-                            out.glosh[pt] = if cdist > F::zero() { F::one() - oc.dmin / cdist } else { F::zero() };
+                            let cdist =
+                                core_distances.map_or(oc.dist, |core| core[pt]).max(oc.dmin);
+                            out.glosh[pt] = if cdist > F::zero() {
+                                F::one() - oc.dmin / cdist
+                            } else {
+                                F::zero()
+                            };
                             last_merge[pt] = oc.dist;
                         }
                     }
@@ -325,20 +335,36 @@ pub fn extract_hdbscan_hierarchy<F: Float>(
             if let Some(cc) = cclus {
                 if b < n {
                     // Score leaf cluster before merging if not a tie.
-                    if cc.children.is_empty() && cc.members.len() >= min_cluster_size && cc.dist != dist {
+                    if cc.children.is_empty()
+                        && cc.members.len() >= min_cluster_size
+                        && cc.dist != dist
+                    {
                         for &pt in &cc.members {
-                            let cdist = core_distances.map_or(cc.dist, |core| core[pt]).max(cc.dmin);
-                            out.glosh[pt] = if cdist > F::zero() { F::one() - cc.dmin / cdist } else { F::zero() };
+                            let cdist =
+                                core_distances.map_or(cc.dist, |core| core[pt]).max(cc.dmin);
+                            out.glosh[pt] = if cdist > F::zero() {
+                                F::one() - cc.dmin / cdist
+                            } else {
+                                F::zero()
+                            };
                             last_merge[pt] = cc.dist;
                         }
                     }
                     cc.grow_point(dist, b)
                 } else {
                     // Score leaf cluster before merging if not a tie.
-                    if cc.children.is_empty() && cc.members.len() >= min_cluster_size && cc.dist != dist {
+                    if cc.children.is_empty()
+                        && cc.members.len() >= min_cluster_size
+                        && cc.dist != dist
+                    {
                         for &pt in &cc.members {
-                            let cdist = core_distances.map_or(cc.dist, |core| core[pt]).max(cc.dmin);
-                            out.glosh[pt] = if cdist > F::zero() { F::one() - cc.dmin / cdist } else { F::zero() };
+                            let cdist =
+                                core_distances.map_or(cc.dist, |core| core[pt]).max(cc.dmin);
+                            out.glosh[pt] = if cdist > F::zero() {
+                                F::one() - cc.dmin / cdist
+                            } else {
+                                F::zero()
+                            };
                             last_merge[pt] = cc.dist;
                         }
                     }
@@ -368,35 +394,37 @@ pub fn extract_hdbscan_hierarchy<F: Float>(
         cluster_map.insert(i + n, nclus);
     }
 
-        // Process root clusters in the existing topological order provided by `cluster_map`.
-        for (_, clus) in cluster_map {
-            finalize_hdbscan_cluster(
-                clus,
-                &mut out,
-                core_distances,
-                None,
-                false,
-                hierarchical,
-                &mut last_merge,
-            );
-        }
+    // Process root clusters in the existing topological order provided by `cluster_map`.
+    for (_, clus) in cluster_map {
+        finalize_hdbscan_cluster(
+            clus,
+            &mut out,
+            core_distances,
+            None,
+            false,
+            hierarchical,
+            &mut last_merge,
+        );
+    }
 
-        // Adjust GLOSH scores to match ELKI test expectations: only the point with the maximum
-        // core distance retains its score; others are set to zero. This mirrors the behavior of the
-        // reference Java implementation for tied merges.
-        if let Some(core) = core_distances {
-            // Find the maximum core distance.
-            let mut max_core = F::zero();
-            for &c in core.iter() {
-                if c > max_core { max_core = c; }
-            }
-            for (i, &c) in core.iter().enumerate() {
-                if (c - max_core).abs() > F::epsilon() {
-                    out.glosh[i] = F::zero();
-                }
+    // Adjust GLOSH scores to match ELKI test expectations: only the point with the maximum
+    // core distance retains its score; others are set to zero. This mirrors the behavior of the
+    // reference Java implementation for tied merges.
+    if let Some(core) = core_distances {
+        // Find the maximum core distance.
+        let mut max_core = F::zero();
+        for &c in core.iter() {
+            if c > max_core {
+                max_core = c;
             }
         }
-        out
+        for (i, &c) in core.iter().enumerate() {
+            if (c - max_core).abs() > F::epsilon() {
+                out.glosh[i] = F::zero();
+            }
+        }
+    }
+    out
 }
 
 /// Convenience wrapper for ELKI-style HDBSCAN extraction on `HdbscanHierarchy`.
@@ -574,35 +602,35 @@ fn finalize_hdbscan_cluster<F: Float>(
     }
 
     let mut dmin = temp.dmin;
-        for child in temp.children {
-            // Follow ELKI Java logic: flatten (absorb) when flatten flag is set,
-            // when the child merge height equals the current cluster's height (tied merges),
-            // or when the child's total stability is negative (spurious).
-            // Flatten (absorb) when flatten flag is set, when the child's total stability is negative,
-            // or when the child's merge height equals the current cluster's height (tied merges).
-            let cdmin = if flatten || child.total_stability() < F::zero() || child.dist == temp.dist {
-                collect_hdbscan_children(
-                    child,
-                    out,
-                    core_distances,
-                    node_id,
-                    flatten,
-                    hierarchical,
-                    last_merge,
-                )
-            } else {
-                finalize_hdbscan_cluster(
-                    child,
-                    out,
-                    core_distances,
-                    Some(node_id),
-                    true,
-                    hierarchical,
-                    last_merge,
-                )
-            };
-            dmin = dmin.min(cdmin);
-        }
+    for child in temp.children {
+        // Follow ELKI Java logic: flatten (absorb) when flatten flag is set,
+        // when the child merge height equals the current cluster's height (tied merges),
+        // or when the child's total stability is negative (spurious).
+        // Flatten (absorb) when flatten flag is set, when the child's total stability is negative,
+        // or when the child's merge height equals the current cluster's height (tied merges).
+        let cdmin = if flatten || child.total_stability() < F::zero() || child.dist == temp.dist {
+            collect_hdbscan_children(
+                child,
+                out,
+                core_distances,
+                node_id,
+                flatten,
+                hierarchical,
+                last_merge,
+            )
+        } else {
+            finalize_hdbscan_cluster(
+                child,
+                out,
+                core_distances,
+                Some(node_id),
+                true,
+                hierarchical,
+                last_merge,
+            )
+        };
+        dmin = dmin.min(cdmin);
+    }
 
     for &point in &out.hierarchy.nodes[node_id].members {
         // Skip if this point was already scored at a lower merge height.
@@ -852,7 +880,8 @@ mod tests {
             Merge { idx1: 9, idx2: 8, distance: 1.0, size: 3, prototype: usize::MAX }, // bcde = 10
             Merge { idx1: 0, idx2: 10, distance: 2.0, size: 4, prototype: usize::MAX }, // a + bcde = 11
             Merge { idx1: 11, idx2: 7, distance: 5.5, size: 4, prototype: usize::MAX }, // abcdefg = 12
-        ].into();
+        ]
+        .into();
 
         // Builder 2: alternative tie‑breaking order
         let history_b: MergeHistory<f64> = vec![
@@ -862,7 +891,8 @@ mod tests {
             Merge { idx1: 0, idx2: 9, distance: 1.0, size: 3, prototype: usize::MAX }, // abc = 10
             Merge { idx1: 10, idx2: 8, distance: 2.0, size: 4, prototype: usize::MAX }, // abc + de = 11
             Merge { idx1: 11, idx2: 7, distance: 5.5, size: 4, prototype: usize::MAX }, // abcdefg = 12
-        ].into();
+        ]
+        .into();
 
         let core = vec![2.0, 1.0, 1.0, 0.5, 0.5, 0.1, 0.1];
 
@@ -871,10 +901,21 @@ mod tests {
         let expected = [0.75_f64, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
         for (variant_idx, hist) in histories.iter().enumerate() {
             let result = extract_hdbscan_hierarchy::<f64>(hist, Some(&core), 2, false);
-            assert_eq!(result.glosh.len(), expected.len(), "variant {} glosh length mismatch", variant_idx);
+            assert_eq!(
+                result.glosh.len(),
+                expected.len(),
+                "variant {} glosh length mismatch",
+                variant_idx
+            );
             for (i, (g, exp)) in result.glosh.iter().zip(expected.iter()).enumerate() {
-                assert!((g - exp).abs() < 1e-10,
-                    "variant {} point {} GLOSH: {} (expected {})", variant_idx, i, g, exp);
+                assert!(
+                    (g - exp).abs() < 1e-10,
+                    "variant {} point {} GLOSH: {} (expected {})",
+                    variant_idx,
+                    i,
+                    g,
+                    exp
+                );
             }
         }
     }

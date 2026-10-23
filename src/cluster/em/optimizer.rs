@@ -367,7 +367,9 @@ where
                 data.load_into(row_start + ri, &mut sc, d);
                 let slice = &probs_chunk[ri * k..(ri + 1) * k];
                 let best = argmax(slice);
-                if let Some(noise) = noise_probs && noise[row_start + ri] > slice[best] {
+                if let Some(noise) = noise_probs
+                    && noise[row_start + ri] > slice[best]
+                {
                     continue;
                 }
                 local[best].update_estep(&sc, N::one());
