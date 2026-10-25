@@ -140,28 +140,9 @@ where
             assert_ne!(next, usize::MAX, "complete distance graph must be connected");
             in_tree[next] = true;
             edges.push(WeightedEdge::new(parent[next] as usize, next, best[next]));
-            #[cfg(feature = "parallel")]
-            {
-                use rayon::prelude::*;
-                best.par_iter_mut().zip(parent.par_iter_mut()).enumerate().for_each(
-                    |(b, (dist, from))| {
-                        if !in_tree[b] {
-                            let candidate = mutual_reachability_distance(
-                                &core_distances,
-                                next,
-                                b,
-                                data.distance(next, b),
-                            );
-                            if candidate < *dist || (candidate == *dist && (next as idsize) < *from)
-                            {
-                                *dist = candidate;
-                                *from = next as idsize;
-                            }
-                        }
-                    },
-                );
-            }
-            #[cfg(not(feature = "parallel"))]
+            // The per-iteration update is a single distance call per element,
+            // so parallelizing it (e.g. with rayon) costs more in scheduling
+            // overhead than it saves. Keep it serial.
             for b in 0..n {
                 if !in_tree[b] {
                     let candidate = mutual_reachability_distance(
