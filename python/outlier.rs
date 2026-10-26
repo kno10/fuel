@@ -398,6 +398,30 @@ macro_rules! isolation_forest {
 isolation_forest!(isolation_forest_f32, f32);
 isolation_forest!(isolation_forest_f64, f64);
 
+macro_rules! loda {
+    ($name:ident, $dtype:ty) => {
+        #[pyfunction]
+        #[pyo3(signature = (data, tau=0.01, *, n_bins=None, n_projections=None, seed=None))]
+        fn $name<'py>(
+            py: Python<'py>, data: PyReadonlyArray2<'py, $dtype>, tau: f64,
+            n_bins: Option<usize>, n_projections: Option<usize>, seed: Option<u64>,
+        ) -> PyResult<Py<PyAny>> {
+            let array = data.as_array();
+            let dataset = NdArrayDataset::new(&array);
+            let tau = tau as $dtype;
+            let result = crate::py_interruptible(py, || {
+                outlier::loda::<_, $dtype>(
+                    &dataset, tau, n_bins, n_projections, seed.unwrap_or(0),
+                )
+            })?;
+            result_to_py_outlier(py, result)
+        }
+    };
+}
+
+loda!(loda_f32, f32);
+loda!(loda_f64, f64);
+
 macro_rules! data_outlier_no_args {
     ($name:ident, $variant:ident, $dtype:ty) => {
         #[pyfunction]
@@ -1202,6 +1226,8 @@ pub fn register<'py>(m: &'py Bound<'py, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(influence_outlier_f64))?;
     m.add_wrapped(wrap_pyfunction!(isolation_forest_f32))?;
     m.add_wrapped(wrap_pyfunction!(isolation_forest_f64))?;
+    m.add_wrapped(wrap_pyfunction!(loda_f32))?;
+    m.add_wrapped(wrap_pyfunction!(loda_f64))?;
     m.add_wrapped(wrap_pyfunction!(k_nearest_neighbors_outlier_f32))?;
     m.add_wrapped(wrap_pyfunction!(k_nearest_neighbors_outlier_f64))?;
     m.add_wrapped(wrap_pyfunction!(k_nearest_neighbors_distance_deviation_f32))?;

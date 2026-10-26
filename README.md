@@ -24,7 +24,7 @@ Python bindings are provided via [PyO3](https://pyo3.rs) and
 | **Hierarchical (agglomerative)** | AGNES, Anderberg, Muellner, NN-chain; set-based variants; geometric NN-chain; SLINK; CLINK; search-based single-link (VP/KD/cover trees) |
 | **DBSCAN** | standard, parallel |
 | **OPTICS** | ordering + reachability |
-| **HDBSCAN** | Prim; SLINK; search-tree-accelerated variants |
+| **HDBSCAN** | Prim; SLINK; search-tree-accelerated variants; Core-SG |
 | **Spherical k-means** | Lloyd, Elkan, Hamerly, simplified Elkan, simplified Hamerly |
 | **EM / Gaussian mixture** | full, spherical and diagonal covariance; von Mises-Fisher for spherical data |
 | **Fuzzy c-means** | standard soft-k-means variant |
@@ -39,7 +39,7 @@ sum, minimum sum increase (HACAM).
 ### Outlier Detection
 
 ABOD, FastABOD, LB-ABOD, ALOCI, LOCI, COP, DB-outlier, DWOF,
-FlexibleLOF, INFLO, ISOS, Isolation Forest,
+FlexibleLOF, INFLO, ISOS, Isolation Forest, LODA,
 kNN-outlier, weighted kNN, KNNDD, kNN-SOS,
 LDF, LDOF, LOF, LoOP, SimplifiedLOF, ODIN, SOS, IDOS, and more.
 

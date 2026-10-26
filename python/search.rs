@@ -64,7 +64,10 @@ impl<N> crate::api::query::IndexQuery<N> for ExternalQuery<'_, N>
 where
     N: Float,
 {
-    fn set_index(&mut self, idx: usize) { self.index = idx; }
+    fn set_index(&mut self, idx: usize) -> &mut Self {
+        self.index = idx;
+        self
+    }
 
     fn query_index(&self) -> usize { self.index }
 }

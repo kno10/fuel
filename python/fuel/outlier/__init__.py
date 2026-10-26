@@ -119,8 +119,10 @@ def approximate_local_correlation_integral(data, nmin, alpha, g, *, seed=None,
 
     Returns
     -------
-    scores : 1-D float array (ascending=True).
+    scores : 1-D float array
     metadata : dict
+
+    Larger scores indicate more anomalous observations.
     """
     return _wrap(_call(_fuel.approximate_local_correlation_integral_f32,
                  _fuel.approximate_local_correlation_integral_f64,
@@ -402,6 +404,36 @@ def isolation_forest(data, num_trees, subsample_size, *, seed=None):
     if _f32(data):
         return _wrap(_fuel.isolation_forest_f32(data, num_trees, subsample_size, seed))
     return _wrap(_fuel.isolation_forest_f64(data, num_trees, subsample_size, seed))
+
+
+def loda(data, tau=0.01, *, n_bins=None, n_projections=None, seed=None):
+    """LODA (Lightweight On-line Detector of Anomalies).
+
+    Parameters
+    ----------
+    data : array of shape (n, d)
+    tau : float, default=0.01
+        Early stopping threshold for the projection score convergence.
+    n_bins : int or None
+        Fixed number of histogram bins per projection. The default selects
+        the number of bins automatically.
+    n_projections : int or None
+        Fixed number of random projections. The default stops when scores
+        converge according to ``tau``.
+    seed : int or None
+        Random seed for reproducible projections.
+
+    Returns
+    -------
+    scores : 1-D float array (ascending=True).
+    metadata : dict
+    """
+    data = _ensure_float(data)
+    if _f32(data):
+        return _wrap(_fuel.loda_f32(data, tau, n_bins=n_bins,
+                                    n_projections=n_projections, seed=seed))
+    return _wrap(_fuel.loda_f64(data, tau, n_bins=n_bins,
+                                n_projections=n_projections, seed=seed))
 
 
 def k_nearest_neighbors_outlier(data, k, *, distance='euclidean', index=None):
