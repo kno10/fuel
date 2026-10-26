@@ -145,7 +145,7 @@ pub(super) fn sqdist_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
         }
         i += 8;
     }
-    let mut sum = unsafe { horizontal_sum_f32(acc) };
+    let mut sum = horizontal_sum_f32(acc);
     while i < d {
         let x = unsafe { *v1.get_unchecked(i) - *v2.get_unchecked(i) };
         sum = x.mul_add(x, sum);
@@ -199,7 +199,7 @@ pub fn sqdist_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
         }
         i += 4;
     }
-    let mut sum = unsafe { horizontal_sum_f64(acc) };
+    let mut sum = horizontal_sum_f64(acc);
     while i < d {
         let x = unsafe { *v1.get_unchecked(i) - *v2.get_unchecked(i) };
         sum = x.mul_add(x, sum);
@@ -258,7 +258,7 @@ pub(super) fn l1dist_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
         }
         i += 8;
     }
-    let mut sum = unsafe { horizontal_sum_f32(acc) };
+    let mut sum = horizontal_sum_f32(acc);
     while i < d {
         sum += (unsafe { *v1.get_unchecked(i) } - unsafe { *v2.get_unchecked(i) }).abs();
         i += 1;
@@ -311,7 +311,7 @@ pub(super) fn l1dist_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
         }
         i += 4;
     }
-    let mut sum = unsafe { horizontal_sum_f64(acc) };
+    let mut sum = horizontal_sum_f64(acc);
     while i < d {
         sum += (unsafe { *v1.get_unchecked(i) } - unsafe { *v2.get_unchecked(i) }).abs();
         i += 1;
@@ -830,7 +830,7 @@ pub(super) fn dot_f32(v1: &[f32], v2: &[f32], d: usize) -> f32 {
         }
         i += 8;
     }
-    let mut sum = unsafe { horizontal_sum_f32(acc) };
+    let mut sum = horizontal_sum_f32(acc);
     while i < d {
         sum = unsafe { v1.get_unchecked(i).mul_add(*v2.get_unchecked(i), sum) };
         i += 1;
@@ -881,7 +881,7 @@ pub fn dot_f64(v1: &[f64], v2: &[f64], d: usize) -> f64 {
         }
         i += 4;
     }
-    let mut sum = unsafe { horizontal_sum_f64(acc) };
+    let mut sum = horizontal_sum_f64(acc);
     while i < d {
         sum = unsafe { v1.get_unchecked(i).mul_add(*v2.get_unchecked(i), sum) };
         i += 1;
@@ -1235,7 +1235,7 @@ pub(super) fn sum_f32(v: &[f32], d: usize) -> f32 {
         unsafe { acc = _mm256_add_ps(acc, _mm256_loadu_ps(v.as_ptr().add(i))) };
         i += 8;
     }
-    let mut sum = unsafe { horizontal_sum_f32(acc) };
+    let mut sum = horizontal_sum_f32(acc);
     while i < d {
         sum += unsafe { *v.get_unchecked(i) };
         i += 1;
@@ -1251,7 +1251,7 @@ pub fn sum_f64(v: &[f64], d: usize) -> f64 {
         unsafe { acc = _mm256_add_pd(acc, _mm256_loadu_pd(v.as_ptr().add(i))) };
         i += 4;
     }
-    let mut sum = unsafe { horizontal_sum_f64(acc) };
+    let mut sum = horizontal_sum_f64(acc);
     while i < d {
         sum += unsafe { *v.get_unchecked(i) };
         i += 1;
